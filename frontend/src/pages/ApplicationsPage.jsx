@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { systemService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
@@ -225,11 +225,25 @@ const ApplicationsPage = () => {
           const visual = getApplicationVisual(app.application);
           const isLive = (app.live_event_count || 0) > 0 || (app.active_device_count || 0) > 0;
           const isService = isNetworkServiceApplication(app.application);
+
+          const isUnknown = app.application === 'Unknown Website' || app.application === 'Other';
+          const isHighVolume = app.bandwidth_bytes > 5 * 1024 * 1024; // 5 MB
+
+          let riskLevel = 'none';
+          if (isUnknown && isHighVolume) {
+            riskLevel = 'high';
+          } else if (isUnknown && app.device_count > 3) {
+            riskLevel = 'medium';
+          } else if (app.bandwidth_bytes > 500 * 1024 * 1024) {
+            riskLevel = 'medium';
+          }
+
           return (
             <button
               key={app.application}
               type="button"
-              className="nv-card-button"
+              className={`nv-card-button ${riskLevel !== 'none' ? `nv-card-button--risk-${riskLevel}` : ''}`}
+              style={riskLevel !== 'none' ? { borderColor: riskLevel === 'high' ? '#ef4444' : '#f59e0b' } : {}}
               onClick={() => navigate(`/apps/${encodeURIComponent(app.application)}`)}
             >
               <div className="nv-card-button__header">
@@ -238,7 +252,11 @@ const ApplicationsPage = () => {
                     <i className={visual.icon}></i>
                   </div>
                   <div className="nv-pill-card__content">
-                    <strong>{app.application}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <strong>{app.application}</strong>
+                      {riskLevel === 'high' && <StatusBadge tone="danger" icon="ri-alert-fill" className="nv-badge--sm" style={{ padding: '0.125rem 0.375rem', fontSize: '0.65rem' }}>High Risk</StatusBadge>}
+                      {riskLevel === 'medium' && <StatusBadge tone="warning" icon="ri-error-warning-fill" className="nv-badge--sm" style={{ padding: '0.125rem 0.375rem', fontSize: '0.65rem' }}>Anomaly</StatusBadge>}
+                    </div>
                     <span>{app.device_count} devices in 24h window</span>
                   </div>
                 </div>

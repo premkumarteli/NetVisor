@@ -1,5 +1,5 @@
 const PageHeader = ({ eyebrow, title, description, actions, children }) => (
-  <header className="nv-page-header">
+  <header className="nv-page-header animate-reveal">
     <div className="nv-page-header__copy">
       {eyebrow ? <div className="nv-page-header__eyebrow">{eyebrow}</div> : null}
       <h1 className="nv-page-header__title">{title}</h1>

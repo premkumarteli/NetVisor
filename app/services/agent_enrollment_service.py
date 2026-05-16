@@ -154,6 +154,35 @@ class AgentEnrollmentService:
         finally:
             cursor.close()
 
+    def _find_approved_duplicate_fingerprint(
+        self,
+        db_conn,
+        *,
+        organization_id: Optional[str],
+        agent_id: str,
+        machine_fingerprint: str,
+    ) -> dict | None:
+        if not machine_fingerprint:
+            return None
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params: list = [machine_fingerprint, agent_id]
+            query = """
+                SELECT agent_id, hostname, device_ip, last_seen
+                FROM agent_enrollment_requests
+                WHERE machine_fingerprint = %s
+                  AND agent_id <> %s
+                  AND status = 'approved'
+            """
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND (organization_id = %s OR organization_id IS NULL)"
+                params.append(organization_id)
+            query += " ORDER BY last_seen DESC LIMIT 1"
+            cursor.execute(query, tuple(params))
+            return cursor.fetchone()
+        finally:
+            cursor.close()
+
     def _expire_pending_requests(self, db_conn, *, organization_id: Optional[str] = None) -> int:
         cursor = db_conn.cursor()
         try:
@@ -191,6 +220,7 @@ class AgentEnrollmentService:
         agent_version: Optional[str],
         bootstrap_method: str,
         source_ip: Optional[str],
+        machine_fingerprint: Optional[str] = None,
     ) -> dict:
         self.ensure_schema(db_conn)
         self._expire_pending_requests(db_conn, organization_id=organization_id)
@@ -206,7 +236,7 @@ class AgentEnrollmentService:
         agent_version_value = self._normalize_text(agent_version)
         bootstrap_method_value = self._normalize_text(bootstrap_method, default="bootstrap")
         source_ip_value = self._normalize_ip(source_ip, default="")
-        fingerprint = self._machine_fingerprint(
+        fingerprint = machine_fingerprint or self._machine_fingerprint(
             agent_id=normalized_agent_id,
             hostname=hostname_value,
             device_ip=device_ip_value,
@@ -214,6 +244,17 @@ class AgentEnrollmentService:
             os_family=os_family_value,
             agent_version=agent_version_value,
             source_ip=source_ip_value,
+        )
+        duplicate = self._find_approved_duplicate_fingerprint(
+            db_conn,
+            organization_id=organization_id,
+            agent_id=normalized_agent_id,
+            machine_fingerprint=fingerprint,
+        )
+        duplicate_reason = (
+            f"Duplicate machine fingerprint matches approved agent {duplicate.get('agent_id')}"
+            if duplicate
+            else None
         )
         ttl_seconds = max(int(settings.AGENT_ENROLLMENT_PENDING_TTL_SECONDS), 1)
 
@@ -233,7 +274,7 @@ class AgentEnrollmentService:
             status_changed = False
 
             if existing:
-                new_status = "approved" if previous_status == "approved" else "pending_review"
+                new_status = "pending_review" if duplicate else ("approved" if previous_status == "approved" else "pending_review")
                 if new_status != previous_status:
                     status_changed = True
                 cursor.execute(
@@ -264,6 +305,7 @@ class AgentEnrollmentService:
                             ELSE NULL
                         END,
                         review_reason = CASE
+                            WHEN %s IS NOT NULL THEN %s
                             WHEN %s = 'approved' THEN review_reason
                             ELSE NULL
                         END
@@ -284,6 +326,8 @@ class AgentEnrollmentService:
                         ttl_seconds,
                         new_status,
                         new_status,
+                        duplicate_reason,
+                        duplicate_reason,
                         new_status,
                         normalized_agent_id,
                     ),
@@ -306,6 +350,7 @@ class AgentEnrollmentService:
                         source_ip,
                         machine_fingerprint,
                         status,
+                        review_reason,
                         attempt_count,
                         first_seen,
                         last_seen,
@@ -313,7 +358,7 @@ class AgentEnrollmentService:
                     )
                     VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                        'pending_review', 1, UTC_TIMESTAMP(), UTC_TIMESTAMP(),
+                        'pending_review', %s, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP(),
                         DATE_ADD(UTC_TIMESTAMP(), INTERVAL %s SECOND)
                     )
                     """,
@@ -329,6 +374,7 @@ class AgentEnrollmentService:
                         bootstrap_method_value,
                         source_ip_value or None,
                         fingerprint,
+                        duplicate_reason,
                         ttl_seconds,
                     ),
                 )
@@ -339,6 +385,7 @@ class AgentEnrollmentService:
                 "request": self._row_to_request(current),
                 "status_changed": status_changed,
                 "previous_status": previous_status,
+                "duplicate_agent_id": duplicate.get("agent_id") if duplicate else None,
             }
         finally:
             cursor.close()

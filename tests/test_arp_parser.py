@@ -5,9 +5,6 @@ import unittest
 from unittest.mock import patch
 from types import SimpleNamespace
 
-# Add the project root to sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from agent.device_detector import DeviceDetector
 
 class TestARPParser(unittest.TestCase):

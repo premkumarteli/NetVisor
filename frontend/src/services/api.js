@@ -328,6 +328,12 @@ export const agentService = {
     api.post(`/agents/${encodeURIComponent(agentId)}/revoke`, {
       review_reason: reviewReason,
     }),
+  getEnrollmentSummary: (orgId) => api.get(`/enrollment/summary?org_id=${encodeURIComponent(orgId)}`),
+  getPendingRetries: (orgId) => api.get(`/enrollment/pending-retries?org_id=${encodeURIComponent(orgId)}`),
+  triggerEnrollmentRetry: (agentId, orgId) =>
+    api.post(`/enrollment/${encodeURIComponent(agentId)}/trigger-retry?org_id=${encodeURIComponent(orgId)}`),
+  resetEnrollmentState: (agentId, orgId) =>
+    api.post(`/enrollment/${encodeURIComponent(agentId)}/reset-state?org_id=${encodeURIComponent(orgId)}`),
 };
 
 export default api;

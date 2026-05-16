@@ -1,28 +1,51 @@
+/* ==========================================================================
+   NV Design Tokens
+   
+   These semantic tokens power ALL V2 components and pages.
+   They bridge from the immersion theme CSS variables (--color-accent, etc.)
+   so that every page responds to workspace theme changes, not just the dashboard.
+   ========================================================================== */
+
 :root {
+  /* --- Surfaces & Background --- */
   --nv-bg: #07111c;
   --nv-bg-elevated: rgba(10, 20, 33, 0.84);
-  --nv-surface: rgba(11, 20, 31, 0.9);
+  --nv-surface: var(--color-surface, rgba(11, 20, 31, 0.9));
   --nv-surface-soft: rgba(13, 24, 37, 0.72);
   --nv-surface-strong: rgba(16, 29, 45, 0.96);
-  --nv-border: rgba(143, 172, 196, 0.14);
+
+  /* --- Borders --- */
+  --nv-border: var(--border-glow, rgba(143, 172, 196, 0.14));
   --nv-border-strong: rgba(143, 172, 196, 0.22);
-  --nv-text: #edf4fb;
+
+  /* --- Text --- */
+  --nv-text: var(--text-primary, #edf4fb);
   --nv-text-soft: #bfcedb;
-  --nv-text-muted: #7f93a7;
-  --nv-accent: #54c8e8;
-  --nv-accent-strong: #1aa4d1;
-  --nv-accent-soft: rgba(84, 200, 232, 0.12);
-  --nv-success: #2dd4bf;
-  --nv-warning: #fbbf24;
-  --nv-danger: #fb7185;
+  --nv-text-muted: var(--text-secondary, #7f93a7);
+
+  /* --- Accent --- */
+  --nv-accent: var(--color-accent, #54c8e8);
+  --nv-accent-strong: var(--color-accent, #1aa4d1);
+  --nv-accent-soft: var(--color-accent-glow, rgba(84, 200, 232, 0.12));
+
+  /* --- Semantic Colors --- */
+  --nv-success: var(--color-success, #2dd4bf);
+  --nv-warning: var(--color-warning, #fbbf24);
+  --nv-danger: var(--color-danger, #fb7185);
   --nv-neutral: #8ea3b5;
+
+  /* --- Shadows --- */
   --nv-shadow-lg: 0 28px 90px rgba(0, 0, 0, 0.34);
   --nv-shadow-md: 0 14px 42px rgba(0, 0, 0, 0.24);
   --nv-shadow-sm: 0 10px 24px rgba(0, 0, 0, 0.14);
+
+  /* --- Radii --- */
   --nv-radius-xl: 28px;
   --nv-radius-lg: 22px;
   --nv-radius-md: 16px;
   --nv-radius-sm: 12px;
+
+  /* --- Spacing --- */
   --nv-space-1: 0.25rem;
   --nv-space-2: 0.5rem;
   --nv-space-3: 0.75rem;
@@ -32,13 +55,117 @@
   --nv-space-8: 2rem;
   --nv-space-10: 2.5rem;
   --nv-space-12: 3rem;
+
+  /* --- Layout --- */
   --nv-content-width: 1160px;
   --nv-rail-width: 252px;
   --nv-rail-collapsed-width: 84px;
+
+  /* --- Typography --- */
   --nv-font-display: "Space Grotesk", "Segoe UI", sans-serif;
   --nv-font-body: "Inter", "Segoe UI", sans-serif;
 }
 
+/* --------------------------------------------------------------------------
+   Theme-specific NV token overrides
+   
+   Each immersion theme sets --color-surface, --color-accent, --text-primary,
+   etc. in themes.css. The var() fallbacks above handle most cases, but some
+   themes need explicit surface and shadow overrides for proper contrast.
+   -------------------------------------------------------------------------- */
+
+/* --- Cyberpunk Tokyo --- */
+:root[data-theme="cyberpunk-tokyo"] {
+  --nv-bg: #090212;
+  --nv-bg-elevated: rgba(13, 2, 21, 0.92);
+  --nv-surface-soft: rgba(22, 5, 38, 0.72);
+  --nv-surface-strong: rgba(30, 6, 50, 0.96);
+  --nv-border-strong: rgba(255, 0, 127, 0.22);
+  --nv-text-soft: #d4a4cf;
+  --nv-neutral: #b894b4;
+}
+
+/* --- Matrix Terminal --- */
+:root[data-theme="matrix-terminal"] {
+  --nv-bg: #000a00;
+  --nv-bg-elevated: rgba(0, 10, 0, 0.94);
+  --nv-surface-soft: rgba(0, 18, 2, 0.72);
+  --nv-surface-strong: rgba(0, 25, 3, 0.96);
+  --nv-border-strong: rgba(0, 255, 65, 0.22);
+  --nv-text-soft: #30b040;
+  --nv-neutral: #008f11;
+}
+
+/* --- Mecha HUD --- */
+:root[data-theme="mecha-hud"] {
+  --nv-bg: #050101;
+  --nv-bg-elevated: rgba(15, 5, 5, 0.92);
+  --nv-surface-soft: rgba(25, 8, 3, 0.72);
+  --nv-surface-strong: rgba(35, 10, 5, 0.96);
+  --nv-border-strong: rgba(255, 69, 0, 0.28);
+  --nv-text-soft: #ffd0aa;
+  --nv-neutral: #ffb380;
+}
+
+/* --- Anime Neon --- */
+:root[data-theme="anime-neon"] {
+  --nv-bg: #11081a;
+  --nv-bg-elevated: rgba(20, 10, 35, 0.92);
+  --nv-surface-soft: rgba(30, 14, 50, 0.72);
+  --nv-surface-strong: rgba(38, 16, 62, 0.96);
+  --nv-border-strong: rgba(180, 80, 255, 0.22);
+  --nv-text-soft: #d8c8ea;
+  --nv-neutral: #c8b8d8;
+}
+
+/* --- Space Station --- */
+:root[data-theme="space-station"] {
+  --nv-bg: #020202;
+  --nv-bg-elevated: rgba(5, 5, 5, 0.92);
+  --nv-surface-soft: rgba(8, 8, 12, 0.72);
+  --nv-surface-strong: rgba(12, 12, 18, 0.96);
+  --nv-border-strong: rgba(255, 255, 255, 0.14);
+  --nv-text-soft: #c0c8d0;
+  --nv-neutral: #a9a9a9;
+}
+
+/* --- Tactical Military --- */
+:root[data-theme="tactical-military"] {
+  --nv-bg: #050605;
+  --nv-bg-elevated: rgba(20, 25, 20, 0.94);
+  --nv-surface-soft: rgba(28, 35, 28, 0.72);
+  --nv-surface-strong: rgba(36, 44, 36, 0.96);
+  --nv-border-strong: rgba(170, 221, 0, 0.2);
+  --nv-text-soft: #b8c8a8;
+  --nv-neutral: #8b998b;
+}
+
+/* --- Retro Hacker --- */
+:root[data-theme="retro-hacker"] {
+  --nv-bg: #0a0500;
+  --nv-bg-elevated: rgba(10, 5, 0, 0.96);
+  --nv-surface-soft: rgba(18, 10, 2, 0.72);
+  --nv-surface-strong: rgba(24, 14, 3, 0.96);
+  --nv-border-strong: rgba(255, 176, 0, 0.24);
+  --nv-text-soft: #e6a840;
+  --nv-neutral: #cc8800;
+}
+
+/* --- AI Core Interface (light theme) --- */
+:root[data-theme="ai-core"] {
+  --nv-bg: #f0f4f8;
+  --nv-bg-elevated: rgba(252, 254, 255, 0.92);
+  --nv-surface-soft: rgba(246, 249, 252, 0.96);
+  --nv-surface-strong: rgba(255, 255, 255, 0.98);
+  --nv-border-strong: rgba(0, 102, 255, 0.16);
+  --nv-text-soft: #3b5168;
+  --nv-neutral: #606f7b;
+  --nv-shadow-lg: 0 30px 72px rgba(15, 23, 42, 0.12);
+  --nv-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.1);
+  --nv-shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* --- Legacy Light Theme --- */
 [data-theme="light"] {
   --nv-bg: #edf3f8;
   --nv-bg-elevated: rgba(252, 254, 255, 0.88);

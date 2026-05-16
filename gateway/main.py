@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import queue
+import requests
 import socket
 import sys
 import threading
@@ -20,7 +21,12 @@ from shared.collector import (
     FlowSummary,
     PacketObservation,
     build_capture_backend,
+    build_scope_policy,
+    DiskBackedBuffer,
+    compute_machine_fingerprint,
 )
+from shared.collector.health import CollectorHealthReport
+from shared.collector.preflight import run_preflight, print_preflight_report
 
 from .security.transport import GatewayApiClient
 
@@ -59,8 +65,15 @@ class GatewayCollector:
         ).strip() or "auto"
         self.bootstrap_api_key = str(os.getenv("GATEWAY_API_KEY", "") or "")
         self.is_running = True
-        self.upload_q: queue.Queue[dict] = queue.Queue(maxsize=10000)
+        
+        buffer_max_mb = int(os.getenv("NETVISOR_BUFFER_MAX_MB", "50"))
+        self.buffer = DiskBackedBuffer(
+            db_path=GATEWAY_RUNTIME_DIR / "buffer.db",
+            max_memory=10000,
+            max_disk_mb=buffer_max_mb
+        )
         self.domain_cache = DomainHintCache()
+        self.scope_policy = build_scope_policy(role="gateway", config={}, local_ip=None)
         self.client = GatewayApiClient(
             state_path=GATEWAY_SECURITY_STATE,
             bootstrap_api_key=self.bootstrap_api_key,
@@ -68,6 +81,13 @@ class GatewayCollector:
         )
         self._last_enrollment_warning = None
         self._background_workers_enabled = bool(start_background_workers)
+
+        # Upload health tracking (Phase 1A)
+        self._upload_failures: int = 0
+        self._upload_successes: int = 0
+        self._consecutive_upload_failures: int = 0
+        self._last_upload_time: str | None = None
+        self._last_upload_error: str | None = None
 
         self.flow_manager = FlowManager(
             agent_id=self.gateway_id,
@@ -125,7 +145,9 @@ class GatewayCollector:
             "organization_id": self.organization_id,
             "hostname": socket.gethostname(),
             "capture_mode": self.capture_mode,
+            "capture_health": self.capture_backend.status_snapshot(),
             "time": datetime.now(timezone.utc).isoformat(),
+            "machine_fingerprint": compute_machine_fingerprint(self.organization_id),
         }
 
     def _apply_server_metadata(self, payload: dict | None) -> None:
@@ -136,6 +158,32 @@ class GatewayCollector:
             self.organization_id = organization_id
             self.flow_manager.organization_id = organization_id
 
+    def _upload_health_snapshot(self) -> dict:
+        """Get upload health metrics for heartbeat reporting."""
+        return {
+            "upload_failures": self._upload_failures,
+            "upload_successes": self._upload_successes,
+            "last_upload_time": self._last_upload_time,
+            "last_upload_error": self._last_upload_error,
+            "queue_depth": self.buffer.pending_count,
+            "consecutive_failures": self._consecutive_upload_failures,
+            "buffer_disk_usage_bytes": self.buffer.disk_usage_bytes,
+        }
+
+    def _build_collector_health(self) -> dict:
+        """Build a consolidated collector health report."""
+        report = CollectorHealthReport.build(
+            capture_snapshot=self.capture_backend.status_snapshot(),
+            upload_snapshot=self._upload_health_snapshot(),
+            flow_snapshot=self._flow_health_snapshot(),
+        )
+        return report.to_dict()
+
+    def _flow_health_snapshot(self) -> dict:
+        snapshot = self.flow_manager.status_snapshot()
+        snapshot["network_scope"] = self.scope_policy.status_snapshot()
+        return snapshot
+
     def status_snapshot(self) -> dict:
         return {
             "gateway_id": self.gateway_id,
@@ -143,11 +191,13 @@ class GatewayCollector:
             "capture_mode": self.capture_mode,
             "heartbeat_interval_seconds": self.heartbeat_interval,
             "running": self.is_running,
-            "upload_queue_depth": self.upload_q.qsize(),
+            "upload_queue_depth": self.buffer.pending_count,
             "flow_manager": self.flow_manager.status_snapshot(),
+            "network_scope": self.scope_policy.status_snapshot(),
             "capture": self.capture_backend.status_snapshot(),
             "transport": self.client.status_snapshot(),
             "background_workers_enabled": self._background_workers_enabled,
+            "collector_health": self._build_collector_health(),
         }
 
     def _register_gateway(self, *, initial: bool = False, force_reenroll: bool = False) -> bool:
@@ -200,9 +250,31 @@ class GatewayCollector:
         while self.is_running:
             try:
                 if self._ensure_enrolled():
-                    response = self.client.request("POST", self.heartbeat_url, json_body=self._registration_payload(), timeout=5)
+                    payload = self._registration_payload()
+                    payload["collector_health"] = self._build_collector_health()
+                    response = self.client.request("POST", self.heartbeat_url, json_body=payload, timeout=5)
                     response.raise_for_status()
                     self._apply_server_metadata(response.json())
+            except requests.HTTPError as exc:
+                if exc.response.status_code in {403, 409}:
+                    try:
+                        err_payload = exc.response.json()
+                        status_reason = str(err_payload.get("enrollment_status") or err_payload.get("reason") or "").strip().lower()
+                    except ValueError:
+                        status_reason = ""
+                    
+                    if status_reason in {"credential_expired", "credential_rotated", "unknown_credential"}:
+                        print(f"{Fore.YELLOW}[!] Gateway heartbeat returned 403 expired credential. Triggering re-enrollment.")
+                        self._ensure_enrolled(force_reenroll=True)
+                    elif status_reason in {"revoked", "wrong_organization"}:
+                        print(f"{Fore.RED}[!] Gateway access revoked or invalid ({status_reason}). Stopping.")
+                        self.stop()
+                    elif status_reason == "pending_review":
+                        print(f"{Fore.YELLOW}[!] Gateway pending review. Pausing heartbeat.")
+                    else:
+                        print(f"{Fore.YELLOW}[!] Gateway heartbeat 403: {status_reason}")
+                else:
+                    print(f"{Fore.YELLOW}[!] Gateway heartbeat failed HTTP error: {exc}")
             except Exception as exc:
                 print(f"{Fore.YELLOW}[!] Gateway heartbeat failed: {exc}")
             time.sleep(self.heartbeat_interval)
@@ -212,10 +284,8 @@ class GatewayCollector:
         payload["organization_id"] = self.organization_id
         payload["source_type"] = "gateway"
         payload["metadata_only"] = True
-        try:
-            self.upload_q.put(payload, block=False)
-        except queue.Full:
-            print(f"{Fore.YELLOW}[!] Gateway upload queue full, dropping flow")
+        if not self.buffer.enqueue(payload):
+            print(f"{Fore.YELLOW}[!] Gateway upload buffer failed to enqueue, dropping flow")
 
     def _upload_worker(self) -> None:
         batch: list[dict] = []
@@ -223,15 +293,20 @@ class GatewayCollector:
 
         while self.is_running:
             try:
-                try:
-                    record = self.upload_q.get(timeout=1.0)
-                    batch.append(record)
-                    self.upload_q.task_done()
-                except queue.Empty:
-                    pass
+                if self._consecutive_upload_failures > 0:
+                    backoff = min(2 ** self._consecutive_upload_failures, 30)
+                    time.sleep(backoff)
+
+                records = self.buffer.drain(batch_size=20 - len(batch))
+                if records:
+                    batch.extend(records)
+                else:
+                    time.sleep(1.0)
 
                 if len(batch) >= 20 or (time.time() - last_send > 5 and batch):
                     if not self._ensure_enrolled():
+                        self.buffer.requeue_front(batch)
+                        batch = []
                         time.sleep(2)
                         continue
 
@@ -239,9 +314,39 @@ class GatewayCollector:
                         response = self.client.request("POST", self.gateway_flows_url, json_body=batch, timeout=10)
                         response.raise_for_status()
                         self._apply_server_metadata(response.json())
+                        self._upload_successes += 1
+                        self._consecutive_upload_failures = 0
+                        self._last_upload_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                        self._last_upload_error = None
                         batch = []
                         last_send = time.time()
+                    except requests.HTTPError as exc:
+                        if exc.response.status_code in {403, 409}:
+                            try:
+                                err_payload = exc.response.json()
+                                status_reason = str(err_payload.get("enrollment_status") or err_payload.get("reason") or "").strip().lower()
+                            except ValueError:
+                                status_reason = ""
+                            if status_reason in {"credential_expired", "credential_rotated", "unknown_credential"}:
+                                print(f"{Fore.YELLOW}[!] Gateway flow upload returned 403 expired credential. Triggering re-enrollment.")
+                                self._ensure_enrolled(force_reenroll=True)
+                            elif status_reason in {"revoked", "wrong_organization"}:
+                                print(f"{Fore.RED}[!] Gateway access revoked or invalid ({status_reason}). Stopping.")
+                                self.stop()
+                        
+                        self._upload_failures += 1
+                        self._consecutive_upload_failures += 1
+                        self._last_upload_error = str(exc)
+                        self.buffer.requeue_front(batch)
+                        batch = []
+                        print(f"{Fore.YELLOW}[!] Gateway flow upload failed HTTP error: {exc}")
+                        time.sleep(2)
                     except Exception as exc:
+                        self._upload_failures += 1
+                        self._consecutive_upload_failures += 1
+                        self._last_upload_error = str(exc)
+                        self.buffer.requeue_front(batch)
+                        batch = []
                         print(f"{Fore.YELLOW}[!] Gateway flow upload failed: {exc}")
                         time.sleep(2)
             except Exception:
@@ -255,6 +360,17 @@ class GatewayCollector:
             domain_cache=self.domain_cache,
         )
         if observation is None:
+            return False
+
+        decision = self.scope_policy.should_accept_observation(observation)
+        if not decision.accepted:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "Gateway dropped packet (%s): %s -> %s",
+                    decision.reason,
+                    observation.src_ip,
+                    observation.dst_ip,
+                )
             return False
 
         if observation.domain and logger.isEnabledFor(logging.DEBUG):
@@ -283,14 +399,36 @@ class GatewayCollector:
         if hasattr(self, "capture_backend"):
             self.capture_backend.stop()
         self.flow_manager.stop()
+        if hasattr(self, "buffer"):
+            self.buffer.close()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="NetVisor Gateway")
     parser.add_argument("--health-check", action="store_true", help="Print a startup health snapshot and exit.")
     parser.add_argument("--reset-enrollment", action="store_true", help="Clear stored signed credentials and exit.")
+    parser.add_argument("--preflight", action="store_true", help="Run preflight checks, print report, and exit.")
     parser.add_argument("--timeout", type=int, default=None, help="Packet sniff timeout in seconds.")
     args = parser.parse_args()
+
+    # --preflight: run checks, print colored table, exit
+    if args.preflight:
+        server_url = os.getenv("NETVISOR_SERVER_URL", "http://127.0.0.1:8000").rstrip("/")
+        if "/api/v1" in server_url:
+            server_url = server_url.split("/api/v1")[0]
+        interface = (
+            os.getenv("NETVISOR_GATEWAY_CAPTURE_INTERFACE")
+            or os.getenv("NETVISOR_CAPTURE_INTERFACE")
+            or ""
+        ).strip() or None
+        results = run_preflight(
+            role="gateway",
+            config={"server_url": server_url},
+            server_url=server_url,
+            interface=interface,
+        )
+        all_ok = print_preflight_report(results, role="gateway")
+        sys.exit(0 if all_ok else 1)
 
     if args.health_check or args.reset_enrollment:
         collector = GatewayCollector(start_background_workers=False)
@@ -301,6 +439,27 @@ def main() -> None:
         snapshot["enrollment_required"] = not snapshot["ready"]
         print(json.dumps(snapshot, indent=2, sort_keys=True))
         sys.exit(0)
+
+    # Normal startup: run preflight as non-blocking diagnostics
+    try:
+        server_url = os.getenv("NETVISOR_SERVER_URL", "http://127.0.0.1:8000").rstrip("/")
+        if "/api/v1" in server_url:
+            server_url = server_url.split("/api/v1")[0]
+        interface = (
+            os.getenv("NETVISOR_GATEWAY_CAPTURE_INTERFACE")
+            or os.getenv("NETVISOR_CAPTURE_INTERFACE")
+            or ""
+        ).strip() or None
+        results = run_preflight(
+            role="gateway",
+            config={"server_url": server_url},
+            server_url=server_url,
+            interface=interface,
+        )
+        print_preflight_report(results, role="gateway")
+    except Exception as exc:
+        import logging
+        logging.getLogger("netvisor.gateway").warning("Preflight checks failed to run: %s", exc)
 
     collector = GatewayCollector()
     try:

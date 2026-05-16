@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import health, auth, devices, flows, alerts, agents, gateway, dashboard, system, apps, analytics, agent_monitoring, web_inspection, dpi, logs
+from . import health, auth, devices, flows, alerts, agents, gateway, dashboard, system, apps, analytics, agent_monitoring, web_inspection, dpi, logs, enrollment_orchestration, observability, dpi_governance, config, telemetry
 
 api_router = APIRouter()
 
@@ -19,3 +19,8 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["analytic
 api_router.include_router(web_inspection.router, prefix="/web", tags=["web-inspection"])
 api_router.include_router(dpi.router, prefix="/dpi", tags=["dpi"])
 api_router.include_router(logs.router, prefix="/logs", tags=["logs"])
+api_router.include_router(enrollment_orchestration.router, prefix="/enrollment", tags=["enrollment-orchestration"])
+api_router.include_router(observability.router, prefix="/observability", tags=["observability"])
+api_router.include_router(dpi_governance.router, prefix="/dpi-governance", tags=["dpi-governance"])
+api_router.include_router(config.router, tags=["config"])
+api_router.include_router(telemetry.router, tags=["telemetry"])

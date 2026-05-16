@@ -1,7 +1,8 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { agentService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useAuth } from '../hooks/useAuth';
 import PageHeader from '../components/V2/PageHeader';
 import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
@@ -12,13 +13,17 @@ import { getStatusTone, formatPercent } from '../utils/presentation';
 
 const AgentMonitoringPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [agents, setAgents] = useState([]);
   const [enrollmentRequests, setEnrollmentRequests] = useState([]);
+  const [enrollmentSummary, setEnrollmentSummary] = useState(null);
+  const [pendingRetries, setPendingRetries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState('');
+  const organizationId = user?.organization_id || user?.organizationId || 'default-org-id';
 
   const normalizedAgents = useMemo(() => {
     if (!Array.isArray(agents)) {
@@ -43,6 +48,23 @@ const AgentMonitoringPage = () => {
         enrollment_request_id: agent.enrollment_request_id || null,
         enrollment_source_ip: agent.enrollment_source_ip || '',
         enrollment_bootstrap_method: agent.enrollment_bootstrap_method || 'bootstrap',
+        capture_health_status: agent.capture_health_status || 'unknown',
+        capture_backend: agent.capture_backend || '-',
+        capture_interface: agent.capture_interface || '-',
+        capture_packet_drop_rate: Number(agent.capture_packet_drop_rate) || 0,
+        capture_packets_seen: Number(agent.capture_packets_seen) || 0,
+        capture_packets_dropped: Number(agent.capture_packets_dropped) || 0,
+        capture_lag_seconds: agent.capture_lag_seconds,
+        capture_last_error: agent.capture_last_error || '',
+        capture_error_category: agent.capture_error_category || '',
+        collector_overall_status: agent.collector_overall_status || 'unknown',
+        offline_reason: agent.offline_reason || '',
+        upload_failures: Number(agent.upload_failures) || 0,
+        upload_successes: Number(agent.upload_successes) || 0,
+        last_upload_time: agent.last_upload_time || '',
+        last_upload_error: agent.last_upload_error || '',
+        upload_queue_depth: Number(agent.upload_queue_depth) || 0,
+        upload_consecutive_failures: Number(agent.upload_consecutive_failures) || 0,
       }));
   }, [agents]);
 
@@ -89,9 +111,11 @@ const AgentMonitoringPage = () => {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const [agentsResult, requestsResult] = await Promise.allSettled([
+      const [agentsResult, requestsResult, summaryResult, retriesResult] = await Promise.allSettled([
         agentService.getAgents(),
         agentService.getEnrollmentRequests(),
+        agentService.getEnrollmentSummary(organizationId),
+        agentService.getPendingRetries(organizationId),
       ]);
 
       const nextAgents = agentsResult.status === 'fulfilled' && Array.isArray(agentsResult.value.data)
@@ -100,9 +124,15 @@ const AgentMonitoringPage = () => {
       const nextRequests = requestsResult.status === 'fulfilled' && Array.isArray(requestsResult.value.data)
         ? requestsResult.value.data
         : [];
+      const nextSummary = summaryResult.status === 'fulfilled' ? summaryResult.value.data : null;
+      const nextRetries = retriesResult.status === 'fulfilled' && Array.isArray(retriesResult.value.data)
+        ? retriesResult.value.data
+        : [];
 
       setAgents(nextAgents);
       setEnrollmentRequests(nextRequests);
+      setEnrollmentSummary(nextSummary);
+      setPendingRetries(nextRetries);
 
       const agentsFailed = agentsResult.status === 'rejected';
       const requestsFailed = requestsResult.status === 'rejected';
@@ -117,11 +147,13 @@ const AgentMonitoringPage = () => {
       console.error('Failed to fetch agents', err);
       setAgents([]);
       setEnrollmentRequests([]);
+      setEnrollmentSummary(null);
+      setPendingRetries([]);
       setError('Unable to load agent heartbeat data right now.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [organizationId]);
 
   useEffect(() => {
     fetchAgents();
@@ -217,6 +249,38 @@ const AgentMonitoringPage = () => {
     }
   }, [fetchAgents, promptForReason]);
 
+  const handleRetryEnrollment = useCallback(async (agentId) => {
+    const loadingKey = `retry:${agentId}`;
+    setActionLoading(loadingKey);
+    try {
+      await agentService.triggerEnrollmentRetry(agentId, organizationId);
+      await fetchAgents();
+    } catch (err) {
+      console.error('Failed to trigger enrollment retry', err);
+      setError('Unable to trigger enrollment retry.');
+    } finally {
+      setActionLoading('');
+    }
+  }, [fetchAgents, organizationId]);
+
+  const handleResetEnrollment = useCallback(async (agentId) => {
+    if (!confirm('Reset enrollment state? This will clear all retry history and start fresh.')) {
+      return;
+    }
+
+    const loadingKey = `reset:${agentId}`;
+    setActionLoading(loadingKey);
+    try {
+      await agentService.resetEnrollmentState(agentId, organizationId);
+      await fetchAgents();
+    } catch (err) {
+      console.error('Failed to reset enrollment state', err);
+      setError('Unable to reset enrollment state.');
+    } finally {
+      setActionLoading('');
+    }
+  }, [fetchAgents, organizationId]);
+
   const pendingColumns = [
     {
       key: 'agent',
@@ -284,6 +348,36 @@ const AgentMonitoringPage = () => {
           >
             Reject
           </button>
+          {row.status === 'failed' && (
+            <>
+              <button
+                type="button"
+                className="nv-button nv-button--secondary"
+                style={{ width: 'fit-content', padding: '0.45rem 0.8rem' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleRetryEnrollment(row.agent_id);
+                }}
+                disabled={actionLoading === `retry:${row.agent_id}`}
+              >
+                <i className="ri-refresh-line"></i>
+                Retry
+              </button>
+              <button
+                type="button"
+                className="nv-button nv-button--warning"
+                style={{ width: 'fit-content', padding: '0.45rem 0.8rem' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleResetEnrollment(row.agent_id);
+                }}
+                disabled={actionLoading === `reset:${row.agent_id}`}
+              >
+                <i className="ri-restart-line"></i>
+                Reset
+              </button>
+            </>
+          )}
         </div>
       ),
     },
@@ -360,7 +454,42 @@ const AgentMonitoringPage = () => {
     {
       key: 'status',
       label: 'Status',
-      render: (row) => <StatusBadge tone={getStatusTone(row.status)}>{row.status}</StatusBadge>,
+      render: (row) => {
+        const collectorTone = row.collector_overall_status === 'healthy' ? 'success'
+          : row.collector_overall_status === 'degraded' ? 'warning'
+          : row.collector_overall_status === 'unhealthy' || row.collector_overall_status === 'stopped' ? 'danger'
+          : 'neutral';
+
+        // Freshness: time since last upload
+        let freshnessLabel = '';
+        if (row.last_upload_time) {
+          const lastUpload = new Date(row.last_upload_time + 'Z');
+          const ageMs = Date.now() - lastUpload.getTime();
+          const ageSec = Math.floor(ageMs / 1000);
+          if (ageSec < 60) freshnessLabel = `${ageSec}s ago`;
+          else if (ageSec < 3600) freshnessLabel = `${Math.floor(ageSec / 60)}m ago`;
+          else freshnessLabel = `${Math.floor(ageSec / 3600)}h ago`;
+        }
+
+        return (
+          <div className="nv-stack" style={{ gap: '0.4rem' }}>
+            <StatusBadge tone={getStatusTone(row.status)}>{row.status}</StatusBadge>
+            <StatusBadge tone={collectorTone}>
+              Collector {row.collector_overall_status}
+            </StatusBadge>
+            {row.status === 'Offline' && row.offline_reason ? (
+              <div className="nv-table__meta" style={{ color: '#f87171', fontSize: '0.78rem' }}>
+                {row.offline_reason}
+              </div>
+            ) : null}
+            {freshnessLabel ? (
+              <div className="nv-table__meta" style={{ fontSize: '0.75rem' }}>
+                Last upload {freshnessLabel}
+              </div>
+            ) : null}
+          </div>
+        );
+      },
     },
     {
       key: 'enrollment_status',
@@ -392,9 +521,34 @@ const AgentMonitoringPage = () => {
     },
     {
       key: 'resources',
-      label: 'Resources',
+      label: 'Capture / Resources',
       render: (row) => (
         <div className="nv-stack" style={{ gap: '0.45rem' }}>
+          <div className="nv-table__meta mono">
+            {row.capture_backend} | {row.capture_interface}
+          </div>
+          <div className="nv-table__meta">
+            Seen {row.capture_packets_seen.toLocaleString()} | Dropped {row.capture_packets_dropped.toLocaleString()}
+          </div>
+          <div className="nv-table__meta">
+            Drop rate {formatPercent(row.capture_packet_drop_rate * 100)}
+            {row.capture_lag_seconds !== null && row.capture_lag_seconds !== undefined ? ` | lag ${Number(row.capture_lag_seconds).toFixed(1)}s` : ''}
+          </div>
+          {row.capture_last_error ? (
+            <div className="nv-table__meta" title={row.capture_last_error}>Last capture error recorded</div>
+          ) : null}
+          <div className="nv-table__meta" style={{ gap: '0.25rem' }}>
+            Uploads OK{row.upload_successes.toLocaleString()} FAIL{row.upload_failures.toLocaleString()}
+            {row.upload_queue_depth > 0 ? ` | Queue ${row.upload_queue_depth}` : ''}
+            {row.upload_consecutive_failures >= 3 ? (
+              <span style={{ color: '#f87171' }}> (failing)</span>
+            ) : null}
+          </div>
+          {row.last_upload_error ? (
+            <div className="nv-table__meta" title={row.last_upload_error} style={{ color: '#fca5a5' }}>
+              Upload error
+            </div>
+          ) : null}
           <div>
             <div className="nv-table__meta">CPU {formatPercent(row.cpu_usage)}</div>
             <div className="nv-progress">
@@ -475,7 +629,127 @@ const AgentMonitoringPage = () => {
         <MetricCard icon="ri-database-2-line" label="Avg RAM" value={stats.online > 0 ? formatPercent(stats.avgRam / stats.online) : '0%'} meta="Distributed memory footprint" accent="#2dd4bf" />
         <MetricCard icon="ri-shield-user-line" label="Pending Approvals" value={pendingRequests.length} meta="Waiting for Fleet review" accent="#f59e0b" />
         <MetricCard icon="ri-macbook-line" label="Fleet Devices" value={stats.devices} meta="Total endpoints discovered" accent="#fbbf24" />
+        <MetricCard icon="ri-time-line" label="Scheduled Retries" value={pendingRetries.length} meta="Agents waiting for retry" accent="#ff9500" />
       </div>
+
+      {enrollmentSummary && (
+        <SectionCard
+          title="Enrollment Overview"
+          caption="Real-time enrollment status distribution"
+          className="nv-section--balanced"
+        >
+          <div className="nv-stack" style={{ gap: '1rem' }}>
+            <div className="nv-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem' }}>
+              {Object.entries(enrollmentSummary.state_distribution || {}).map(([state, count]) => (
+                <div key={state} className="nv-metric-item">
+                  <div className="nv-metric-item__value">{count}</div>
+                  <div className="nv-metric-item__label">{state.replace('_', ' ').toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+            {enrollmentSummary.failed_enrollments && enrollmentSummary.failed_enrollments.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#dc2626' }}>Failed Enrollments</h4>
+                <div className="nv-stack" style={{ gap: '0.25rem' }}>
+                  {enrollmentSummary.failed_enrollments.slice(0, 3).map((agent) => (
+                    <div key={agent.tracking_id} className="nv-failed-item">
+                      <div className="nv-failed-item__header">
+                        <span className="mono">{agent.agent_id}</span>
+                        <StatusBadge tone="danger">{agent.current_state}</StatusBadge>
+                      </div>
+                      <div className="nv-failed-item__details">
+                        <div>{agent.hostname} | {agent.device_ip}</div>
+                        <div className="nv-failed-item__error">{agent.last_error_message}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </SectionCard>
+      )}
+
+      {pendingRetries.length > 0 && (
+        <SectionCard
+          title="Scheduled Retries"
+          caption="Agents waiting for automatic retry"
+          className="nv-section--balanced"
+        >
+          <div className="nv-stack" style={{ gap: '1rem' }}>
+            <div className="nv-table__meta" style={{ lineHeight: 1.6 }}>
+              Agents that failed enrollment will automatically retry based on exponential backoff.
+              You can also manually trigger retries or reset enrollment state.
+            </div>
+            <div className="nv-scroll-region nv-scroll-region--xl">
+              <table className="nv-table">
+                <thead>
+                  <tr>
+                    <th>Agent</th>
+                    <th>Endpoint</th>
+                    <th>Retry Count</th>
+                    <th>Next Retry</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingRetries.map((agent) => (
+                    <tr key={agent.tracking_id}>
+                      <td>
+                        <div className="nv-stack" style={{ gap: '0.35rem' }}>
+                          <div className="nv-table__primary mono">{agent.agent_id}</div>
+                          <div className="nv-table__meta">{agent.hostname}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="nv-table__meta mono">{agent.device_ip}</div>
+                      </td>
+                      <td>
+                        <div className="nv-table__meta">{agent.retry_count}</div>
+                      </td>
+                      <td>
+                        <div className="nv-table__meta mono">
+                          {agent.next_retry_at ? new Date(agent.next_retry_at).toLocaleString() : 'N/A'}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="nv-stack" style={{ gap: '0.45rem' }}>
+                          <button
+                            type="button"
+                            className="nv-button nv-button--secondary"
+                            style={{ width: 'fit-content', padding: '0.45rem 0.8rem' }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleRetryEnrollment(agent.agent_id);
+                            }}
+                            disabled={actionLoading === `retry:${agent.agent_id}`}
+                          >
+                            <i className="ri-refresh-line"></i>
+                            Retry Now
+                          </button>
+                          <button
+                            type="button"
+                            className="nv-button nv-button--warning"
+                            style={{ width: 'fit-content', padding: '0.45rem 0.8rem' }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleResetEnrollment(agent.agent_id);
+                            }}
+                            disabled={actionLoading === `reset:${agent.agent_id}`}
+                          >
+                            <i className="ri-restart-line"></i>
+                            Reset
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Pending Enrollment"
@@ -570,4 +844,3 @@ const AgentMonitoringPage = () => {
 };
 
 export default AgentMonitoringPage;
-

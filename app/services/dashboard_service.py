@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from .application_service import application_service
@@ -109,13 +110,14 @@ class DashboardService:
     def get_traffic_history(self, db_conn, hours: int = 24, organization_id: Optional[str] = None) -> list[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
+            normalized_hours = max(1, min(int(hours or 24), 168))
             params = []
             org_filter = ""
             if organization_id:
                 org_filter = "organization_id = %s AND "
                 params.append(organization_id)
             
-            params.append(hours)
+            params.append(normalized_hours)
             
             cursor.execute(
                 f"""
@@ -130,7 +132,28 @@ class DashboardService:
                 """,
                 tuple(params)
             )
-            return cursor.fetchall()
+            rows = cursor.fetchall()
+            by_hour = {
+                str(row.get("hour")): {
+                    "hour": str(row.get("hour")),
+                    "flow_count": int(row.get("flow_count") or 0),
+                    "byte_count": float(row.get("byte_count") or 0),
+                }
+                for row in rows
+            }
+
+            current_hour = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+            start_hour = current_hour - timedelta(hours=normalized_hours - 1)
+            series = []
+            for offset in range(normalized_hours):
+                bucket = start_hour + timedelta(hours=offset)
+                key = bucket.strftime("%Y-%m-%d %H:00:00")
+                series.append(by_hour.get(key, {
+                    "hour": key,
+                    "flow_count": 0,
+                    "byte_count": 0.0,
+                }))
+            return series
         finally:
             cursor.close()
 

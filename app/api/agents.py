@@ -15,6 +15,7 @@ from ..services.managed_device_service import managed_device_service
 from ..services.metrics_service import metrics_service
 from ..services.web_inspection_service import web_inspection_service
 from .dpi import dpi_event_emitter
+from shared.collector import compute_machine_fingerprint
 from shared.security import REENROLL_REQUEST_HEADER
 
 import asyncio
@@ -189,6 +190,7 @@ async def register_agent(
             agent_version=reg.get("version"),
             bootstrap_method=bootstrap_method,
             source_ip=source_ip,
+            machine_fingerprint=reg.get("machine_fingerprint"),
         )
         enrollment_request = enrollment_result["request"] or {}
         enrollment_status = str(enrollment_request.get("status") or "pending_review")
@@ -254,6 +256,8 @@ async def register_agent(
             os_family=reg.get("os"),
             version=reg.get("version"),
             inspection_state=reg.get("web_inspection"),
+            capture_state=reg.get("capture_health"),
+            collector_health_state=reg.get("collector_health"),
             cpu_usage=float(reg.get("cpu_usage") or 0.0),
             ram_usage=float(reg.get("ram_usage") or 0.0),
         )
@@ -335,6 +339,8 @@ async def agent_heartbeat(
             os_family=hb.get("os"),
             version=hb.get("version"),
             inspection_state=hb.get("web_inspection"),
+            capture_state=hb.get("capture_health"),
+            collector_health_state=hb.get("collector_health"),
             cpu_usage=float(hb.get("cpu_usage") or 0.0),
             ram_usage=float(hb.get("ram_usage") or 0.0),
         )

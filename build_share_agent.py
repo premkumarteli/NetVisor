@@ -10,9 +10,10 @@ BUILDER = PROJECT_ROOT / "scripts" / "build_deploy_bundles.py"
 
 
 def main() -> int:
+    args = sys.argv[1:]
     print("[*] build_share_agent.py is deprecated; building the canonical agent bundle under build/deploy/")
     result = subprocess.run(
-        [sys.executable, str(BUILDER), "--role", "agent"],
+        [sys.executable, str(BUILDER), "--role", "agent", *args],
         cwd=PROJECT_ROOT,
         check=False,
     )

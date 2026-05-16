@@ -7,7 +7,7 @@ const MetricCard = ({
   className = '',
 }) => (
   <article
-    className={`nv-metric ${className}`.trim()}
+    className={`nv-metric animate-reveal ${className}`.trim()}
     style={accent ? { '--nv-accent': accent } : undefined}
   >
     <div className="nv-metric__header">

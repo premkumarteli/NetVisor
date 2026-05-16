@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+﻿from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,7 @@ from .services.application_service import application_service
 from .middleware.request_context import RequestContextMiddleware
 from .services.system_service import system_service
 from .services.web_inspection_service import web_inspection_service
+from .services.observability_service import observability_service
 from .middleware.csrf_protection import CSRFProtectionMiddleware
 from .middleware.transport_security import TransportSecurityMiddleware
 
@@ -73,7 +74,7 @@ def _validate_runtime_config() -> None:
         logger.warning(
             "NETVISOR_ALLOW_LAN_HTTP=true weakens transport security and should only be used in an isolated lab environment."
         )
-    
+
 # Socket.IO setup
 p_sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=_allowed_origins(), cors_credentials=True)
 configure_socket_server(p_sio)
@@ -85,9 +86,11 @@ import asyncio
 async def lifespan(app: FastAPI):
     # Startup logic
     logger.info("NetVisor Backend Starting Up...")
+    observability_service.record_startup_event("main", "startup_start")
     _validate_runtime_config()
     ensure_bootstrap_state()
     startup_conn = None
+    runtime_result = {"skipped": True, "reason": "NETVISOR_RESET_RUNTIME_ON_STARTUP disabled"}
     try:
         startup_conn = get_db_connection()
         agent_enrollment_service.ensure_schema(startup_conn)
@@ -96,25 +99,31 @@ async def lifespan(app: FastAPI):
         if settings.RESET_RUNTIME_ON_STARTUP:
             runtime_result = system_service.prepare_clean_runtime(startup_conn, reason="startup")
             logger.info("Startup runtime reset complete: %s", runtime_result["message"])
+        observability_service.record_startup_event("main", "runtime_reset", {"result": runtime_result})
     finally:
         if startup_conn:
             startup_conn.close()
 
     flow_writer_task = None
     if str(settings.FLOW_WORKER_MODE or "embedded").lower() == "embedded":
+        observability_service.record_startup_event("flow_worker", "startup_start")
         flow_writer_task = asyncio.create_task(flow_service.flow_writer_worker())
         logger.info("Embedded flow worker started.")
+        observability_service.record_startup_event("flow_worker", "startup_complete")
     else:
         logger.info("Embedded flow worker disabled (mode=%s).", settings.FLOW_WORKER_MODE)
+        observability_service.record_startup_event("flow_worker", "disabled", {"mode": settings.FLOW_WORKER_MODE})
     yield
     # Shutdown logic
     logger.info("NetVisor Backend Shutting Down...")
+    observability_service.record_startup_event("main", "shutdown_start")
     shutdown_conn = None
     if settings.BACKUP_AND_RESET_ON_SHUTDOWN:
         try:
             shutdown_conn = get_db_connection()
             runtime_result = system_service.backup_and_reset_runtime_data(shutdown_conn, reason="shutdown")
             logger.info("Shutdown runtime backup/reset complete: %s", runtime_result["message"])
+            observability_service.record_startup_event("main", "runtime_backup", {"result": runtime_result})
         finally:
             if shutdown_conn:
                 shutdown_conn.close()
@@ -122,6 +131,9 @@ async def lifespan(app: FastAPI):
     for task in (flow_writer_task,):
         if task:
             task.cancel()
+            observability_service.record_startup_event("flow_worker", "task_cancelled")
+
+    observability_service.record_startup_event("main", "shutdown_complete")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

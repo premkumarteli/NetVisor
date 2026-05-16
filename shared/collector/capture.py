@@ -43,6 +43,14 @@ class CaptureBackend(ABC):
         self._seen_packets = 0
         self._emitted_packets = 0
         self._dropped_packets = 0
+        self._error_category: Optional[str] = None  # permission, interface_missing, decode, timeout, unknown
+
+    # Known error categories for structured Fleet reporting
+    ERROR_CATEGORY_PERMISSION = "permission"
+    ERROR_CATEGORY_INTERFACE_MISSING = "interface_missing"
+    ERROR_CATEGORY_DECODE = "decode"
+    ERROR_CATEGORY_TIMEOUT = "timeout"
+    ERROR_CATEGORY_UNKNOWN = "unknown"
 
     @property
     @abstractmethod
@@ -91,6 +99,13 @@ class CaptureBackend(ABC):
             if message:
                 self._last_error = message
 
+    def _record_categorized_error(self, category: str, message: str) -> None:
+        """Record an error with a structured category for Fleet reporting."""
+        with self._metrics_lock:
+            self._error_category = category
+            self._last_error = message
+            self._dropped_packets += 1
+
     def _normalize_capture_result(self, result) -> bool:
         if result is None:
             return True
@@ -114,6 +129,16 @@ class CaptureBackend(ABC):
         lag_seconds = None
         if last_packet_at is not None:
             lag_seconds = max(time.time() - last_packet_at, 0.0)
+        total_decisions = emitted_packets + dropped_packets
+        drop_rate = (dropped_packets / total_decisions) if total_decisions else 0.0
+        health_status = "stopped"
+        if running:
+            if last_error or drop_rate >= 0.1:
+                health_status = "degraded"
+            elif last_packet_at is None:
+                health_status = "warming"
+            else:
+                health_status = "healthy"
 
         return {
             "requested_backend": self.requested_backend,
@@ -128,7 +153,10 @@ class CaptureBackend(ABC):
             "packets_seen": seen_packets,
             "packets_emitted": emitted_packets,
             "packets_dropped": dropped_packets,
+            "packet_drop_rate": round(drop_rate, 4),
+            "health_status": health_status,
             "last_error": last_error,
+            "error_category": self._error_category,
         }
 
     @abstractmethod
@@ -198,7 +226,7 @@ class LinuxRawSocketCaptureBackend(CaptureBackend):
 
         if not self.interface:
             message = "Linux raw socket capture requires an interface name."
-            self._record_drop(message)
+            self._record_categorized_error(self.ERROR_CATEGORY_INTERFACE_MISSING, message)
             self._mark_stopped()
             return False, message
 
@@ -219,14 +247,15 @@ class LinuxRawSocketCaptureBackend(CaptureBackend):
                 except socket.timeout:
                     continue
                 except OSError as exc:
-                    self._record_drop(str(exc))
+                    category = self.ERROR_CATEGORY_PERMISSION if exc.errno == 1 else self.ERROR_CATEGORY_UNKNOWN
+                    self._record_categorized_error(category, str(exc))
                     return False, str(exc)
 
                 self._record_seen()
                 try:
                     packet = Ether(raw_frame)
                 except Exception as exc:
-                    self._record_drop(f"decode_error: {exc}")
+                    self._record_categorized_error(self.ERROR_CATEGORY_DECODE, f"decode_error: {exc}")
                     continue
 
                 try:

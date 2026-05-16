@@ -235,6 +235,9 @@ class ApplicationService:
         if not base_domain:
             return None
 
+        if normalized == "cloudapp.azure.com" or normalized.endswith(".cloudapp.azure.com"):
+            return "Azure CloudApp"
+
         for application, allowed_domains in APP_RULES.items():
             if base_domain in allowed_domains:
                 return application

@@ -36,20 +36,47 @@ const ActivityPage = () => {
     }));
   }, []);
 
+  const buildTrafficHistoryChart = useCallback((historyRows = []) => {
+    const normalized = historyRows
+      .map((entry) => {
+        const rawLabel = String(entry.hour || '').split(' ').pop() || '';
+        const byteCount = Number(entry.byte_count);
+        return {
+          label: rawLabel.slice(0, 5),
+          value: Number.isFinite(byteCount) ? byteCount / (1024 * 1024) : 0,
+        };
+      })
+      .filter((entry) => entry.label)
+      .slice(-20);
+
+    if (normalized.length === 0) {
+      return;
+    }
+
+    setTrafficData({
+      labels: normalized.map((entry) => entry.label),
+      values: normalized.map((entry) => entry.value),
+    });
+  }, []);
+
   const fetchTraffic = useCallback(async ({ background = false } = {}) => {
     if (!background) {
       setLoading(true);
     }
 
     try {
-      const [statsRes, activityRes] = await Promise.all([
+      const [statsRes, activityRes, historyRes] = await Promise.all([
         systemService.getStats(),
         systemService.getActivity(100),
+        systemService.getTrafficHistory(24),
       ]);
       const nextStats = statsRes.data || {};
       setStats(nextStats);
       setLogs(activityRes.data || []);
-      updateTrafficChart(nextStats.bandwidth_value ?? nextStats.bandwidth);
+      buildTrafficHistoryChart(historyRes.data || []);
+      if (background) {
+        updateTrafficChart(nextStats.bandwidth_value ?? nextStats.bandwidth);
+      }
     } catch (err) {
       console.error('Failed to fetch traffic activity', err);
     } finally {
@@ -57,7 +84,7 @@ const ActivityPage = () => {
         setLoading(false);
       }
     }
-  }, [updateTrafficChart]);
+  }, [buildTrafficHistoryChart, updateTrafficChart]);
 
   useEffect(() => {
     fetchTraffic();

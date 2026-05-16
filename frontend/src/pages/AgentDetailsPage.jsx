@@ -47,6 +47,26 @@ const AgentDetailsPage = () => {
       inspection_dropped_event_count: Number(agent.inspection_dropped_event_count) || 0,
       inspection_uploaded_event_count: Number(agent.inspection_uploaded_event_count) || 0,
       inspection_upload_failures: Number(agent.inspection_upload_failures) || 0,
+      // Phase 1A collector health
+      capture_health_status: agent.capture_health_status || 'unknown',
+      capture_backend: agent.capture_backend || '-',
+      capture_interface: agent.capture_interface || '-',
+      capture_packets_seen: Number(agent.capture_packets_seen) || 0,
+      capture_packets_dropped: Number(agent.capture_packets_dropped) || 0,
+      capture_packet_drop_rate: Number(agent.capture_packet_drop_rate) || 0,
+      capture_lag_seconds: agent.capture_lag_seconds,
+      capture_last_error: agent.capture_last_error || '',
+      capture_error_category: agent.capture_error_category || '',
+      collector_overall_status: agent.collector_overall_status || 'unknown',
+      offline_reason: agent.offline_reason || '',
+      upload_failures: Number(agent.upload_failures) || 0,
+      upload_successes: Number(agent.upload_successes) || 0,
+      last_upload_time: agent.last_upload_time || '',
+      last_upload_error: agent.last_upload_error || '',
+      upload_queue_depth: Number(agent.upload_queue_depth) || 0,
+      upload_consecutive_failures: Number(agent.upload_consecutive_failures) || 0,
+      cpu_usage: Number(agent.cpu_usage) || 0,
+      ram_usage: Number(agent.ram_usage) || 0,
       devices: Array.isArray(agent.devices)
         ? agent.devices
           .filter((device) => device && typeof device === 'object')
@@ -96,7 +116,7 @@ const AgentDetailsPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.hostname || 'Unknown'}</div>
-          <div className="nv-table__meta">{row.device_type || 'Unknown'} · {row.os_family || 'Unknown'}</div>
+          <div className="nv-table__meta">{row.device_type || 'Unknown'} | {row.os_family || 'Unknown'}</div>
         </>
       ),
     },
@@ -118,7 +138,7 @@ const AgentDetailsPage = () => {
       <PageHeader
         eyebrow="Inventory"
         title={normalizedAgent?.hostname || decodedAgentId}
-        description="Inspect one agent’s heartbeat profile, proxy and certificate state, and the device coverage mapped to that agent."
+        description="Inspect one agent's heartbeat profile, proxy and certificate state, and the device coverage mapped to that agent."
         actions={(
           <>
             <Link className="nv-button nv-button--secondary" to="/agents">
@@ -160,7 +180,7 @@ const AgentDetailsPage = () => {
                 <div className="nv-summary-tile">
                   <span>Agent ID</span>
                   <strong className="mono">{normalizedAgent.agent_id}</strong>
-                  <p>{normalizedAgent.os_family} · {normalizedAgent.version}</p>
+                  <p>{normalizedAgent.os_family} | {normalizedAgent.version}</p>
                 </div>
                 <div className="nv-summary-tile">
                   <span>IP Address</span>
@@ -180,7 +200,7 @@ const AgentDetailsPage = () => {
                 <div className="nv-summary-tile">
                   <span>Queue</span>
                   <strong>{normalizedAgent.inspection_queue_size}</strong>
-                  <p>{normalizedAgent.inspection_uploaded_event_count} uploaded · {normalizedAgent.inspection_upload_failures} failed</p>
+                  <p>{normalizedAgent.inspection_uploaded_event_count} uploaded | {normalizedAgent.inspection_upload_failures} failed</p>
                 </div>
               </div>
               {normalizedAgent.inspection_last_error ? (
@@ -188,6 +208,71 @@ const AgentDetailsPage = () => {
               ) : null}
             </SectionCard>
           </div>
+
+          <SectionCard title="Collector Health" caption="Capture + Upload Pipeline">
+            <div className="nv-summary-strip" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+              <div className="nv-summary-tile">
+                <span>Overall Status</span>
+                <strong>
+                  <StatusBadge tone={
+                    normalizedAgent.collector_overall_status === 'healthy' ? 'success'
+                    : normalizedAgent.collector_overall_status === 'degraded' ? 'warning'
+                    : normalizedAgent.collector_overall_status === 'unhealthy' || normalizedAgent.collector_overall_status === 'stopped' ? 'danger'
+                    : 'neutral'
+                  }>
+                    {normalizedAgent.collector_overall_status}
+                  </StatusBadge>
+                </strong>
+                {normalizedAgent.offline_reason ? (
+                  <p style={{ color: '#f87171' }}>{normalizedAgent.offline_reason}</p>
+                ) : null}
+              </div>
+              <div className="nv-summary-tile">
+                <span>Capture Backend</span>
+                <strong className="mono">{normalizedAgent.capture_backend}</strong>
+                <p>Interface: {normalizedAgent.capture_interface}</p>
+              </div>
+              <div className="nv-summary-tile">
+                <span>Capture Health</span>
+                <strong>
+                  <StatusBadge tone={normalizedAgent.capture_health_status === 'healthy' ? 'success' : normalizedAgent.capture_health_status === 'degraded' ? 'warning' : 'neutral'}>
+                    {normalizedAgent.capture_health_status}
+                  </StatusBadge>
+                </strong>
+                <p>{normalizedAgent.capture_packets_seen.toLocaleString()} seen | {normalizedAgent.capture_packets_dropped.toLocaleString()} dropped</p>
+              </div>
+            </div>
+            <div className="nv-summary-strip" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginTop: '1rem' }}>
+              <div className="nv-summary-tile">
+                <span>Upload Success / Fail</span>
+                <strong>OK {normalizedAgent.upload_successes.toLocaleString()} / FAIL {normalizedAgent.upload_failures.toLocaleString()}</strong>
+                {normalizedAgent.upload_consecutive_failures >= 3 ? (
+                  <p style={{ color: '#f87171' }}>{normalizedAgent.upload_consecutive_failures} consecutive failures</p>
+                ) : (
+                  <p>Queue depth: {normalizedAgent.upload_queue_depth}</p>
+                )}
+              </div>
+              <div className="nv-summary-tile">
+                <span>Last Upload</span>
+                <strong className="mono">{normalizedAgent.last_upload_time || 'N/A'}</strong>
+                {normalizedAgent.last_upload_error ? (
+                  <p style={{ color: '#fca5a5' }} title={normalizedAgent.last_upload_error}>Error recorded</p>
+                ) : <p>No errors</p>}
+              </div>
+              <div className="nv-summary-tile">
+                <span>Resources</span>
+                <strong>CPU {normalizedAgent.cpu_usage.toFixed(1)}% | RAM {normalizedAgent.ram_usage.toFixed(1)}%</strong>
+                {normalizedAgent.capture_lag_seconds !== null && normalizedAgent.capture_lag_seconds !== undefined ? (
+                  <p>Capture lag: {Number(normalizedAgent.capture_lag_seconds).toFixed(1)}s</p>
+                ) : <p>No capture lag data</p>}
+              </div>
+            </div>
+            {normalizedAgent.capture_last_error ? (
+              <div style={{ marginTop: '0.75rem' }}>
+                <StatusBadge tone="warning">Last capture error: {normalizedAgent.capture_last_error}</StatusBadge>
+              </div>
+            ) : null}
+          </SectionCard>
 
           <SectionCard title="Agent Device Coverage" caption="Mapped Assets">
             <DataTable

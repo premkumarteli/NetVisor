@@ -7,11 +7,6 @@ from html import unescape
 from urllib.parse import parse_qs, urlsplit
 from datetime import datetime, timezone
 
-# Add project root to sys.path to allow importing from 'app'
-root = Path(__file__).resolve().parent.parent.parent
-if str(root) not in sys.path:
-    sys.path.insert(0, str(root))
-
 from shared.collector import DpiObservation
 from shared.intel import get_base_domain, get_service_info, is_sensitive_destination, normalize_host
 

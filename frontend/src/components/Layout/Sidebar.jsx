@@ -30,6 +30,7 @@ const adminGroups = [
     links: [
       { to: '/logs', icon: 'ri-file-list-3-line', label: 'Logs', hint: 'Flow records and exports' },
       { to: '/vpn', icon: 'ri-shield-keyhole-line', label: 'VPN', hint: 'Tunnel risk detections' },
+      { to: '/settings/appearance', icon: 'ri-palette-line', label: 'Appearance', hint: 'Workspace modes and fidelity' },
       { to: '/settings', icon: 'ri-settings-4-line', label: 'Settings', hint: 'System controls' },
     ],
   },

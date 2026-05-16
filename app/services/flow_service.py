@@ -25,6 +25,7 @@ from .metrics_service import metrics_service
 from .risk_engine import risk_engine
 from .session_service import session_service
 from .system_service import system_service
+from .flow_repository_service import FlowRepositoryService
 
 logger = logging.getLogger("netvisor.services.flow")
 
@@ -38,10 +39,11 @@ class FlowQueueBackpressureError(RuntimeError):
 
 
 class FlowService:
-    def __init__(self) -> None:
+    def __init__(self, flow_repository_service: FlowRepositoryService | None = None) -> None:
         self._schema_ready = False
         self._metrics_lock = threading.Lock()
         self._worker_id = f"flow-worker-{uuid.uuid4().hex[:12]}"
+        self._flow_repo = flow_repository_service
         self._metrics = {
             "queue_depth": 0,
             "pending_batches": 0,

@@ -69,6 +69,8 @@ class AgentService:
         os_family: Optional[str] = None,
         version: Optional[str] = None,
         inspection_state: Optional[dict] = None,
+        capture_state: Optional[dict] = None,
+        collector_health_state: Optional[dict] = None,
         cpu_usage: float = 0.0,
         ram_usage: float = 0.0,
     ) -> None:
@@ -90,7 +92,11 @@ class AgentService:
             inspection_ca_installed = bool(inspection_state.get("ca_installed"))
             inspection_browsers_json = json.dumps(inspection_state.get("browser_support") or [])
             inspection_last_error = inspection_state.get("last_error")
-            inspection_metrics_json = json.dumps(inspection_state.get("metrics") or {})
+            inspection_metrics = dict(inspection_state.get("metrics") or {})
+            inspection_metrics["capture_health"] = capture_state or {}
+            if collector_health_state:
+                inspection_metrics["collector_health"] = collector_health_state
+            inspection_metrics_json = json.dumps(inspection_metrics)
 
             # Check current CA installation status for audit logging
             previous_ca_installed = None
@@ -223,6 +229,31 @@ class AgentService:
             else "Offline"
         )
         inspection_metrics = self._json_object(row.get("inspection_metrics_json"))
+        collector_health = inspection_metrics.get("collector_health") or {}
+        upload_health = collector_health.get("upload_health") or {}
+        capture_health_from_collector = collector_health.get("capture_health") or {}
+
+        # Compute offline_reason from evidence
+        offline_reason = None
+        if status == "Offline":
+            error_category = capture_health_from_collector.get("error_category")
+            capture_status = capture_health_from_collector.get("health_status")
+            enrollment_status_val = row.get("enrollment_status") or "approved"
+
+            if enrollment_status_val == "pending_review":
+                offline_reason = "Enrollment pending approval"
+            elif enrollment_status_val == "revoked":
+                offline_reason = "Enrollment revoked"
+            elif error_category == "permission":
+                offline_reason = "Capture permission denied"
+            elif error_category == "interface_missing":
+                offline_reason = "Capture interface not found"
+            elif capture_status == "stopped":
+                offline_reason = "Capture stopped"
+            elif heartbeat_age_seconds is not None and heartbeat_age_seconds > 120:
+                offline_reason = "No heartbeat (agent may be down)"
+            elif heartbeat_age_seconds is not None:
+                offline_reason = "Heartbeat stale"
 
         return {
             "agent_id": row.get("agent_id") or row.get("id") or "",
@@ -264,6 +295,24 @@ class AgentService:
             "inspection_last_event_at": inspection_metrics.get("last_event_at"),
             "inspection_last_upload_at": inspection_metrics.get("last_upload_at"),
             "inspection_drop_reasons": inspection_metrics.get("drop_reasons") or {},
+            "capture_health_status": capture_health_from_collector.get("health_status") or (inspection_metrics.get("capture_health") or {}).get("health_status") or "unknown",
+            "capture_backend": capture_health_from_collector.get("active_backend") or (inspection_metrics.get("capture_health") or {}).get("active_backend"),
+            "capture_interface": capture_health_from_collector.get("capture_interface") or (inspection_metrics.get("capture_health") or {}).get("capture_interface"),
+            "capture_packet_drop_rate": float(capture_health_from_collector.get("packet_drop_rate") or (inspection_metrics.get("capture_health") or {}).get("packet_drop_rate") or 0.0),
+            "capture_packets_seen": int(capture_health_from_collector.get("packets_seen") or (inspection_metrics.get("capture_health") or {}).get("packets_seen") or 0),
+            "capture_packets_dropped": int(capture_health_from_collector.get("packets_dropped") or (inspection_metrics.get("capture_health") or {}).get("packets_dropped") or 0),
+            "capture_lag_seconds": capture_health_from_collector.get("capture_lag_seconds") or (inspection_metrics.get("capture_health") or {}).get("capture_lag_seconds"),
+            "capture_last_error": capture_health_from_collector.get("last_error") or (inspection_metrics.get("capture_health") or {}).get("last_error"),
+            "capture_error_category": capture_health_from_collector.get("error_category") or (inspection_metrics.get("capture_health") or {}).get("error_category"),
+            # Phase 1A: collector health fields
+            "collector_overall_status": collector_health.get("overall_status") or "unknown",
+            "offline_reason": offline_reason,
+            "upload_failures": int(upload_health.get("upload_failures") or 0),
+            "upload_successes": int(upload_health.get("upload_successes") or 0),
+            "last_upload_time": upload_health.get("last_upload_time"),
+            "last_upload_error": upload_health.get("last_upload_error"),
+            "upload_queue_depth": int(upload_health.get("queue_depth") or 0),
+            "upload_consecutive_failures": int(upload_health.get("consecutive_failures") or 0),
             "enrollment_request_id": row.get("enrollment_request_id"),
             "enrollment_status": row.get("enrollment_status") or "approved",
             "enrollment_attempt_count": int(row.get("enrollment_attempt_count") or 0),

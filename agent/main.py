@@ -1,34 +1,32 @@
 import argparse
-import sys
-import os
-import threading
-import time
-import requests
-import queue
-import socket
 import json
-import uuid
-import psutil
-import platform
-import ipaddress
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
-from colorama import Fore, Style
 import logging
+import os
+import socket
+import sys
+import threading
+import uuid
+from pathlib import Path
+from colorama import Fore, Style
 
-# Add parent directory to sys.path to allow importing modules from root
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from agent.capture import CaptureManager
 from agent.device_detector import DeviceDetector
+from agent.discovery import DeviceInventory, DiscoveryManager
+from agent.enrollment import EnrollmentManager
+from agent.heartbeat import HeartbeatManager
 from agent.security import AgentApiClient
+from agent.upload import UploadManager
+from agent.config_manager import ConfigManager
+from agent.telemetry import TelemetryManager
 from shared.collector import (
     DomainHintCache,
     FlowManager,
     FlowSummary,
     PacketObservation,
-    build_capture_backend,
+    build_scope_policy,
 )
+from shared.collector.preflight import run_preflight, print_preflight_report
+
 try:
     from agent.dpi import WebInspectionController
 except ImportError as e:
@@ -43,64 +41,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "agent.json"
 AGENT_RUNTIME_DIR = PROJECT_ROOT / "runtime" / "agent"
 
-# =========================================================
-# THREAD SAFE DEVICE INVENTORY (PERSISTENT)
-# =========================================================
-
-class DeviceInventory:
-    def __init__(self, storage_file=None):
-        self.lock = threading.Lock()
-        AGENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-        self.storage_file = Path(storage_file) if storage_file else AGENT_RUNTIME_DIR / "device_inventory.json"
-        self.devices = {}
-        self.load_inventory()
-        threading.Thread(target=self._auto_save_worker, daemon=True).start()
-
-    def load_inventory(self):
-        if self.storage_file.exists():
-            try:
-                with self.storage_file.open("r", encoding="utf-8") as f:
-                    self.devices = json.load(f)
-                    print(f"{Fore.GREEN}[+] Loaded {len(self.devices)} devices from inventory.")
-            except Exception:
-                pass
-
-    def _auto_save_worker(self):
-        while True:
-            time.sleep(30)
-            self.save_inventory()
-
-    def save_inventory(self):
-        try:
-            with self.lock:
-                self.storage_file.parent.mkdir(parents=True, exist_ok=True)
-                with self.storage_file.open("w", encoding="utf-8") as f:
-                    json.dump(self.devices, f)
-        except Exception:
-            pass
-
-    def update(self, ip, **kwargs):
-        with self.lock:
-            if ip not in self.devices:
-                self.devices[ip] = {
-                    "mac": "-",
-                    "hostname": "Unknown",
-                    "vendor": "Unknown",
-                    "os": "Unknown",
-                    "type": "Unknown",
-                    "confidence": "low",
-                    "last_seen": time.time()
-                }
-
-            for k, v in kwargs.items():
-                if v and v not in ["Unknown", "-"]:
-                    self.devices[ip][k] = v
-
-            self.devices[ip]["last_seen"] = time.time()
-
-    def get(self, ip):
-        return self.devices.get(ip)
-
 
 # =========================================================
 # MAIN AGENT
@@ -113,19 +53,11 @@ class NetworkAgent:
         self.hostname = socket.gethostname()
         self.agent_version = "v3.0-hybrid"
         self._background_workers_enabled = bool(start_background_workers)
+        self._workers_started = False
+        self.is_running = True
 
-        url_config = self.config.get("server_url", "http://127.0.0.1:8000")
-        base = url_config.rstrip("/")
-        if "/api/v1/collect" in base:
-            base = base.split("/api/v1/collect")[0]
-
-        self.flow_url = base + "/api/v1/collect/flow/batch"
-        self.heartbeat_url = base + "/api/v1/collect/heartbeat"
-        self.devices_url = base + "/api/v1/collect/devices/batch"
-        self.policy_url = base + "/api/v1/policy"
-        self.web_policy_url = base + "/api/v1/collect/web-policy"
-        self.web_events_url = base + "/api/v1/collect/web-events/batch"
-
+        # Configuration
+        self._setup_urls()
         self.agent_id = self._init_agent_id()
         self.organization_id = self._resolve_initial_organization_id()
         self.api_key = os.getenv("AGENT_API_KEY") or self.config.get("api_key", "soc-agent-key-2026")
@@ -142,43 +74,60 @@ class NetworkAgent:
             or os.getenv("NETVISOR_CAPTURE_BACKEND")
             or "auto"
         ).strip() or "auto"
+        self.verbose = str(os.getenv("NETVISOR_PACKET_TRACE", "false")).strip().lower() in {"1", "true", "yes", "on"}
+
+        # Network detection
+        self.local_ip = self._detect_local_ip()
+        self.local_mac = self._detect_local_mac()
+        self.scope_policy = build_scope_policy(
+            role="agent",
+            config=self.config,
+            local_ip=self.local_ip,
+        )
+
+        # Initialize components
+        self._init_components()
+
+        if self._background_workers_enabled:
+            registration = self.enrollment_manager.register_agent(force_reenroll=not self.api_client.has_credentials())
+            if registration and registration.get("organization_id"):
+                self._set_organization_id(registration["organization_id"])
+            if not self.enrollment_manager.enrollment_pending:
+                self._start_operational_workers()
+        else:
+            logger.info("Agent background workers disabled for probe mode.")
+
+    def _setup_urls(self):
+        """Setup API URLs from configuration."""
+        url_config = self.config.get("server_url", "http://127.0.0.1:8000")
+        base = url_config.rstrip("/")
+        if "/api/v1/collect" in base:
+            base = base.split("/api/v1/collect")[0]
+
+        self.flow_url = base + "/api/v1/collect/flow/batch"
+        self.heartbeat_url = base + "/api/v1/collect/heartbeat"
+        self.devices_url = base + "/api/v1/collect/devices/batch"
+        self.policy_url = base + "/api/v1/policy"
+        self.web_policy_url = base + "/api/v1/collect/web-policy"
+        self.web_events_url = base + "/api/v1/collect/web-events/batch"
+        self.config_url = base + "/api/v1/collect/config"
+        self.telemetry_url = base + "/api/v1/collect/telemetry/batch"
+
+    def _init_components(self):
+        """Initialize all agent components."""
+        # API client
         self.api_client = AgentApiClient(
             state_path=AGENT_RUNTIME_DIR / "security" / "agent_transport_state.dpapi",
             bootstrap_api_key=self.api_key,
             initial_pins=self._load_initial_backend_pins(),
         )
-        self.local_ip = self._detect_local_ip()
-        self.local_mac = self._detect_local_mac()
 
-        self.is_running = True
-        self.verbose = str(os.getenv("NETVISOR_PACKET_TRACE", "false")).strip().lower() in {"1", "true", "yes", "on"}
-        self._workers_started = False
-        self._enrollment_pending = False
-        self._enrollment_status = "unknown"
-        self._enrollment_message = None
-        self._enrollment_retry_seconds = max(int(os.getenv("NETVISOR_AGENT_ENROLLMENT_RETRY_SECONDS", "15")), 1)
-        
-        self.device_inventory = DeviceInventory()
-        self.device_detector = DeviceDetector(local_ip=self.local_ip)
-        self.local_network = self.device_detector.infer_local_network(self.local_ip)
-        if self.local_network:
-            self.device_detector.set_network(self.local_network)
-            logger.info("Discovery network set to %s", self.local_network)
-        else:
-            logger.warning("Unable to infer local network for ARP discovery; falling back to passive ARP cache only.")
+        # Core components
         self.domain_cache = DomainHintCache()
-        self.probing_ips = set()
-        
-        # OUI Vendor Cache
-        self.vendor_cache = {
-            "00:50:56": "VMware", "00:0C:29": "VMware", "00:05:69": "VMware", 
-            "00:1C:14": "VMware", "08:00:27": "Oracle VirtualBox", 
-            "00:15:5D": "Microsoft Hyper-V", "DC:A6": "Raspberry Pi",
-            "B8:27:EB": "Raspberry Pi", "D8:3A:DD": "Ubiquiti", 
-            "F0:9F:C2": "Ubiquiti", "00:11:32": "Synology"
-        }
+        self.device_inventory = DeviceInventory(storage_file=AGENT_RUNTIME_DIR / "device_inventory.json", runtime_dir=AGENT_RUNTIME_DIR)
+        self.device_detector = DeviceDetector(local_ip=self.local_ip)
 
-        # --- FLOW MANAGER (PHASE 1) ---
+        # Flow manager
         self.flow_manager = FlowManager(
             agent_id=self.agent_id,
             organization_id=self.organization_id,
@@ -190,22 +139,100 @@ class NetworkAgent:
             max_flows=int(os.getenv("NETVISOR_FLOW_MAX_ACTIVE_FLOWS", "50000")),
             start_worker=self._background_workers_enabled,
         )
-        self.capture_backend = build_capture_backend(
-            role="agent",
-            interface=self.capture_interface,
-            requested_backend=self.capture_backend_name,
+
+        # Managers
+        self.enrollment_manager = EnrollmentManager(
+            agent_id=self.agent_id,
+            hostname=self.hostname,
+            local_ip=self.local_ip,
+            local_mac=self.local_mac,
+            organization_id=self.organization_id,
+            api_client=self.api_client,
+            heartbeat_url=self.heartbeat_url,
+            agent_version=self.agent_version,
+            retry_seconds=max(int(os.getenv("NETVISOR_AGENT_ENROLLMENT_RETRY_SECONDS", "15")), 1)
+        )
+        
+        self.telemetry_manager = TelemetryManager(
+            api_client=self.api_client,
+            telemetry_url=self.telemetry_url
+        )
+        
+        self.config_manager = ConfigManager(
+            api_client=self.api_client,
+            config_url=self.config_url,
+            on_config_changed=self._on_remote_config_changed
         )
 
-        # Queues and Thread Pools
-        self.upload_q = queue.Queue(maxsize=10000)
-        self.discovery_pool = ThreadPoolExecutor(max_workers=5)
+        buffer_max_mb = int(os.getenv("NETVISOR_BUFFER_MAX_MB", "50"))
+        self.upload_manager = UploadManager(
+            api_client=self.api_client,
+            upload_url=self.flow_url,
+            buffer_db_path=AGENT_RUNTIME_DIR / "buffer.db",
+            buffer_max_mb=buffer_max_mb,
+            max_batch_size=20,
+            max_wait_seconds=5,
+            max_memory=10000
+        )
 
-        if self._background_workers_enabled:
-            self._register_agent(force_reenroll=not self.api_client.has_credentials())
-            if not self._enrollment_pending:
-                self._start_operational_workers()
-        else:
-            logger.info("Agent background workers disabled for probe mode.")
+        self.heartbeat_manager = HeartbeatManager(
+            agent_id=self.agent_id,
+            hostname=self.hostname,
+            local_ip=self.local_ip,
+            local_mac=self.local_mac,
+            organization_id=self.organization_id,
+            api_client=self.api_client,
+            heartbeat_url=self.heartbeat_url,
+            enrollment_manager=self.enrollment_manager,
+            device_inventory_size_func=lambda: len(self.device_inventory.devices),
+            web_inspection_func=lambda: self.web_inspection.status_snapshot() if hasattr(self, 'web_inspection') else {},
+            capture_health_func=lambda: self.capture_manager.status_snapshot(),
+            upload_health_func=lambda: self.upload_manager.health_snapshot(),
+            flow_health_func=self._flow_health_snapshot,
+            organization_update_func=self._set_organization_id,
+            agent_version=self.agent_version,
+            heartbeat_interval=self.heartbeat_interval,
+        )
+
+        self.discovery_manager = DiscoveryManager(
+            agent_id=self.agent_id,
+            organization_id=self.organization_id,
+            local_ip=self.local_ip,
+            device_detector=self.device_detector,
+            device_inventory=self.device_inventory,
+            api_client=self.api_client,
+            devices_url=self.devices_url,
+            discovery_interval=60,
+            max_workers=5
+        )
+
+        self.capture_manager = CaptureManager(
+            agent_id=self.agent_id,
+            organization_id=self.organization_id,
+            flow_manager=self.flow_manager,
+            domain_cache=self.domain_cache,
+            interface=self.capture_interface,
+            backend_name=self.capture_backend_name,
+            verbose=self.verbose
+        )
+
+    def _on_remote_config_changed(self, new_config: dict):
+        if "telemetry_enabled" in new_config:
+            self.telemetry_manager.update_config(
+                enabled=new_config.get("telemetry_enabled", True),
+                interval=new_config.get("telemetry_interval_seconds", 60)
+            )
+
+    def _set_organization_id(self, organization_id: str) -> None:
+        if not organization_id or organization_id == self.organization_id:
+            return
+        self.organization_id = organization_id
+        self.enrollment_manager.update_organization_id(organization_id)
+        self.flow_manager.organization_id = organization_id
+        self.discovery_manager.organization_id = organization_id
+        self.capture_manager.organization_id = organization_id
+        if hasattr(self, "web_inspection"):
+            self.web_inspection.update_context(organization_id=organization_id)
 
     def _init_agent_id(self):
         AGENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
@@ -261,16 +288,24 @@ class NetworkAgent:
             "local_mac": self.local_mac,
             "background_workers_enabled": self._background_workers_enabled,
             "running": self.is_running,
-            "enrollment_status": self._enrollment_status,
-            "enrollment_pending": self._enrollment_pending,
-            "enrollment_message": self._enrollment_message,
-            "upload_queue_depth": self.upload_q.qsize(),
+            "enrollment_status": self.enrollment_manager.enrollment_status,
+            "enrollment_pending": self.enrollment_manager.enrollment_pending,
+            "enrollment_message": self.enrollment_manager.enrollment_message,
+            "upload_queue_depth": self.upload_manager.get_queue_depth(),
             "device_inventory_size": len(self.device_inventory.devices),
             "flow_manager": self.flow_manager.status_snapshot(),
-            "capture": self.capture_backend.status_snapshot(),
+            "network_scope": self.scope_policy.status_snapshot(),
+            "capture": self.capture_manager.status_snapshot(),
             "transport": self.api_client.status_snapshot(),
             "web_inspection": web_inspection,
+            "config": self.config_manager.get_config(),
+            "telemetry_enabled": self.telemetry_manager.enabled,
         }
+
+    def _flow_health_snapshot(self) -> dict:
+        snapshot = self.flow_manager.status_snapshot()
+        snapshot["network_scope"] = self.scope_policy.status_snapshot()
+        return snapshot
 
     def _start_operational_workers(self) -> None:
         if self._workers_started:
@@ -279,11 +314,15 @@ class NetworkAgent:
         # Start workers only after enrollment so the backend can return the
         # canonical organization id before discovery/heartbeat traffic begins.
         print("[*] Starting upload worker...")
-        threading.Thread(target=self._upload_worker, daemon=True).start()
+        threading.Thread(target=self.upload_manager.upload_worker, daemon=True).start()
         print("[*] Starting heartbeat worker...")
-        threading.Thread(target=self._heartbeat_worker, daemon=True).start()
+        threading.Thread(target=self.heartbeat_manager.heartbeat_worker, daemon=True).start()
         print("[*] Starting discovery engine...")
-        threading.Thread(target=self._discovery_engine, daemon=True).start()
+        threading.Thread(target=self.discovery_manager.discovery_engine, daemon=True).start()
+        print("[*] Starting config manager...")
+        self.config_manager.start()
+        print("[*] Starting telemetry manager...")
+        self.telemetry_manager.start()
 
         if WebInspectionController is not None:
             self.web_inspection = WebInspectionController(
@@ -307,103 +346,14 @@ class NetworkAgent:
 
         self._workers_started = True
 
-    def _register_agent(self, *, force_reenroll: bool = False):
-        retry_delay = 1
-        while self.is_running:
-            try:
-                payload = {
-                    "agent_id": self.agent_id,
-                    "hostname": self.hostname,
-                    "os": platform.system(),
-                    "version": self.agent_version,
-                    "device_ip": self.local_ip,
-                    "device_mac": self.local_mac,
-                    "time": datetime.now().isoformat(),
-                    "organization_id": self.organization_id,
-                    "reenroll": bool(force_reenroll),
-                }
-                r = self.api_client.bootstrap_post(
-                    self.heartbeat_url.replace("/heartbeat", "/register"),
-                    json_body=payload,
-                    timeout=5,
-                    reenroll=force_reenroll,
-                )
-                try:
-                    r.raise_for_status()
-                except requests.HTTPError:
-                    response_payload = {}
-                    try:
-                        response_payload = r.json()
-                    except ValueError:
-                        response_payload = {}
-                    enrollment_status = str(response_payload.get("enrollment_status") or "").strip().lower()
-                    if r.status_code in {403, 409} or enrollment_status in {"rejected", "revoked"}:
-                        self._enrollment_pending = False
-                        self._enrollment_status = enrollment_status or "rejected"
-                        self._enrollment_message = (
-                            response_payload.get("message")
-                            or response_payload.get("detail")
-                            or "Agent enrollment was rejected."
-                        )
-                        raise RuntimeError(self._enrollment_message)
-                    raise
-                res = r.json()
-                enrollment_status = str(res.get("enrollment_status") or "").strip().lower()
-                if res.get("organization_id"):
-                    self.organization_id = res["organization_id"]
-                    self.flow_manager.organization_id = self.organization_id
-                    if hasattr(self, "web_inspection"):
-                        self.web_inspection.update_context(organization_id=self.organization_id)
-                if enrollment_status == "pending_review":
-                    self._enrollment_pending = True
-                    self._enrollment_status = enrollment_status
-                    self._enrollment_message = res.get("message") or "Enrollment pending admin approval."
-                    self._enrollment_retry_seconds = max(int(res.get("enrollment_next_retry_seconds") or self._enrollment_retry_seconds), 1)
-                    print(f"{Fore.YELLOW}[!] {self._enrollment_message}{Style.RESET_ALL}")
-                    return res
-                has_credentials = self.api_client.has_credentials()
-                if not has_credentials:
-                    raise RuntimeError(
-                        "Agent registration did not yield signed credentials and no stored credential is available. "
-                        "This agent requires explicit credential rotation or re-enrollment before it can continue."
-                    )
-                self._enrollment_pending = False
-                self._enrollment_status = "approved"
-                self._enrollment_message = res.get("message")
-                if force_reenroll:
-                    print(f"{Fore.GREEN}[+] Agent re-enrolled: {self.agent_id}")
-                else:
-                    print(f"{Fore.GREEN}[+] Hybrid Flow Agent Registered: {self.agent_id}")
-                return
-            except RuntimeError:
-                raise
-            except Exception as e:
-                logger.warning(f"Registration failed: {e}. Retrying...")
-                time.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, 30)
-
-    def _await_enrollment(self):
-        while self.is_running and (self._enrollment_pending or not self.api_client.has_credentials()):
-            result = self._register_agent(force_reenroll=not self.api_client.has_credentials())
-            if not self.is_running:
-                return
-            if not result:
-                continue
-            enrollment_status = str(result.get("enrollment_status") or "").strip().lower()
-            if enrollment_status == "pending_review":
-                sleep_seconds = max(int(result.get("enrollment_next_retry_seconds") or self._enrollment_retry_seconds), 1)
-                time.sleep(min(sleep_seconds, 60))
-                continue
-            break
-
     def _on_flow_expired(self, summary: FlowSummary):
         """Callback from FlowManager when a flow is ready for upload."""
         try:
             # Add DNS metadata if applicable (simplified for now)
             # In a full impl, we'd correlate DNS queries with flows here
-            self.upload_q.put(summary.__dict__, block=False)
-        except queue.Full:
-            logger.warning("Upload queue full - dropping flow summary")
+            self.upload_manager.enqueue_record(summary.__dict__)
+        except Exception as e:
+            logger.warning(f"Failed to enqueue flow summary: {e}")
 
     def process_packet(self, packet) -> bool:
         """Phase 1: Direct packet to FlowManager for feature extraction."""
@@ -417,6 +367,12 @@ class NetworkAgent:
             if observation is None:
                 return False
 
+            decision = self.scope_policy.should_accept_observation(observation)
+            if not decision.accepted:
+                if self.verbose:
+                    print(f"{Fore.YELLOW}[DROP]{Style.RESET_ALL} {decision.reason}: {observation.src_ip} -> {observation.dst_ip}")
+                return False
+
             if observation.domain and self.verbose:
                 print(f"{Fore.CYAN}[APP]{Style.RESET_ALL} {observation.src_ip} -> {observation.domain}")
 
@@ -426,65 +382,6 @@ class NetworkAgent:
             print(f"ERROR in process_packet: {e}")
             logger.error(f"Packet error: {e}")
             return False
-
-    def _upload_worker(self):
-        batch = []
-        last_send = time.time()
-        while self.is_running:
-            try:
-                try:
-                    record = self.upload_q.get(timeout=1.0)
-                    batch.append(record)
-                    self.upload_q.task_done()
-                except queue.Empty:
-                    pass
-
-                if len(batch) >= 20 or (time.time() - last_send > 5 and batch):
-                    try:
-                        r = self.api_client.request("POST", self.flow_url, json_body=batch, timeout=10.0)
-                        r.raise_for_status()
-                        batch = []
-                        last_send = time.time()
-                    except Exception as e:
-                        logger.error(f"Flow upload failed: {e}")
-                        time.sleep(2) # Backoff
-            except Exception as e:
-                logger.error(f"Upload worker error: {e}")
-
-    def _heartbeat_worker(self):
-        while self.is_running:
-            try:
-                if not self.api_client.has_credentials():
-                    self._register_agent(force_reenroll=True)
-                cpu = psutil.cpu_percent()
-                ram = psutil.virtual_memory().percent
-                payload = {
-                    "agent_id": self.agent_id,
-                    "hostname": self.hostname,
-                    "os": platform.system(),
-                    "version": self.agent_version,
-                    "device_ip": self.local_ip,
-                    "device_mac": self.local_mac,
-                    "status": "online",
-                    "dropped_packets": 0,
-                    "cpu_usage": cpu,
-                    "ram_usage": ram,
-                    "inventory_size": len(self.device_inventory.devices),
-                    "time": datetime.now().isoformat(),
-                    "organization_id": self.organization_id,
-                    "web_inspection": self.web_inspection.status_snapshot() if hasattr(self, "web_inspection") else {},
-                }
-                response = self.api_client.request("POST", self.heartbeat_url, json_body=payload, timeout=5)
-                response.raise_for_status()
-                response_payload = response.json()
-                if response_payload.get("organization_id"):
-                    self.organization_id = response_payload["organization_id"]
-                    self.flow_manager.organization_id = self.organization_id
-                    if hasattr(self, "web_inspection"):
-                        self.web_inspection.update_context(organization_id=self.organization_id)
-            except Exception:
-                pass
-            time.sleep(self.heartbeat_interval)
 
     def _detect_local_ip(self):
         try:
@@ -504,138 +401,30 @@ class NetworkAgent:
         except Exception:
             return "-"
 
-    def _infer_os_family(self, hostname, device_type):
-        hostname_value = str(hostname or "").lower()
-        device_type_value = str(device_type or "").lower()
-
-        if "windows" in device_type_value or hostname_value.startswith(("desktop-", "laptop-", "win-", "msi-", "asus-")):
-            return "Windows"
-        if "linux" in device_type_value or "unix" in device_type_value:
-            return "Linux"
-        if "printer" in device_type_value:
-            return "Embedded"
-        if "synology" in hostname_value or "nas" in hostname_value:
-            return "Linux"
-        return "Unknown"
-
-    def _resolve_discovered_device(self, target):
-        ip, mac = target
-        existing = self.device_inventory.get(ip) or {}
-
-        hostname = existing.get("hostname")
-        if hostname in {None, "", "Unknown", "Unknown-Device"}:
-            hostname = self.device_detector.resolve_hostname(ip) or "Unknown"
-
-        device_type = existing.get("type")
-        if device_type in {None, "", "Unknown", "Unknown Type"}:
-            device_type = self.device_detector.detect_device_type(ip)
-        if device_type == "Unknown Type":
-            device_type = "Unknown"
-
-        vendor = self._resolve_vendor(mac)
-        os_family = existing.get("os")
-        if os_family in {None, "", "Unknown"}:
-            os_family = self._infer_os_family(hostname, device_type)
-
-        confidence = "high" if hostname != "Unknown" else "medium"
-        payload = {
-            "ip": ip,
-            "mac": mac,
-            "hostname": hostname,
-            "vendor": vendor,
-            "device_type": device_type,
-            "os_family": os_family,
-            "is_online": True,
-            "organization_id": self.organization_id,
-            "agent_id": self.agent_id,
-        }
-        return payload, confidence
-
-    def _sync_discovered_devices(self, devices):
-        if not devices:
-            return
-
-        try:
-            if self.verbose:
-                print(f"[*] Syncing {len(devices)} discovered devices...")
-            response = self.api_client.request("POST", self.devices_url, json_body=devices, timeout=10)
-            if response.status_code != 200:
-                print(f"{Fore.RED}[-] Device sync failed: {response.status_code} - {response.text}")
-            response.raise_for_status()
-        except Exception as exc:
-            logger.warning("Discovered device sync failed: %s", exc)
-
-    # --- DISCOVERY ENGINE ---
-    def _discovery_engine(self):
-        while self.is_running:
-            try:
-                arp_data = self.device_detector.collect_arp_candidates(self.local_network)
-                candidates = []
-                for ip, mac in arp_data.items():
-                    try:
-                        if not ipaddress.ip_address(ip).is_private:
-                            continue
-                    except Exception:
-                        continue
-                    if ip == self.local_ip:
-                        continue
-                    candidates.append((ip, mac))
-
-                import concurrent.futures
-
-
-                futures = {self.discovery_pool.submit(self._resolve_discovered_device, c): c for c in candidates}
-
-
-                for future in concurrent.futures.as_completed(futures):
-
-
-                    try:
-
-
-                        payload, confidence = future.result()
-
-
-                        self.device_inventory.update(
-                        payload["ip"],
-                        mac=payload["mac"],
-                        hostname=payload["hostname"],
-                        vendor=payload["vendor"],
-                        type=payload["device_type"],
-                        os=payload["os_family"],
-                        confidence=confidence,
-                    )
-
-
-                        self._sync_discovered_devices([payload])
-
-
-                    except Exception as exc:
-
-
-                        logger.warning("Failed to resolve device: %s", exc)
-            except Exception as exc:
-                logger.warning("Discovery cycle failed: %s", exc)
-            time.sleep(60)
-
-    def _resolve_vendor(self, mac):
-        if not mac or len(mac) < 8: return "Unknown"
-        prefix = mac.upper().replace("-", ":")[:8]
-        return self.vendor_cache.get(prefix, "Unknown")
-
     def stop(self):
         self.is_running = False
-        if hasattr(self, "capture_backend"):
-            self.capture_backend.stop()
+        if hasattr(self, "capture_manager"):
+            self.capture_manager.stop()
+        if hasattr(self, "discovery_manager"):
+            self.discovery_manager.stop()
+        if hasattr(self, "heartbeat_manager"):
+            self.heartbeat_manager.stop()
+        if hasattr(self, "upload_manager"):
+            self.upload_manager.stop()
+        if hasattr(self, "flow_manager"):
+            self.flow_manager.stop()
         if hasattr(self, "web_inspection"):
             self.web_inspection.stop()
-        self.flow_manager.stop()
-        self.device_inventory.save_inventory()
-        sys.exit(0)
+        if hasattr(self, "config_manager"):
+            self.config_manager.stop()
+        if hasattr(self, "telemetry_manager"):
+            self.telemetry_manager.stop()
 
     def start(self, timeout=None):
-        if self._enrollment_pending or not self.api_client.has_credentials():
-            self._await_enrollment()
+        if self.enrollment_manager.enrollment_pending or not self.api_client.has_credentials():
+            organization_id = self.enrollment_manager.await_enrollment()
+            if organization_id:
+                self._set_organization_id(organization_id)
             if not self.api_client.has_credentials():
                 logger.warning("Agent is still pending approval; capture backend will not start yet.")
                 return
@@ -644,16 +433,11 @@ class NetworkAgent:
             self._start_operational_workers()
 
         print(f"{Fore.BLUE}[*] Netvisor Hybrid Agent Starting...")
-        success, error = self.capture_backend.start(self.process_packet, timeout=timeout)
-        if not success and self.capture_backend.backend_name != "scapy":
+        success, error = self.capture_manager.start(self.process_packet, timeout=timeout)
+        if not success and self.capture_manager.capture_backend.backend_name != "scapy":
             logger.warning("Primary capture backend failed: %s. Falling back to Scapy.", error)
-            self.capture_backend.stop()
-            self.capture_backend = build_capture_backend(
-                role="agent",
-                interface=self.capture_interface,
-                requested_backend="scapy",
-            )
-            success, error = self.capture_backend.start(self.process_packet, timeout=timeout)
+            self.capture_manager.stop()
+            success, error = self.capture_manager.fallback_to_scapy()
         if not success and error:
             logger.error("Capture backend failed: %s", error)
 
@@ -661,6 +445,7 @@ def main(config_path=DEFAULT_CONFIG_PATH) -> None:
     parser = argparse.ArgumentParser(description="NetVisor Agent")
     parser.add_argument("--health-check", action="store_true", help="Print a startup health snapshot and exit.")
     parser.add_argument("--reset-enrollment", action="store_true", help="Clear stored signed credentials and exit.")
+    parser.add_argument("--preflight", action="store_true", help="Run preflight checks, print report, and exit.")
     parser.add_argument(
         "--timeout",
         type=int,
@@ -668,6 +453,25 @@ def main(config_path=DEFAULT_CONFIG_PATH) -> None:
         help="Packet sniff timeout in seconds. Omit to run continuously until interrupted.",
     )
     args = parser.parse_args()
+
+    # --preflight: run checks, print colored table, exit
+    if args.preflight:
+        config = NetworkAgent._load_config(None, config_path)
+        server_url = config.get("server_url", "http://127.0.0.1:8000")
+        interface = (
+            os.getenv("NETVISOR_AGENT_CAPTURE_INTERFACE")
+            or os.getenv("NETVISOR_CAPTURE_INTERFACE")
+            or ""
+        ).strip() or None
+        results = run_preflight(
+            role="agent",
+            config=config,
+            config_path=config_path,
+            server_url=server_url,
+            interface=interface,
+        )
+        all_ok = print_preflight_report(results, role="agent")
+        sys.exit(0 if all_ok else 1)
 
     if args.health_check or args.reset_enrollment:
         agent = NetworkAgent(config_path, start_background_workers=False)
@@ -678,6 +482,30 @@ def main(config_path=DEFAULT_CONFIG_PATH) -> None:
         snapshot["enrollment_required"] = not snapshot["ready"]
         print(json.dumps(snapshot, indent=2, sort_keys=True))
         sys.exit(0)
+
+    # Normal startup: run preflight as non-blocking diagnostics
+    try:
+        config = NetworkAgent._load_config(None, config_path)
+        server_url = config.get("server_url", "http://127.0.0.1:8000")
+        interface = (
+            os.getenv("NETVISOR_AGENT_CAPTURE_INTERFACE")
+            or os.getenv("NETVISOR_CAPTURE_INTERFACE")
+            or ""
+        ).strip() or None
+        results = run_preflight(
+            role="agent",
+            config=config,
+            config_path=config_path,
+            server_url=server_url,
+            interface=interface,
+        )
+        print_preflight_report(results, role="agent")
+        # Only block startup for critical capture/permission failures
+        critical_failures = [r for r in results if not r.passed and r.severity == "critical"]
+        if critical_failures:
+            logger.error("Critical preflight failures detected — agent may not capture traffic.")
+    except Exception as exc:
+        logger.warning("Preflight checks failed to run: %s", exc)
 
     agent = NetworkAgent(config_path)
     try:

@@ -1,12 +1,36 @@
-import { Pie } from 'react-chartjs-2';
+import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import EmptyState from '../V2/EmptyState';
+import { useImmersion } from '../../immersion/engine/useImmersion';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
+const withAlpha = (color, alpha) => {
+  if (!color) return `rgba(148, 163, 184, ${alpha})`;
+  if (color.startsWith('#')) {
+    const hex = color.slice(1);
+    const normalized = hex.length === 3 ? hex.split('').map((char) => char + char).join('') : hex;
+    const value = Number.parseInt(normalized, 16);
+    const red = (value >> 16) & 255;
+    const green = (value >> 8) & 255;
+    const blue = value & 255;
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+  const rgbMatch = color.match(/rgba?\(([^)]+)\)/);
+  if (rgbMatch) {
+    const channels = rgbMatch[1].split(',').slice(0, 3).join(',');
+    return `rgba(${channels}, ${alpha})`;
+  }
+  return color;
+};
+
 const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPosition = 'right' }) => {
-  const labels = Object.keys(distribution);
-  const values = Object.values(distribution);
+  const { palette } = useImmersion();
+  const entries = Object.entries(distribution || {})
+    .map(([label, value]) => [label, Number(value)])
+    .filter(([, value]) => Number.isFinite(value) && value > 0);
+  const labels = entries.map(([label]) => label);
+  const values = entries.map(([, value]) => value);
 
   if (labels.length === 0) {
     return (
@@ -22,24 +46,24 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
     );
   }
 
+  const severityColors = {
+    LOW: palette.success,
+    MEDIUM: palette.warning,
+    HIGH: '#ff8a00',
+    CRITICAL: palette.danger || '#ff1744',
+  };
+
+  const colors = labels.map((label) => severityColors[String(label).toUpperCase()] || palette.accent);
+
   const data = {
     labels: labels,
     datasets: [
       {
         data: values,
-        backgroundColor: [
-          'rgba(0, 255, 157, 0.2)',  // LOW
-          'rgba(255, 191, 0, 0.2)',  // MEDIUM
-          'rgba(255, 42, 42, 0.2)',  // HIGH
-          'rgba(255, 143, 143, 0.5)', // CRITICAL
-        ],
-        borderColor: [
-          '#00ff9d',
-          '#ffbf00',
-          '#ff2a2a',
-          '#ff8f8f',
-        ],
-        borderWidth: 1,
+        backgroundColor: colors.map((color) => withAlpha(color, 0.34)),
+        borderColor: colors,
+        borderWidth: 1.5,
+        hoverOffset: 6,
       },
     ],
   };
@@ -47,21 +71,25 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
   const options = {
     responsive: true,
     maintainAspectRatio: false,
+    cutout: '62%',
+    layout: {
+      padding: 8,
+    },
     plugins: {
       legend: {
         position: legendPosition,
         labels: {
-          color: '#94a3b8',
+          color: palette.textMuted,
           font: { size: 10, weight: 'bold' },
           usePointStyle: true,
-          padding: 15,
+          padding: 12,
         },
       },
       tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        titleColor: '#fff',
-        bodyColor: '#cbd5e1',
-        borderColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: palette.surface,
+        titleColor: palette.text,
+        bodyColor: palette.textMuted,
+        borderColor: palette.grid,
         borderWidth: 1,
         padding: 10,
         displayColors: true,
@@ -72,7 +100,7 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
   return (
     <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px` }}>
       <div className="nv-chart-shell__canvas">
-        <Pie data={data} options={options} />
+        <Doughnut data={data} options={options} />
       </div>
     </div>
   );

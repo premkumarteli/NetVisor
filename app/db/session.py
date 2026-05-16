@@ -97,6 +97,8 @@ REQUIRED_RUNTIME_TABLES = (
     "sessions",
     "system_settings",
     "audit_logs",
+    "agent_configs",
+    "telemetry_logs",
 )
 
 REQUIRED_RUNTIME_COLUMNS = {
@@ -182,6 +184,25 @@ REQUIRED_RUNTIME_COLUMNS = {
         "threat_msg",
         "confidence_score",
     },
+    "agent_configs": {
+        "agent_id",
+        "organization_id",
+        "capture_backend",
+        "promiscuous_mode",
+        "flow_flush_interval_seconds",
+        "max_buffer_mb",
+        "telemetry_enabled",
+        "telemetry_interval_seconds",
+    },
+    "telemetry_logs": {
+        "id",
+        "agent_id",
+        "organization_id",
+        "log_level",
+        "category",
+        "message",
+        "timestamp",
+    },
 }
 
 REQUIRED_RUNTIME_INDEXES = {
@@ -252,6 +273,10 @@ REQUIRED_RUNTIME_INDEXES = {
     "audit_logs": {
         "idx_audit_logs_org",
         "idx_audit_logs_created_at",
+    },
+    "telemetry_logs": {
+        "idx_telemetry_agent",
+        "idx_telemetry_org",
     },
 }
 

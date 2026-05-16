@@ -17,7 +17,7 @@ class AgentSummary(BaseModel):
     inspection_status: str = "disabled"
     inspection_proxy_running: bool = False
     inspection_ca_installed: bool = False
-    inspection_browsers: List[str] = []
+    inspection_browsers: List[str] = Field(default_factory=list)
     inspection_last_error: Optional[str] = None
     inspection_ca_status: Optional[str] = None
     inspection_thumbprint_sha256: Optional[str] = None
@@ -50,6 +50,16 @@ class AgentSummary(BaseModel):
     enrollment_reviewed_at: Optional[str] = None
     enrollment_review_reason: Optional[str] = None
     enrollment_credential_issued_at: Optional[str] = None
+    # Phase 1A: collector health fields
+    collector_overall_status: str = "unknown"
+    offline_reason: Optional[str] = None
+    upload_failures: int = 0
+    upload_successes: int = 0
+    last_upload_time: Optional[str] = None
+    last_upload_error: Optional[str] = None
+    upload_queue_depth: int = 0
+    upload_consecutive_failures: int = 0
+    capture_error_category: Optional[str] = None
 
 
 class AgentDevice(BaseModel):
@@ -67,7 +77,7 @@ class AgentDevice(BaseModel):
 
 class AgentDetails(AgentSummary):
     online_device_count: int = 0
-    devices: List[AgentDevice] = []
+    devices: List[AgentDevice] = Field(default_factory=list)
 
 
 class EnrollmentRequestSummary(BaseModel):

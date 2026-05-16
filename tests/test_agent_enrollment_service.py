@@ -56,6 +56,22 @@ class _EnrollmentCursor:
             self._result = dict(row) if row else None
             return
 
+        if normalized.startswith("SELECT agent_id, hostname, device_ip, last_seen FROM agent_enrollment_requests"):
+            fingerprint, agent_id = params[:2]
+            rows = [
+                row
+                for row in self.conn.rows_by_request.values()
+                if row.get("machine_fingerprint") == fingerprint
+                and row.get("agent_id") != agent_id
+                and row.get("status") == "approved"
+            ]
+            if "organization_id = %s OR organization_id IS NULL" in normalized:
+                org_id = params[2]
+                rows = [row for row in rows if row["organization_id"] in {org_id, None}]
+            rows.sort(key=lambda row: row["last_seen"], reverse=True)
+            self._result = dict(rows[0]) if rows else None
+            return
+
         if normalized.startswith("SELECT * FROM agent_enrollment_requests"):
             rows = list(self.conn.rows_by_request.values())
             index = 0
@@ -83,6 +99,7 @@ class _EnrollmentCursor:
                 bootstrap_method,
                 source_ip,
                 machine_fingerprint,
+                review_reason,
                 ttl_seconds,
             ) = params
             now = datetime.now(timezone.utc)
@@ -105,7 +122,7 @@ class _EnrollmentCursor:
                 "expires_at": now + timedelta(seconds=int(ttl_seconds)),
                 "reviewed_by": None,
                 "reviewed_at": None,
-                "review_reason": None,
+                "review_reason": review_reason,
                 "credential_issued_at": None,
             }
             self._store_row(row)
@@ -132,6 +149,8 @@ class _EnrollmentCursor:
                 ttl_seconds,
                 _approved_status_1,
                 _approved_status_2,
+                duplicate_reason_1,
+                duplicate_reason_2,
                 _approved_status_3,
                 _agent_id,
             ) = params
@@ -156,7 +175,7 @@ class _EnrollmentCursor:
             if new_status != "approved":
                 row["reviewed_by"] = None
                 row["reviewed_at"] = None
-                row["review_reason"] = None
+                row["review_reason"] = duplicate_reason_1 if duplicate_reason_1 is not None else None
             self.rowcount = 1
             return
 
@@ -253,7 +272,14 @@ class _EnrollmentConnection:
         return None
 
 
-def _create_request(service: AgentEnrollmentService, conn: _EnrollmentConnection, *, agent_id: str, hostname: str):
+def _create_request(
+    service: AgentEnrollmentService,
+    conn: _EnrollmentConnection,
+    *,
+    agent_id: str,
+    hostname: str,
+    machine_fingerprint: str | None = None,
+):
     return service.record_request(
         conn,
         agent_id=agent_id,
@@ -265,6 +291,7 @@ def _create_request(service: AgentEnrollmentService, conn: _EnrollmentConnection
         agent_version="v3.0-hybrid",
         bootstrap_method="bootstrap",
         source_ip="10.0.0.1",
+        machine_fingerprint=machine_fingerprint,
     )
 
 
@@ -309,6 +336,38 @@ def test_record_request_keeps_approved_status_after_review(monkeypatch):
     assert replay["status_changed"] is False
     assert replay["request"]["attempt_count"] == 2
     assert replay["request"]["reviewed_by"] == "admin"
+
+
+def test_duplicate_machine_fingerprint_requires_review(monkeypatch):
+    monkeypatch.setattr(settings, "AGENT_ENROLLMENT_PENDING_TTL_SECONDS", 120)
+    service = AgentEnrollmentService()
+    conn = _EnrollmentConnection()
+
+    original = _create_request(
+        service,
+        conn,
+        agent_id="AGENT-ORIGINAL",
+        hostname="desk-original",
+        machine_fingerprint="f" * 64,
+    )
+    service.approve_request(
+        conn,
+        request_id=original["request"]["request_id"],
+        reviewed_by="admin",
+        review_reason="Approved original machine",
+    )
+
+    duplicate = _create_request(
+        service,
+        conn,
+        agent_id="AGENT-DUPLICATE",
+        hostname="desk-duplicate",
+        machine_fingerprint="f" * 64,
+    )
+
+    assert duplicate["request"]["status"] == "pending_review"
+    assert duplicate["duplicate_agent_id"] == "AGENT-ORIGINAL"
+    assert "AGENT-ORIGINAL" in duplicate["request"]["review_reason"]
 
 
 def test_reject_and_revoke_requests_update_status(monkeypatch):
