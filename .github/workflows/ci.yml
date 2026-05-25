@@ -75,34 +75,6 @@ jobs:
           source .venv/bin/activate
           python scripts/init_ci_database.py
 
-      - name: Run backend unit tests
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-        run: >
-          source .venv/bin/activate &&
-          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra
-          --ignore=tests/test_runtime_probes.py
-
-      - name: Run runtime probes
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-        run: |
-          source .venv/bin/activate
-          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_runtime_probes.py
-
-      - name: Run security regression tests
-        env:
-          PYTHONDONTWRITEBYTECODE: "1"
-        run: >
-          source .venv/bin/activate &&
-          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra
-          tests/test_agent_request_auth.py
-          tests/test_agent_transport_policy.py
-          tests/test_agent_transport_pins.py
-          tests/test_db_session.py
-          tests/test_route_contract.py
-          tests/test_app_main_import.py
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
@@ -114,6 +86,33 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+      - name: Run backend unit tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          source .venv/bin/activate
+          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra --ignore=tests/test_runtime_probes.py
+
+      - name: Run runtime probes
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          source .venv/bin/activate
+          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_runtime_probes.py
+
+      - name: Run security regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          source .venv/bin/activate
+          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra \
+            tests/test_agent_request_auth.py \
+            tests/test_agent_transport_policy.py \
+            tests/test_agent_transport_pins.py \
+            tests/test_db_session.py \
+            tests/test_route_contract.py \
+            tests/test_app_main_import.py
 
       - name: Build deploy bundles
         run: |
