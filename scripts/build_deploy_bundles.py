@@ -103,10 +103,17 @@ def ensure_server_frontend_dist() -> None:
     frontend_root = PROJECT_ROOT / "frontend"
     print("[*] frontend/dist is missing; building the frontend bundle before packaging the server role...")
     try:
-        # Get npm from the system PATH
-        npm_cmd = shutil.which("npm")
+        # Try to use npm from node_modules first (installed by npm ci in CI), then fall back to system PATH
+        npm_cmd = None
+        node_modules_npm = PROJECT_ROOT / "frontend" / "node_modules" / ".bin" / "npm"
+        
+        if node_modules_npm.exists():
+            npm_cmd = str(node_modules_npm)
+        else:
+            npm_cmd = shutil.which("npm")
+        
         if npm_cmd is None:
-            raise FileNotFoundError("npm not found in PATH")
+            raise FileNotFoundError("npm not found in PATH or node_modules/.bin")
         
         subprocess.run([npm_cmd, "run", "build"], cwd=frontend_root, check=True)
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
