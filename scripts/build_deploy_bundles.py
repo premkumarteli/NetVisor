@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -101,8 +103,14 @@ def ensure_server_frontend_dist() -> None:
     frontend_root = PROJECT_ROOT / "frontend"
     print("[*] frontend/dist is missing; building the frontend bundle before packaging the server role...")
     try:
-        subprocess.run(["npm", "run", "build"], cwd=frontend_root, check=True)
-    except FileNotFoundError as exc:
+        # Get npm from the system PATH
+        npm_cmd = shutil.which("npm")
+        if npm_cmd is None:
+            raise FileNotFoundError("npm not found in PATH")
+        
+        subprocess.run([npm_cmd, "run", "build"], cwd=frontend_root, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        print(f"[ERROR] Failed to build frontend: {exc}", file=sys.stderr)
         raise FileNotFoundError("npm is required to build the server bundle frontend asset") from exc
 
     if not dist_index.exists():
