@@ -63,30 +63,38 @@ jobs:
 
       - name: Install Python test dependencies
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-server.txt ]; then pip install -r requirements-server.txt; fi
-          pip install -r requirements-dev.txt
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
       - name: Initialize test database
-        run: python scripts/init_ci_database.py
+        run: |
+          source .venv/bin/activate
+          python scripts/init_ci_database.py
 
       - name: Run backend unit tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: >
+          source .venv/bin/activate &&
           python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra
           --ignore=tests/test_runtime_probes.py
 
       - name: Run runtime probes
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-        run: python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_runtime_probes.py
+        run: |
+          source .venv/bin/activate
+          python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_runtime_probes.py
 
       - name: Run security regression tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: >
+          source .venv/bin/activate &&
           python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra
           tests/test_agent_request_auth.py
           tests/test_agent_transport_policy.py
@@ -108,4 +116,6 @@ jobs:
         run: npm run build
 
       - name: Build deploy bundles
-        run: python scripts/build_deploy_bundles.py --role server --role agent --role gateway
+        run: |
+          source .venv/bin/activate
+          python scripts/build_deploy_bundles.py --role server --role agent --role gateway
