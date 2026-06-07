@@ -56,4 +56,24 @@ class TransportSecurityMiddleware(BaseHTTPMiddleware):
             )
 
         response = await call_next(request)
+
+        # Inject Security Headers (Easy-win controls)
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+
+        # Apply Content Security Policy (CSP) for HTML responses
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "connect-src 'self' ws: wss:; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+                "font-src 'self' fonts.gstatic.com; "
+                "img-src 'self' data:; "
+                "frame-ancestors 'none';"
+            )
+
         return response
