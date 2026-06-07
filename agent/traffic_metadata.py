@@ -2,6 +2,8 @@
 
 This module intentionally keeps local helper symbols so tests and monkeypatches
 continue to target ``agent.traffic_metadata`` directly.
+
+Issue #2: Fixed unsafe DNS packet parsing with defensive Scapy layer handling.
 """
 
 from __future__ import annotations
@@ -65,9 +67,20 @@ def _select_remote_ip(packet) -> str | None:
 
 
 def _iter_dns_answers(answer, answer_count: int):
+    """
+    Issue #2: Defensive iteration over DNS answers.
+    
+    Scapy returns DNS answers as either:
+    1. Single DNSRR object
+    2. Chained DNSRR objects via .payload
+    3. List of DNSRR objects (iterable)
+    
+    This handles all three cases safely without crashing.
+    """
     yielded = 0
     current = answer
 
+    # Case 1: Single DNSRR object (not iterable, has .payload)
     if isinstance(current, DNSRR):
         while yielded < answer_count and isinstance(current, DNSRR):
             yield current
@@ -75,9 +88,11 @@ def _iter_dns_answers(answer, answer_count: int):
             current = current.payload
         return
 
+    # Case 2/3: Try to iterate (works for lists and chained objects)
     try:
         iterator = iter(current)
     except TypeError:
+        # Not iterable, bail out gracefully
         return
 
     for item in iterator:
@@ -111,14 +126,18 @@ class DomainHintCache:
             self._entries.pop(ip, None)
 
     def remember(self, ip_value: str | None, domain: str | None) -> None:
+        """Issue #2: Safe DNS answer recording with bytes/str handling."""
         normalized_domain = _normalize_domain(domain)
         if not normalized_domain or not _is_ip_address(ip_value):
             return
 
         self._prune()
-        self._entries[str(ip_value)] = (normalized_domain, time.time() + self.ttl_seconds)
+        now = time.time()
+        expires_at = now + self.ttl_seconds
+        self._entries[str(ip_value)] = (normalized_domain, expires_at)
 
     def lookup(self, ip_value: str | None) -> str | None:
+        """Retrieve cached domain hint for IP, if not expired."""
         if not _is_ip_address(ip_value):
             return None
 
@@ -126,25 +145,53 @@ class DomainHintCache:
         record = self._entries.get(str(ip_value))
         if not record:
             return None
-        return record[0]
+        
+        domain, expires_at = record
+        if time.time() > expires_at:
+            self._entries.pop(str(ip_value), None)
+            return None
+        
+        return domain
 
     def observe_dns(self, packet) -> str | None:
+        """
+        Issue #2: Defensive DNS packet observation.
+        
+        Safely handles:
+        - Missing DNS layer
+        - Missing DNSQR (question record) layer
+        - Scapy DNSRR variability (single object vs list vs chained)
+        - bytes vs str in rdata (answer records)
+        """
         if not packet.haslayer(DNS) or not packet.haslayer(DNSQR):
             return None
 
+        # Safely decode question name
         question_name = _normalize_domain(packet[DNSQR].qname.decode(errors="ignore"))
         dns_layer = packet[DNS]
 
+        # Only process responses (qr == 1 means response, 0 means query)
         if dns_layer.qr != 1:
             return question_name
 
         answer_count = int(getattr(dns_layer, "ancount", 0) or 0)
         for answer in _iter_dns_answers(dns_layer.an, answer_count):
+            # Safely decode answer record name
             answer_domain = _normalize_domain(
                 answer.rrname.decode(errors="ignore") if hasattr(answer.rrname, "decode") else str(answer.rrname)
             ) or question_name
-            if answer.type in (1, 28):
-                self.remember(str(answer.rdata), answer_domain)
+            
+            # Issue #2: Handle bytes in rdata (A and AAAA records return IP addresses)
+            # rdata can be bytes or already decoded - convert to str safely
+            if answer.type in (1, 28):  # A record (type 1) or AAAA record (type 28)
+                rdata_str = str(answer.rdata)
+                if isinstance(answer.rdata, bytes):
+                    try:
+                        rdata_str = answer.rdata.decode('utf-8', errors='ignore')
+                    except (AttributeError, UnicodeDecodeError):
+                        rdata_str = str(answer.rdata)
+                
+                self.remember(rdata_str, answer_domain)
 
         return question_name
 
