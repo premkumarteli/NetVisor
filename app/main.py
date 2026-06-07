@@ -74,6 +74,13 @@ def _validate_runtime_config() -> None:
         logger.warning(
             "NETVISOR_ALLOW_LAN_HTTP=true weakens transport security and should only be used in an isolated lab environment."
         )
+
+    # Call config.py validate_config (Issue #11: Configuration Validation Gaps)
+    validation_errors = settings.validate_config()
+    if validation_errors:
+        for err in validation_errors:
+            logger.error("Configuration validation error: %s", err)
+        raise RuntimeError("Configuration validation failed. See logs for details.")
     
     # Issue #11: Validate additional configuration settings
     config_errors = settings.validate_config()

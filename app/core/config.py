@@ -101,4 +101,25 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    def validate_config(self) -> list[str]:
+        """Validate critical configuration settings and return list of errors."""
+        errors = []
+        
+        # Issue #11: Configuration Validation Gaps
+        if self.SINGLE_ORG_MODE and not self.DEFAULT_ORGANIZATION_ID:
+            errors.append("SINGLE_ORG_MODE=true requires NETVISOR_DEFAULT_ORGANIZATION_ID to be set")
+        
+        if self.BACKUP_RETENTION_DAYS < 1:
+            errors.append("NETVISOR_BACKUP_RETENTION_DAYS must be >= 1")
+        
+        if self.FLOW_INGEST_MAX_PENDING_FLOWS < 100:
+            errors.append("NETVISOR_FLOW_INGEST_MAX_PENDING_FLOWS must be >= 100 (got {})".format(self.FLOW_INGEST_MAX_PENDING_FLOWS))
+        
+        # Magic number documentation (Issue #18)
+        # 30 min session: Reasonable for security; configurable per deployment
+        # 50K pending flows: Prevents unbounded queue growth; tune based on DB throughput
+        # 1 day enrollment TTL: Prevents stale agent enrollments; security best practice
+        
+        return errors
+
 settings = Settings()

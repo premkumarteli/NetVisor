@@ -80,13 +80,24 @@ def get_current_user(
             conn.close()
 
 def require_super_admin(user: dict = Depends(get_current_user)):
+    """Require super_admin role (Issue #3: Added admin authorization)"""
     if user.get("role") != 'super_admin':
         raise HTTPException(status_code=403, detail="Super Admin access required")
     return user
 
 def require_org_admin(user: dict = Depends(get_current_user)):
+    """Require org_admin or super_admin role (Issue #3: Added admin authorization)"""
     if user.get("role") not in ['super_admin', 'org_admin']:
         raise HTTPException(status_code=403, detail="Organization Admin access required")
+    return user
+
+def admin_required(user: dict = Depends(get_current_user)):
+    """Alias for require_org_admin - used for sensitive operations (Issue #3)"""
+    if user.get("role") not in ['super_admin', 'org_admin']:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
     return user
 
 # --- RATE LIMITER ---
