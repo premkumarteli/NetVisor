@@ -11,6 +11,7 @@ from ..utils.domain_intelligence import get_service_info
 from ..utils.domain_utils import get_base_domain, normalize_host
 from ..utils.network import is_rfc1918_device_ip, normalize_ip
 from .device_service import device_service
+from .web_inspection_service import web_inspection_service
 
 logger = logging.getLogger("netvisor.apps")
 
@@ -19,13 +20,19 @@ DEFAULT_ACTIVE_APPLICATION_WINDOW_SECONDS = 5 * 60
 
 # Specific applications must be checked before generic umbrella providers.
 APP_RULES: dict[str, list[str]] = {
-    "YouTube": ["youtube.com", "googlevideo.com"],
+    "YouTube": ["youtube.com", "youtu.be", "ytimg.com", "googlevideo.com"],
+    "Netflix": ["netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com"],
     "Instagram": ["instagram.com"],
     "Facebook": ["facebook.com", "fbcdn.net", "messenger.com"],
     "WhatsApp": ["whatsapp.com", "whatsapp.net"],
+    "Telegram": ["telegram.org", "t.me", "telegram.me"],
+    "Discord": ["discord.com", "discord.gg", "discordapp.com"],
     "ChatGPT": ["openai.com", "chatgpt.com"],
+    "Claude": ["anthropic.com", "claude.ai"],
     "GitHub": ["github.com", "githubassets.com", "githubusercontent.com"],
     "Perplexity": ["perplexity.ai", "perplexity.com"],
+    "Zoom": ["zoom.us"],
+    "Google Meet": ["meet.google.com"],
     "Microsoft": [
         "bing.com",
         "bingapis.com",
@@ -41,7 +48,8 @@ APP_RULES: dict[str, list[str]] = {
         "gamepass.com",
         "xbox.com",
     ],
-    "Google": ["google.com", "googleapis.com", "gstatic.com", "googleusercontent.com"],
+    "Google Play": ["play.google.com"],
+    "Google": ["google.com", "googleapis.com", "gstatic.com", "googleusercontent.com", "google.co.in"],
 }
 
 CONTROL_PORTS = {53, 67, 68, 123, 137, 138, 1900, 5353, 5355}
@@ -236,8 +244,13 @@ class ApplicationService:
             return None
 
         for application, allowed_domains in APP_RULES.items():
-            if base_domain in allowed_domains:
-                return application
+            for allowed_domain in allowed_domains:
+                if (
+                    base_domain == allowed_domain
+                    or normalized == allowed_domain
+                    or normalized.endswith(f".{allowed_domain}")
+                ):
+                    return application
 
         service_label = self._service_label_from_host(normalized)
         if service_label:
@@ -424,6 +437,23 @@ class ApplicationService:
                 "application": row.get("application"),
             }
         )
+
+    def _matches_application_name(self, app_name: str, row: dict) -> bool:
+        normalized = str(app_name or "").strip().lower()
+        if not normalized:
+            return False
+
+        base_domain = str(row.get("base_domain") or row.get("domain") or "").strip()
+        service_name, _ = get_service_info(base_domain)
+        candidates = {
+            str(service_name or "").strip().lower(),
+            str(self.classify_by_domain(base_domain) or "").strip().lower(),
+            str(row.get("content_category") or "").strip().lower(),
+            str(row.get("page_title") or "").strip().lower(),
+            str(row.get("content_id") or "").strip().lower(),
+            str(row.get("search_query") or "").strip().lower(),
+        }
+        return normalized in candidates
 
     def _build_sessions(self, db_conn, organization_id: Optional[str], window_minutes: int) -> list[dict]:
         rows = self._fetch_recent_sessions(db_conn, organization_id, window_minutes)
@@ -725,6 +755,57 @@ class ApplicationService:
             )
         )
         return results
+
+    def get_application_workspace(
+        self,
+        db_conn,
+        app_name: str,
+        organization_id: Optional[str] = None,
+        window_minutes: int = DEFAULT_APPLICATION_WINDOW_MINUTES,
+    ) -> dict:
+        self.ensure_schema(db_conn)
+        decoded_name = str(app_name or "").strip()
+        devices = self.get_application_devices(
+            db_conn,
+            app_name=decoded_name,
+            organization_id=organization_id,
+            window_minutes=window_minutes,
+        )
+
+        raw_events = web_inspection_service.get_global_activity(
+            db_conn,
+            organization_id=organization_id,
+            limit=min(max(window_minutes // 2, 100), 500),
+        )
+        filtered_events = [row for row in raw_events if self._matches_application_name(decoded_name, row)]
+
+        grouped_events = web_inspection_service.get_global_evidence_groups(
+            db_conn,
+            organization_id=organization_id,
+            limit=min(max(window_minutes // 4, 50), 200),
+        )
+        grouped_events = [row for row in grouped_events if self._matches_application_name(decoded_name, row)]
+
+        total_bandwidth_bytes = sum(int(row.get("bandwidth_bytes") or 0) for row in devices)
+        active_device_count = sum(1 for row in devices if row.get("status") == "Active")
+        last_seen_candidates = [row.get("last_seen") for row in devices if row.get("last_seen")]
+        last_seen_candidates += [row.get("last_seen") for row in grouped_events if row.get("last_seen")]
+        last_seen = max(last_seen_candidates) if last_seen_candidates else None
+
+        return {
+            "application": decoded_name,
+            "devices": devices,
+            "web_activity": filtered_events,
+            "web_evidence_groups": grouped_events,
+            "summary": {
+                "device_count": len(devices),
+                "active_device_count": active_device_count,
+                "bandwidth_bytes": total_bandwidth_bytes,
+                "last_seen": last_seen,
+                "event_count": len(filtered_events),
+                "group_count": len(grouped_events),
+            },
+        }
 
     def get_top_other_domains(
         self,

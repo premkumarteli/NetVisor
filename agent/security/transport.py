@@ -5,6 +5,7 @@ import os
 import hashlib
 import json
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +32,8 @@ from .state import ProtectedStateStore
 
 logger = logging.getLogger(__name__)
 
+_PIN_SHA256_RE = re.compile(r"^[0-9A-F]{64}$")
+
 
 class AgentApiClient:
     def __init__(
@@ -52,20 +55,86 @@ class AgentApiClient:
         self._state = self.store.load(
             {
                 "agent_credentials": None,
-                "backend_tls_pins": list(initial_pins or []),
+                "backend_tls_pins": self._normalize_pinset(initial_pins or []),
             }
         )
+        self._state["agent_credentials"] = self._normalize_credentials(self._state.get("agent_credentials"))
+        self._state["backend_tls_pins"] = self._normalize_pinset(self._state.get("backend_tls_pins"))
         if initial_pins and not self._state.get("backend_tls_pins"):
-            self._state["backend_tls_pins"] = list(initial_pins)
+            self._state["backend_tls_pins"] = self._normalize_pinset(initial_pins)
             self._persist()
 
     def _persist(self) -> None:
         self.store.save(self._state)
 
+    def _normalize_pin(self, pin: dict[str, Any]) -> dict[str, str] | None:
+        pin_type = str(pin.get("pin_type") or "spki_sha256").strip().lower()
+        status = str(pin.get("status") or "active").strip().lower()
+        pin_sha256 = str(pin.get("pin_sha256") or "").strip().upper()
+
+        if pin_type not in {"spki_sha256", "cert_sha256"}:
+            return None
+        if status not in {"active", "next"}:
+            return None
+        if not _PIN_SHA256_RE.fullmatch(pin_sha256):
+            return None
+
+        normalized = {
+            "pin_type": pin_type,
+            "pin_sha256": pin_sha256,
+            "status": status,
+        }
+        subject = str(pin.get("subject") or "").strip()
+        if subject:
+            normalized["subject"] = subject
+        return normalized
+
+    def _normalize_pinset(self, pins: Any) -> list[dict[str, str]]:
+        if not isinstance(pins, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for pin in pins:
+            if not isinstance(pin, dict):
+                continue
+            normalized_pin = self._normalize_pin(pin)
+            if not normalized_pin:
+                logger.warning("Ignoring invalid backend TLS pin entry in agent transport state.")
+                continue
+            key = (
+                normalized_pin["pin_type"],
+                normalized_pin["pin_sha256"],
+                normalized_pin["status"],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(normalized_pin)
+        return normalized
+
+    def _normalize_credentials(self, credentials: Any) -> dict[str, Any] | None:
+        if not isinstance(credentials, dict):
+            return None
+        agent_id = str(credentials.get("agent_id") or "").strip()
+        secret = str(credentials.get("secret") or "").strip()
+        try:
+            key_version = int(credentials.get("key_version") or 0)
+        except (TypeError, ValueError):
+            return None
+        if not agent_id or not secret or key_version < 1:
+            return None
+        return {
+            "agent_id": agent_id,
+            "key_version": key_version,
+            "secret": secret,
+            "issued_at": credentials.get("issued_at"),
+        }
+
     def seed_pins(self, pins: list[dict] | None) -> None:
-        if not pins:
+        normalized = self._normalize_pinset(pins)
+        if not normalized:
             return
-        self._state["backend_tls_pins"] = list(pins)
+        self._state["backend_tls_pins"] = normalized
         self._persist()
 
     def _credentials(self) -> dict | None:
@@ -78,13 +147,36 @@ class AgentApiClient:
 
     def status_snapshot(self) -> dict:
         credentials = self._credentials() or {}
+        pinset = self._pinset()
+        findings: list[dict[str, str]] = []
+        if not self.bootstrap_api_key:
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_bootstrap_key",
+                    "message": "Agent API bootstrap key is not configured.",
+                }
+            )
+        if not pinset:
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_tls_pins",
+                    "message": "No backend TLS pins are configured.",
+                }
+            )
         return {
             "bootstrap_api_key_configured": bool(self.bootstrap_api_key),
             "has_credentials": self.has_credentials(),
             "credential_agent_id": credentials.get("agent_id"),
             "credential_key_version": credentials.get("key_version"),
-            "backend_tls_pin_count": len(self._pinset()),
+            "backend_tls_pin_count": len(pinset),
             "state_path": str(self.store.path),
+            "hardening": {
+                "ready": not any(finding["severity"] == "critical" for finding in findings),
+                "finding_count": len(findings),
+                "findings": findings,
+            },
         }
 
     def reset_enrollment(self, *, preserve_pins: bool = True) -> None:
@@ -95,7 +187,7 @@ class AgentApiClient:
 
     def _pinset(self) -> list[dict]:
         pins = self._state.get("backend_tls_pins")
-        return list(pins) if isinstance(pins, list) else []
+        return self._normalize_pinset(pins)
 
     def _is_local_url(self, url: str) -> bool:
         parsed = urlparse(url)
@@ -214,18 +306,13 @@ class AgentApiClient:
             return
         if not isinstance(payload, dict):
             return
-        credentials = payload.get("agent_credentials")
-        if isinstance(credentials, dict) and credentials.get("secret"):
-            self._state["agent_credentials"] = {
-                "agent_id": str(credentials.get("agent_id") or ""),
-                "key_version": int(credentials.get("key_version") or 1),
-                "secret": str(credentials.get("secret") or ""),
-                "issued_at": credentials.get("issued_at"),
-            }
+        credentials = self._normalize_credentials(payload.get("agent_credentials"))
+        if credentials:
+            self._state["agent_credentials"] = credentials
         pins = payload.get("backend_tls_pins")
         if isinstance(pins, list):
-            self._state["backend_tls_pins"] = pins
-        if isinstance(credentials, dict) or isinstance(pins, list):
+            self._state["backend_tls_pins"] = self._normalize_pinset(pins)
+        if credentials or isinstance(pins, list):
             self._persist()
 
     def _extract_peer_certificate(self, response: requests.Response) -> bytes | None:

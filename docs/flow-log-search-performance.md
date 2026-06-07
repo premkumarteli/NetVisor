@@ -26,7 +26,7 @@ Fresh installs include these flow-log indexes:
 Existing databases should apply:
 
 ```powershell
-python database\migrations\apply_20260502_flow_search_alert_dedupe_indexes.py
+python infra\database\migrations\apply_20260502_flow_search_alert_dedupe_indexes.py
 ```
 
 ## Benchmark

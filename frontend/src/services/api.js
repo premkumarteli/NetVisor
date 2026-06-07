@@ -114,8 +114,8 @@ export const systemService = {
   getStats: () => api.get("/dashboard/overview"),
   getActivity: (limit = 50) =>
     api.get("/dashboard/activity", { params: { limit } }),
-  getTrafficHistory: (hours = 24) =>
-    api.get("/dashboard/traffic-history", { params: { hours } }),
+  getTrafficHistory: (window = 24, resolution = 'hour') =>
+    api.get("/dashboard/traffic-history", { params: { window, resolution } }),
   getDeviceStats: (limit = 5) =>
     api.get("/dashboard/device-stats", { params: { limit } }),
   getGlobalWebActivity: (limit = 15) =>

@@ -7,6 +7,7 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
+import TelemetryConfidence from '../components/V2/TelemetryConfidence';
 import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatByteCount, getRiskTone } from '../utils/presentation';
@@ -70,6 +71,15 @@ const ActivityPage = () => {
     medium: logs.filter((entry) => entry.severity === 'MEDIUM').length,
   }), [logs]);
 
+  const truthStats = useMemo(() => {
+    const withConfidence = logs.filter((entry) => Number(entry.analysis_confidence) > 0);
+    const avgConfidence = withConfidence.length
+      ? Math.round((withConfidence.reduce((sum, entry) => sum + Number(entry.analysis_confidence || 0), 0) / withConfidence.length) * 100)
+      : 0;
+    const directional = logs.filter((entry) => entry.flow_direction && entry.flow_direction !== 'unknown').length;
+    return { avgConfidence, directional };
+  }, [logs]);
+
   const columns = [
     {
       key: 'application',
@@ -100,6 +110,19 @@ const ActivityPage = () => {
       key: 'protocol',
       label: 'Protocol',
       render: (row) => <span className="mono">{row.protocol || 'Unknown'}</span>,
+    },
+    {
+      key: 'truth',
+      label: 'Truth',
+      render: (row) => (
+        <TelemetryConfidence
+          source={row.analysis_source}
+          confidence={row.analysis_confidence}
+          direction={row.flow_direction}
+          scope={row.network_scope}
+          compact
+        />
+      ),
     },
     {
       key: 'severity',
@@ -140,6 +163,7 @@ const ActivityPage = () => {
           <MetricCard icon="ri-pulse-line" label="Recent Sessions" value={logs.length} meta="Latest classified session feed" accent="#60a5fa" />
           <MetricCard icon="ri-macbook-line" label="Online Devices" value={stats.active_devices || 0} meta={`${stats.total_devices || 0} tracked assets`} accent="#2dd4bf" />
           <MetricCard icon="ri-alarm-warning-line" label="High Signal" value={signalCounts.high} meta={`${signalCounts.medium} medium-signal sessions also visible`} accent="#fb7185" />
+          <MetricCard icon="ri-fingerprint-line" label="Avg Confidence" value={`${truthStats.avgConfidence}%`} meta={`${truthStats.directional} direction-resolved sessions`} accent="#f59e0b" />
         </div>
       )}
 

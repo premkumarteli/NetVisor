@@ -40,4 +40,4 @@ Backend health endpoints:
 - Verify database connectivity first.
 - Confirm `AGENT_API_KEY` and `GATEWAY_API_KEY` are aligned with the backend.
 - Confirm the backend TLS pinset before enrolling a non-local agent or gateway.
-- Use the deployment manifests in `deployment/` for the canonical production settings.
+- Use the deployment manifests in `infra/deployment/` for the canonical production settings.

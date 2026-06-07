@@ -6,12 +6,14 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
+import ThreatDrawer from '../components/V2/ThreatDrawer';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { getRiskTone } from '../utils/presentation';
 
 const VPNPage = () => {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [selectedAlert, setSelectedAlert] = useState(null);
 
   const fetchAlerts = useCallback(async ({ background = false } = {}) => {
     if (!background) {
@@ -44,6 +46,15 @@ const VPNPage = () => {
     [alerts],
   );
 
+  const topProvider = useMemo(() => {
+    const counts = new Map();
+    alerts.forEach((entry) => {
+      const provider = entry.breakdown?.vpn_provider || 'Unspecified';
+      counts.set(provider, (counts.get(provider) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
+  }, [alerts]);
+
   const columns = [
     { key: 'time', label: 'Time', render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.timestamp)}</span> },
     { key: 'device_ip', label: 'Source IP', render: (row) => <span className="mono">{row.device_ip}</span> },
@@ -65,7 +76,9 @@ const VPNPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.message || row.breakdown?.primary_detection || 'VPN or proxy anomaly'}</div>
-          <div className="nv-table__meta">{row.severity || 'warning'}</div>
+          <div className="nv-table__meta">
+            {row.breakdown?.vpn_reason || row.breakdown?.primary_detection || row.severity || 'warning'}
+          </div>
         </>
       ),
     },
@@ -90,7 +103,7 @@ const VPNPage = () => {
       <div className="nv-metric-grid">
         <MetricCard icon="ri-shield-keyhole-line" label="Open VPN Alerts" value={alerts.length} meta="Current 24-hour unresolved queue" accent="#54c8e8" />
         <MetricCard icon="ri-alarm-warning-line" label="High Risk" value={highRiskCount} meta="Risk score above 70%" accent="#fb7185" />
-        <MetricCard icon="ri-time-line" label="Window" value="24h" meta="Recent unresolved detections" accent="#60a5fa" />
+        <MetricCard icon="ri-router-line" label="Top Provider" value={topProvider[0]} meta={`${topProvider[1]} alerts with provider hints`} accent="#60a5fa" />
         <MetricCard icon="ri-eye-line" label="Engine" value={loading ? 'Loading' : 'Watching'} meta="Anomaly monitoring state" accent="#2dd4bf" />
       </div>
 
@@ -100,11 +113,19 @@ const VPNPage = () => {
             columns={columns}
             rows={loading ? [] : alerts}
             rowKey={(row, index) => row.id || `${row.timestamp}-${index}`}
+            onRowClick={(row) => setSelectedAlert(row)}
             emptyTitle={loading ? 'Loading alerts' : 'No active VPN threats detected'}
             emptyDescription={loading ? 'Collecting unresolved VPN and proxy detections.' : 'The anomaly engine is monitoring, but there are no unresolved VPN alerts in the current window.'}
           />
         </div>
       </SectionCard>
+
+      <ThreatDrawer
+        open={Boolean(selectedAlert)}
+        threat={selectedAlert}
+        onClose={() => setSelectedAlert(null)}
+        title="VPN & Proxy Anomaly Audit"
+      />
     </div>
   );
 };

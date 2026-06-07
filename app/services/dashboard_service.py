@@ -106,31 +106,105 @@ class DashboardService:
         finally:
             cursor.close()
 
-    def get_traffic_history(self, db_conn, hours: int = 24, organization_id: Optional[str] = None) -> list[dict]:
+    def get_traffic_history(
+        self,
+        db_conn,
+        hours: int = 24,
+        resolution: str = "hour",
+        window: Optional[int] = None,
+        organization_id: Optional[str] = None
+    ) -> list[dict]:
+        import datetime
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params = []
+            # 1. Determine start and end times in UTC based on database clock to avoid host clock skew issues
+            cursor.execute("SELECT UTC_TIMESTAMP() as now_time")
+            now = cursor.fetchone()["now_time"]
+            
+            # Resolve window size
+            if window is None:
+                if resolution == "hour":
+                    window = hours
+                elif resolution == "minute":
+                    window = 60
+                elif resolution == "second":
+                    window = 60
+                else:
+                    window = 24
+            
+            if resolution == "second":
+                # Start of current second is the start of the last bin
+                end_time_aligned = now.replace(microsecond=0)
+                start_time = end_time_aligned - datetime.timedelta(seconds=window - 1)
+                date_fmt = "%Y-%m-%d %H:%i:%s"
+                py_fmt = "%Y-%m-%d %H:%M:%S"
+                delta = datetime.timedelta(seconds=1)
+            elif resolution == "minute":
+                # Start of current minute is the start of the last bin
+                end_time_aligned = now.replace(second=0, microsecond=0)
+                start_time = end_time_aligned - datetime.timedelta(minutes=window - 1)
+                date_fmt = "%Y-%m-%d %H:%i:00"
+                py_fmt = "%Y-%m-%d %H:%M:00"
+                delta = datetime.timedelta(minutes=1)
+            else:  # hour
+                # Start of current hour is the start of the last bin
+                end_time_aligned = now.replace(minute=0, second=0, microsecond=0)
+                start_time = end_time_aligned - datetime.timedelta(hours=window - 1)
+                date_fmt = "%Y-%m-%d %H:00:00"
+                py_fmt = "%Y-%m-%d %H:00:00"
+                delta = datetime.timedelta(hours=1)
+
+            # 2. Build the query params
+            params = [date_fmt]
             org_filter = ""
             if organization_id:
                 org_filter = "organization_id = %s AND "
-                params.append(organization_id)
+                params.insert(0, organization_id)
             
-            params.append(hours)
+            # Query up to the exact current time (now) to make sure we include all recent flows
+            params.extend([start_time, now])
             
-            cursor.execute(
-                f"""
+            query = f"""
                 SELECT 
-                    DATE_FORMAT(last_seen, '%Y-%m-%d %H:00:00') as hour,
+                    DATE_FORMAT(last_seen, %s) as bin_time,
                     COUNT(*) as flow_count,
                     COALESCE(SUM(byte_count), 0) as byte_count
                 FROM flow_logs
-                WHERE {org_filter}last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
-                GROUP BY hour
-                ORDER BY hour ASC
-                """,
-                tuple(params)
-            )
-            return cursor.fetchall()
+                WHERE {org_filter}last_seen >= %s AND last_seen <= %s
+                GROUP BY bin_time
+                ORDER BY bin_time ASC
+            """
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+            
+            # Map database results
+            db_data = {}
+            for r in rows:
+                db_data[r["bin_time"]] = {
+                    "flow_count": int(r["flow_count"] or 0),
+                    "byte_count": float(r["byte_count"] or 0)
+                }
+            
+            # 3. Generate all slots to guarantee 100% completeness and accuracy
+            result = []
+            for i in range(window):
+                slot_time = start_time + delta * i
+                slot_str = slot_time.strftime(py_fmt)
+                
+                # Check if we have data for this slot
+                data = db_data.get(slot_str, {"flow_count": 0, "byte_count": 0.0})
+                
+                # Format timestamp as ISO string with Z (UTC)
+                iso_ts = slot_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+                result.append({
+                    "timestamp": iso_ts,
+                    # Backward compatibility fields
+                    "hour": slot_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "flow_count": data["flow_count"],
+                    "byte_count": data["byte_count"]
+                })
+            
+            return result
         finally:
             cursor.close()
 

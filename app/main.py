@@ -91,6 +91,7 @@ async def lifespan(app: FastAPI):
     try:
         startup_conn = get_db_connection()
         agent_enrollment_service.ensure_schema(startup_conn)
+        flow_service._ensure_flow_log_schema(startup_conn)
         application_service.ensure_schema(startup_conn)
         web_inspection_service.ensure_schema(startup_conn)
         if settings.RESET_RUNTIME_ON_STARTUP:

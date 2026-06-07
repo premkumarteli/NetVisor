@@ -43,6 +43,15 @@ const AgentMonitoringPage = () => {
         enrollment_request_id: agent.enrollment_request_id || null,
         enrollment_source_ip: agent.enrollment_source_ip || '',
         enrollment_bootstrap_method: agent.enrollment_bootstrap_method || 'bootstrap',
+        collector_overall_status: agent.collector_overall_status || 'unknown',
+        offline_reason: agent.offline_reason || '',
+        upload_failures: Number(agent.upload_failures) || 0,
+        upload_successes: Number(agent.upload_successes) || 0,
+        upload_queue_depth: Number(agent.upload_queue_depth) || 0,
+        upload_consecutive_failures: Number(agent.upload_consecutive_failures) || 0,
+        last_upload_time: agent.last_upload_time || '',
+        last_upload_error: agent.last_upload_error || '',
+        capture_error_category: agent.capture_error_category || '',
       }));
   }, [agents]);
 
@@ -139,9 +148,13 @@ const AgentMonitoringPage = () => {
           acc.avgRam += agent.ram_usage;
         }
         acc.devices += agent.device_count || 0;
+        if (agent.collector_overall_status && !['healthy', 'unknown'].includes(String(agent.collector_overall_status).toLowerCase())) {
+          acc.degradedCollectors += 1;
+        }
+        acc.queueDepth += agent.upload_queue_depth || 0;
         return acc;
       },
-      { total: 0, online: 0, devices: 0, avgCpu: 0, avgRam: 0, pendingEnrollments: pendingRequests.length },
+      { total: 0, online: 0, devices: 0, avgCpu: 0, avgRam: 0, pendingEnrollments: pendingRequests.length, degradedCollectors: 0, queueDepth: 0 },
     );
   }, [normalizedAgents, pendingRequests.length]);
 
@@ -360,7 +373,29 @@ const AgentMonitoringPage = () => {
     {
       key: 'status',
       label: 'Status',
-      render: (row) => <StatusBadge tone={getStatusTone(row.status)}>{row.status}</StatusBadge>,
+      render: (row) => (
+        <div className="nv-stack" style={{ gap: '0.4rem' }}>
+          <StatusBadge tone={getStatusTone(row.status)}>{row.status}</StatusBadge>
+          {row.offline_reason ? <div className="nv-table__meta">{row.offline_reason}</div> : null}
+        </div>
+      ),
+    },
+    {
+      key: 'collector',
+      label: 'Collector',
+      render: (row) => (
+        <div className="nv-stack" style={{ gap: '0.4rem' }}>
+          <StatusBadge tone={getStatusTone(row.collector_overall_status)}>
+            {row.collector_overall_status}
+          </StatusBadge>
+          <div className="nv-table__meta">
+            Queue {row.upload_queue_depth} | Fail {row.upload_failures}
+          </div>
+          {row.capture_error_category || row.last_upload_error ? (
+            <div className="nv-table__meta">{row.capture_error_category || row.last_upload_error}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'enrollment_status',
@@ -475,6 +510,7 @@ const AgentMonitoringPage = () => {
         <MetricCard icon="ri-database-2-line" label="Avg RAM" value={stats.online > 0 ? formatPercent(stats.avgRam / stats.online) : '0%'} meta="Distributed memory footprint" accent="#2dd4bf" />
         <MetricCard icon="ri-shield-user-line" label="Pending Approvals" value={pendingRequests.length} meta="Waiting for Fleet review" accent="#f59e0b" />
         <MetricCard icon="ri-macbook-line" label="Fleet Devices" value={stats.devices} meta="Total endpoints discovered" accent="#fbbf24" />
+        <MetricCard icon="ri-pulse-line" label="Collector Health" value={stats.degradedCollectors} meta={`${stats.queueDepth} queued uploads across fleet`} accent="#fb7185" />
       </div>
 
       <SectionCard

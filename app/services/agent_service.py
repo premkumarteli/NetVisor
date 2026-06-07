@@ -223,6 +223,34 @@ class AgentService:
             else "Offline"
         )
         inspection_metrics = self._json_object(row.get("inspection_metrics_json"))
+        collector_health = self._json_object(inspection_metrics.get("collector_health"))
+        capture_health = self._json_object(collector_health.get("capture_health") or inspection_metrics.get("capture_health"))
+        upload_health = self._json_object(collector_health.get("upload_health") or inspection_metrics.get("upload_health"))
+        queue_depth = int(
+            upload_health.get("queue_depth")
+            or collector_health.get("queue_depth")
+            or inspection_metrics.get("queue_size")
+            or 0
+        )
+        collector_status = (
+            collector_health.get("overall_status")
+            or capture_health.get("health_status")
+            or inspection_metrics.get("capture_health_status")
+            or "unknown"
+        )
+        capture_error_category = (
+            capture_health.get("error_category")
+            or capture_health.get("capture_error_category")
+            or collector_health.get("capture_error_category")
+        )
+        last_upload_error = upload_health.get("last_upload_error") or inspection_metrics.get("last_upload_error")
+        offline_reason = None
+        if status == "Offline":
+            offline_reason = "No recent heartbeat"
+        if capture_error_category:
+            offline_reason = f"Capture {capture_error_category}"
+        if last_upload_error:
+            offline_reason = str(last_upload_error)[:160]
 
         return {
             "agent_id": row.get("agent_id") or row.get("id") or "",
@@ -277,6 +305,15 @@ class AgentService:
             "enrollment_reviewed_at": self._format_timestamp(row.get("enrollment_reviewed_at")),
             "enrollment_review_reason": row.get("enrollment_review_reason"),
             "enrollment_credential_issued_at": self._format_timestamp(row.get("enrollment_credential_issued_at")),
+            "collector_overall_status": collector_status,
+            "offline_reason": offline_reason,
+            "upload_failures": int(upload_health.get("upload_failures") or 0),
+            "upload_successes": int(upload_health.get("upload_successes") or 0),
+            "upload_queue_depth": queue_depth,
+            "upload_consecutive_failures": int(upload_health.get("consecutive_failures") or 0),
+            "last_upload_time": upload_health.get("last_upload_time") or inspection_metrics.get("last_upload_at"),
+            "last_upload_error": last_upload_error,
+            "capture_error_category": capture_error_category,
             "cpu_usage": float(row.get("cpu_usage") or 0.0),
             "ram_usage": float(row.get("ram_usage") or 0.0),
         }
@@ -293,6 +330,8 @@ class AgentService:
     def _json_object(self, value) -> dict:
         if not value:
             return {}
+        if isinstance(value, dict):
+            return value
         try:
             parsed = json.loads(value)
         except (TypeError, ValueError):

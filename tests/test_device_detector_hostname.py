@@ -67,3 +67,28 @@ def test_get_upnp_name_uses_cached_discovery_locations(monkeypatch):
 
     assert detector.get_upnp_name("192.168.1.92") == "Family Room TV"
 
+
+def test_gateway_identity_helpers_classify_mobile_hotspot_device(monkeypatch):
+    detector = DeviceDetector()
+    monkeypatch.setattr(detector, "detect_device_type", lambda ip: "Unknown Type")
+
+    vendor = detector.resolve_vendor("06:c9:80:e9:52:ec")
+    device_type = detector.infer_device_type("192.168.137.4", mac="06:c9:80:e9:52:ec", hostname="OPPO-Reno12-5G")
+    confidence = detector.identity_confidence(
+        hostname="OPPO-Reno12-5G",
+        mac="06:c9:80:e9:52:ec",
+        vendor=vendor,
+        device_type=device_type,
+    )
+
+    assert vendor == "OPPO / Android"
+    assert device_type == "Mobile Phone"
+    assert confidence == "high"
+
+
+def test_infer_device_type_can_skip_slow_active_probe(monkeypatch):
+    detector = DeviceDetector()
+    monkeypatch.setattr(detector, "detect_device_type", lambda ip: (_ for _ in ()).throw(AssertionError("probe should not run")))
+
+    assert detector.infer_device_type("192.168.137.9", active_probe=False) == "Unknown"
+

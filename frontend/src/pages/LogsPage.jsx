@@ -5,6 +5,8 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
+import TelemetryConfidence from '../components/V2/TelemetryConfidence';
+import { formatConfidence } from '../utils/telemetry';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatByteCount, getRiskTone } from '../utils/presentation';
 
@@ -101,6 +103,14 @@ const LogsPage = () => {
 
   const totalPages = Math.max(Math.ceil(total / PAGE_LIMIT), 1);
   const uniqueSources = useMemo(() => new Set(logs.map((log) => log.src_ip)).size, [logs]);
+  const truthSummary = useMemo(() => {
+    const enriched = logs.filter((log) => Number(log.analysis_confidence) > 0);
+    const avgConfidence = enriched.length
+      ? enriched.reduce((sum, log) => sum + Number(log.analysis_confidence || 0), 0) / enriched.length
+      : 0;
+    const resolvedDirections = logs.filter((log) => log.flow_direction && log.flow_direction !== 'unknown').length;
+    return { avgConfidence, resolvedDirections };
+  }, [logs]);
 
   const columns = [
     {
@@ -124,7 +134,7 @@ const LogsPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.host || row.sni || row.domain || row.dst_ip}</div>
-          <div className="nv-table__meta mono">{row.dst_ip || '-'}</div>
+          <div className="nv-table__meta mono">{row.dst_mac || 'No MAC'}</div>
         </>
       ),
     },
@@ -139,8 +149,21 @@ const LogsPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.application || 'Other'}</div>
-          <div className="nv-table__meta">{row.management_mode || 'unknown mode'}</div>
+          <div className="nv-table__meta">{row.management_mode || 'unknown mode'} | {row.analysis_reason || row.analysis_source || 'unclassified'}</div>
         </>
+      ),
+    },
+    {
+      key: 'truth',
+      label: 'Truth',
+      render: (row) => (
+        <TelemetryConfidence
+          source={row.analysis_source}
+          confidence={row.analysis_confidence}
+          direction={row.flow_direction}
+          scope={row.network_scope}
+          compact
+        />
       ),
     },
     {
@@ -187,6 +210,7 @@ const LogsPage = () => {
         <MetricCard icon="ri-earth-line" label="Unique Sources" value={uniqueSources} meta="Distinct source IPs on this page" accent="#60a5fa" />
         <MetricCard icon="ri-apps-line" label="Dominant App" value={stats.top_apps?.[0]?.application || 'Calculating...'} meta="Top application in the current stats window" accent="#2dd4bf" />
         <MetricCard icon="ri-error-warning-line" label="Active Alerts" value={logs.filter((log) => log.severity !== 'LOW').length} meta="Non-low signal on this page" accent="#fb7185" />
+        <MetricCard icon="ri-fingerprint-line" label="Truth Score" value={formatConfidence(truthSummary.avgConfidence)} meta={`${truthSummary.resolvedDirections} resolved directions on page`} accent="#f59e0b" />
       </div>
 
       <SectionCard title="Network Event Logs" caption="Search and Filter">

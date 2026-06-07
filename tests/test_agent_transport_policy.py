@@ -59,3 +59,38 @@ def test_private_lan_http_is_allowed_when_opt_in_enabled(tmp_path, monkeypatch):
     client = _client(tmp_path)
 
     client._enforce_transport_policy("http://10.159.79.96:8000/api/v1/collect/register")
+
+
+def test_agent_transport_normalizes_initial_tls_pins(tmp_path):
+    client = _client(
+        tmp_path,
+        pins=[
+            {"pin_type": "spki_sha256", "pin_sha256": "a" * 64, "status": "active"},
+            {"pin_type": "cert_sha256", "pin_sha256": "B" * 64, "status": "next"},
+            {"pin_type": "bogus", "pin_sha256": "C" * 64, "status": "active"},
+            {"pin_type": "spki_sha256", "pin_sha256": "short", "status": "active"},
+            {"pin_type": "spki_sha256", "pin_sha256": "D" * 64, "status": "retired"},
+        ],
+    )
+
+    assert client._pinset() == [
+        {"pin_type": "spki_sha256", "pin_sha256": "A" * 64, "status": "active"},
+        {"pin_type": "cert_sha256", "pin_sha256": "B" * 64, "status": "next"},
+    ]
+
+
+def test_agent_transport_rejects_invalid_stored_credentials(tmp_path):
+    state_path = tmp_path / "transport-state.json"
+    state_path.write_text(
+        '{"agent_credentials":{"agent_id":"AGENT-1","key_version":0,"secret":"secret"},"backend_tls_pins":[]}',
+        encoding="utf-8",
+    )
+
+    client = AgentApiClient(
+        state_path=state_path,
+        bootstrap_api_key="bootstrap-key",
+        protector=FakeProtector(),
+        initial_pins=[],
+    )
+
+    assert client.has_credentials() is False

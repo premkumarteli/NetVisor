@@ -75,7 +75,7 @@ class RiskEngine:
         src_ip = getattr(flow, 'src_ip', '0.0.0.0')
         dst_ip = getattr(flow, 'dst_ip', '0.0.0.0')
         host_hint = getattr(flow, 'sni', None) or getattr(flow, 'domain', None)
-        vpn_raw_score, _ = vpn_detector.analyze_vpn(src_ip, dst_ip, dst_port, host_hint)
+        vpn_raw_score, vpn_reason, vpn_provider = vpn_detector.analyze_vpn(src_ip, dst_ip, dst_port, host_hint)
         vpn_score = min(1.0, vpn_raw_score / 40.0)
 
         detections = self.signals.collect(flow, observed_at, ml_score, vpn_score)
@@ -96,6 +96,8 @@ class RiskEngine:
             "baseline_score": round(base_score, 2),
             "ml_score": round(ml_score, 2),
             "vpn_score": round(vpn_score, 2),
+            "vpn_reason": vpn_reason,
+            "vpn_provider": vpn_provider,
             "detection_score": round(detection_score, 2),
             "signals": [signal.name for signal in detections],
         }

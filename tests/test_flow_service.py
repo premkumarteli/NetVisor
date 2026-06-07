@@ -6,6 +6,7 @@ import pytest
 
 from app.services import flow_service as flow_service_module
 from app.services.flow_service import FlowQueueBackpressureError, flow_service
+from app.services.flow_sanitization_service import flow_sanitization_service
 
 
 def test_agent_flows_are_always_managed():
@@ -379,4 +380,95 @@ def test_deserialize_batch_rehydrates_flow_models():
     assert len(hydrated) == 1
     assert hydrated[0].agent_id == "AGENT-1"
     assert hydrated[0].protocol == "TCP"
+
+
+def test_sanitized_flow_derives_outbound_direction_and_confidence_context():
+    flow = SimpleNamespace(
+        src_ip="10.0.0.10",
+        dst_ip="8.8.8.8",
+        src_port=50222,
+        dst_port=443,
+        protocol="tcp",
+        packet_count=3,
+        byte_count=900,
+        duration=1.5,
+        agent_id="AGENT-1",
+        start_time="2026-05-20T10:00:00Z",
+        last_seen="2026-05-20T10:00:02Z",
+        analysis_source="dns_tls_correlation",
+        analysis_confidence=1.4,
+        analysis_signals=("dns_query", "tls_sni", "dns_query"),
+    )
+
+    sanitized = flow_sanitization_service.sanitize_flow(flow, organization_id="org-1")
+
+    assert sanitized is not None
+    assert sanitized.network_scope == "egress"
+    assert sanitized.flow_direction == "outbound"
+    assert sanitized.internal_device_ip == "10.0.0.10"
+    assert sanitized.external_endpoint_ip == "8.8.8.8"
+    assert sanitized.analysis_confidence == 1.0
+    assert sanitized.analysis_signals == ("dns_query", "tls_sni")
+
+
+def test_sanitized_flow_derives_inbound_and_lateral_directions():
+    inbound = flow_sanitization_service.sanitize_flow(
+        SimpleNamespace(
+            src_ip="8.8.8.8",
+            dst_ip="10.0.0.10",
+            src_port=443,
+            dst_port=50222,
+            protocol="tcp",
+            packet_count=1,
+            byte_count=120,
+            duration=0.2,
+            agent_id="gateway-1",
+            start_time="2026-05-20T10:00:00Z",
+            last_seen="2026-05-20T10:00:01Z",
+        ),
+        organization_id="org-1",
+    )
+    lateral = flow_sanitization_service.sanitize_flow(
+        SimpleNamespace(
+            src_ip="10.0.0.10",
+            dst_ip="10.0.0.11",
+            src_port=445,
+            dst_port=445,
+            protocol="tcp",
+            packet_count=1,
+            byte_count=120,
+            duration=0.2,
+            agent_id="gateway-1",
+            start_time="2026-05-20T10:00:00Z",
+            last_seen="2026-05-20T10:00:01Z",
+        ),
+        organization_id="org-1",
+    )
+
+    assert inbound is not None
+    assert inbound.network_scope == "ingress"
+    assert inbound.flow_direction == "inbound"
+    assert lateral is not None
+    assert lateral.network_scope == "internal_lan"
+    assert lateral.flow_direction == "lateral"
+
+
+def test_decode_analysis_signals_handles_json_and_bad_values():
+    assert flow_service._decode_analysis_signals('["dns_query", "tls_sni", "dns_query"]') == [
+        "dns_query",
+        "tls_sni",
+    ]
+    assert flow_service._decode_analysis_signals("port_signature") == ["port_signature"]
+    assert flow_service._decode_analysis_signals(None) == []
+
+
+def test_flow_log_hash_lookup_prevents_cross_batch_duplicate_counting():
+    cursor = _RecentAlertCursor({"id": 99})
+
+    assert flow_service._flow_log_exists_by_hash(cursor, "abc123") is True
+
+    query, params = cursor.calls[0]
+    assert "FROM flow_logs" in query
+    assert "ingest_hash = %s" in query
+    assert params == ("abc123",)
 

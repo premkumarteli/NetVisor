@@ -109,7 +109,7 @@ export const getWebEvidenceScopeLabel = (item) => {
     eventCount,
     urlCount,
     titleCount,
-    text: `${eventCount} event${eventCount === 1 ? '' : 's'} · ${urlCount} URL${urlCount === 1 ? '' : 's'} · ${titleCount} title${titleCount === 1 ? '' : 's'}`,
+    text: `${eventCount} event${eventCount === 1 ? '' : 's'} - ${urlCount} URL${urlCount === 1 ? '' : 's'} - ${titleCount} title${titleCount === 1 ? '' : 's'}`,
   };
 };
 

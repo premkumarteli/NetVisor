@@ -28,6 +28,9 @@ from shared.collector import (
     FlowSummary,
     PacketObservation,
     build_capture_backend,
+    print_preflight_report,
+    run_preflight,
+    serialize_preflight_results,
 )
 try:
     from agent.dpi import WebInspectionController
@@ -119,6 +122,8 @@ class NetworkAgent:
         if "/api/v1/collect" in base:
             base = base.split("/api/v1/collect")[0]
 
+        self.server_url = base
+
         self.flow_url = base + "/api/v1/collect/flow/batch"
         self.heartbeat_url = base + "/api/v1/collect/heartbeat"
         self.devices_url = base + "/api/v1/collect/devices/batch"
@@ -128,8 +133,12 @@ class NetworkAgent:
 
         self.agent_id = self._init_agent_id()
         self.organization_id = self._resolve_initial_organization_id()
-        self.api_key = os.getenv("AGENT_API_KEY") or self.config.get("api_key", "soc-agent-key-2026")
+        self.api_key = str(os.getenv("AGENT_API_KEY") or self.config.get("api_key") or "").strip()
         self.heartbeat_interval = int(os.getenv("NETVISOR_AGENT_HEARTBEAT_SECONDS", "10"))
+        self.upload_batch_size = max(int(os.getenv("NETVISOR_AGENT_UPLOAD_BATCH_SIZE", "50")), 1)
+        self.upload_interval_seconds = max(float(os.getenv("NETVISOR_AGENT_UPLOAD_INTERVAL_SECONDS", "5")), 0.5)
+        self.upload_timeout_seconds = max(float(os.getenv("NETVISOR_AGENT_UPLOAD_TIMEOUT_SECONDS", "20")), 1.0)
+        self.upload_backoff_max_seconds = max(float(os.getenv("NETVISOR_AGENT_UPLOAD_BACKOFF_MAX_SECONDS", "30")), 1.0)
         self.web_proxy_port = int(os.getenv("NETVISOR_WEB_PROXY_PORT", "8899"))
         self.web_policy_refresh_seconds = int(os.getenv("NETVISOR_WEB_POLICY_REFRESH_SECONDS", "30"))
         self.capture_interface = (
@@ -203,6 +212,7 @@ class NetworkAgent:
         if self._background_workers_enabled:
             self._register_agent(force_reenroll=not self.api_client.has_credentials())
             if not self._enrollment_pending:
+                self._assert_hardening_ready()
                 self._start_operational_workers()
         else:
             logger.info("Agent background workers disabled for probe mode.")
@@ -250,8 +260,51 @@ class NetworkAgent:
             return []
         return parsed if isinstance(parsed, list) else []
 
+    def _hardening_findings(self) -> list[dict[str, str]]:
+        findings: list[dict[str, str]] = []
+        transport_snapshot = self.api_client.status_snapshot()
+
+        if not self.api_key:
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_bootstrap_key",
+                    "message": "Agent API bootstrap key is not configured.",
+                }
+            )
+
+        if self._background_workers_enabled and not self.api_client.has_credentials():
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "unenrolled_agent",
+                    "message": "Agent is not enrolled with signed credentials.",
+                }
+            )
+
+        if self._background_workers_enabled and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_tls_pins",
+                    "message": "Remote agent transport has no configured TLS pins.",
+                }
+            )
+
+        if self.local_network is None:
+            findings.append(
+                {
+                    "severity": "warning",
+                    "code": "network_uninferred",
+                    "message": "Agent discovery network could not be inferred automatically.",
+                }
+            )
+
+        return findings
+
     def status_snapshot(self):
         web_inspection = self.web_inspection.status_snapshot() if hasattr(self, "web_inspection") else {}
+        hardening_findings = self._hardening_findings()
         return {
             "agent_id": self.agent_id,
             "hostname": self.hostname,
@@ -270,7 +323,28 @@ class NetworkAgent:
             "capture": self.capture_backend.status_snapshot(),
             "transport": self.api_client.status_snapshot(),
             "web_inspection": web_inspection,
+            "hardening": {
+                "ready": not any(finding["severity"] == "critical" for finding in hardening_findings),
+                "finding_count": len(hardening_findings),
+                "findings": hardening_findings,
+            },
         }
+
+    def _assert_hardening_ready(self) -> None:
+        snapshot = self.status_snapshot()
+        hardening = snapshot.get("hardening", {})
+        if hardening.get("ready"):
+            return
+
+        findings = hardening.get("findings") or []
+        critical_findings = [finding for finding in findings if finding.get("severity") == "critical"]
+        if critical_findings:
+            summary = ", ".join(
+                f"{finding.get('code')}: {finding.get('message')}" for finding in critical_findings
+            )
+        else:
+            summary = "hardening checks failed"
+        raise RuntimeError(f"Agent hardening check failed: {summary}")
 
     def _start_operational_workers(self) -> None:
         if self._workers_started:
@@ -430,6 +504,7 @@ class NetworkAgent:
     def _upload_worker(self):
         batch = []
         last_send = time.time()
+        failure_count = 0
         while self.is_running:
             try:
                 try:
@@ -439,15 +514,30 @@ class NetworkAgent:
                 except queue.Empty:
                     pass
 
-                if len(batch) >= 20 or (time.time() - last_send > 5 and batch):
+                should_send = len(batch) >= self.upload_batch_size or (
+                    batch and time.time() - last_send > self.upload_interval_seconds
+                )
+                if should_send:
                     try:
-                        r = self.api_client.request("POST", self.flow_url, json_body=batch, timeout=10.0)
+                        r = self.api_client.request(
+                            "POST",
+                            self.flow_url,
+                            json_body=batch,
+                            timeout=self.upload_timeout_seconds,
+                        )
                         r.raise_for_status()
                         batch = []
+                        failure_count = 0
                         last_send = time.time()
                     except Exception as e:
-                        logger.error(f"Flow upload failed: {e}")
-                        time.sleep(2) # Backoff
+                        failure_count += 1
+                        status_code = getattr(getattr(e, "response", None), "status_code", None)
+                        delay = min(self.upload_backoff_max_seconds, 2 ** min(failure_count, 5))
+                        if status_code == 429:
+                            delay = max(delay, min(self.upload_backoff_max_seconds, 15))
+                        last_send = time.time()
+                        logger.error("Flow upload failed: %s. Retrying in %.1fs", e, delay)
+                        time.sleep(delay)
             except Exception as e:
                 logger.error(f"Upload worker error: {e}")
 
@@ -583,37 +673,25 @@ class NetworkAgent:
 
                 import concurrent.futures
 
-
                 futures = {self.discovery_pool.submit(self._resolve_discovered_device, c): c for c in candidates}
-
-
+                discovered_payloads = []
                 for future in concurrent.futures.as_completed(futures):
-
-
                     try:
-
-
                         payload, confidence = future.result()
-
-
                         self.device_inventory.update(
-                        payload["ip"],
-                        mac=payload["mac"],
-                        hostname=payload["hostname"],
-                        vendor=payload["vendor"],
-                        type=payload["device_type"],
-                        os=payload["os_family"],
-                        confidence=confidence,
-                    )
+                            payload["ip"],
+                            mac=payload["mac"],
+                            hostname=payload["hostname"],
+                            vendor=payload["vendor"],
+                            type=payload["device_type"],
+                            os=payload["os_family"],
+                            confidence=confidence,
+                        )
 
-
-                        self._sync_discovered_devices([payload])
-
-
+                        discovered_payloads.append(payload)
                     except Exception as exc:
-
-
                         logger.warning("Failed to resolve device: %s", exc)
+                self._sync_discovered_devices(discovered_payloads)
             except Exception as exc:
                 logger.warning("Discovery cycle failed: %s", exc)
             time.sleep(60)
@@ -641,6 +719,7 @@ class NetworkAgent:
                 return
 
         if self._background_workers_enabled and not self._workers_started:
+            self._assert_hardening_ready()
             self._start_operational_workers()
 
         print(f"{Fore.BLUE}[*] Netvisor Hybrid Agent Starting...")
@@ -660,6 +739,7 @@ class NetworkAgent:
 def main(config_path=DEFAULT_CONFIG_PATH) -> None:
     parser = argparse.ArgumentParser(description="NetVisor Agent")
     parser.add_argument("--health-check", action="store_true", help="Print a startup health snapshot and exit.")
+    parser.add_argument("--preflight", action="store_true", help="Run startup preflight checks and exit.")
     parser.add_argument("--reset-enrollment", action="store_true", help="Clear stored signed credentials and exit.")
     parser.add_argument(
         "--timeout",
@@ -668,6 +748,18 @@ def main(config_path=DEFAULT_CONFIG_PATH) -> None:
         help="Packet sniff timeout in seconds. Omit to run continuously until interrupted.",
     )
     args = parser.parse_args()
+
+    if args.preflight:
+        agent = NetworkAgent(config_path, start_background_workers=False)
+        results = run_preflight(
+            role="agent",
+            config_path=config_path,
+            server_url=agent.config.get("server_url"),
+            interface=agent.capture_interface,
+        )
+        print_preflight_report(results, title="NetVisor Agent Preflight")
+        print(serialize_preflight_results(results))
+        sys.exit(0 if all(result.passed or result.severity != "critical" for result in results) else 1)
 
     if args.health_check or args.reset_enrollment:
         agent = NetworkAgent(config_path, start_background_workers=False)

@@ -6,12 +6,14 @@ import logging
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from starlette.requests import ClientDisconnect
 
 from ..core.config import settings
 from ..core.dependencies import request_rate_limit
 from ..db.session import get_db_connection
 from ..schemas.flow_schema import FlowBase
 from ..schemas.user_schema import GenericResponse
+from ..services.device_service import device_service
 from ..services.flow_service import FlowQueueBackpressureError, flow_service
 from ..services.gateway_auth_service import GatewayAuthenticationError, gateway_auth_service
 from ..services.gateway_service import gateway_service
@@ -83,7 +85,11 @@ async def validate_gateway_bootstrap_key(request: Request):
 async def validate_gateway_request(request: Request):
     conn = get_db_connection()
     try:
-        body = await request.body()
+        try:
+            body = await request.body()
+        except ClientDisconnect:
+            logger.warning("Gateway request disconnected before body read: %s", request.url.path)
+            raise HTTPException(status_code=499, detail="Client disconnected")
         context = gateway_auth_service.authenticate_request(conn, request, body)
         conn.commit()
         return context
@@ -202,6 +208,9 @@ async def register_gateway(
             response["gateway_credentials"] = None
             response["message"] = "Gateway already registered. Use the rotation endpoint to issue a new credential."
         return response
+    except Exception as exc:
+        conn.rollback()
+        raise
     finally:
         if cursor:
             cursor.close()
@@ -240,6 +249,85 @@ async def gateway_heartbeat(
             organization_id=org_id,
             message="Gateway heartbeat recorded.",
         )
+    except Exception as exc:
+        conn.rollback()
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        conn.close()
+
+
+@router.post("/devices/batch", response_model=GenericResponse)
+async def receive_gateway_devices(
+    devices: list = Body(...),
+    _rate_limited: bool = Depends(gateway_control_rate_limit),
+    auth_context: dict = Depends(validate_gateway_request),
+):
+    """Receive gateway-discovered BYOD devices without enabling DPI/payload collection."""
+    if not devices:
+        return _collect_response(auth_context=auth_context, count=0)
+
+    authenticated_gateway_id = str(auth_context.get("gateway_id") or "").strip()
+    if not authenticated_gateway_id:
+        raise HTTPException(status_code=400, detail="gateway_id is required in authentication")
+
+    for index, dev in enumerate(devices):
+        _require_authenticated_gateway_id(
+            auth_context,
+            dev.get("gateway_id"),
+            source=f"device at index {index}",
+        )
+
+    conn = get_db_connection()
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        requested_org_id = devices[0].get("organization_id") if devices and isinstance(devices[0], dict) else None
+        org_id = _resolve_org_id(
+            cursor,
+            requested_org_id or _lookup_gateway_organization_id(cursor, authenticated_gateway_id),
+        )
+        cursor.close()
+        cursor = None
+
+        count = 0
+        for dev in devices:
+            if device_service.touch_device_seen(
+                conn,
+                ip=dev.get("ip"),
+                organization_id=org_id,
+                seen_at=dev.get("last_seen"),
+                agent_id=authenticated_gateway_id,
+                hostname=dev.get("hostname"),
+                mac=dev.get("mac"),
+                vendor=dev.get("vendor"),
+                device_type=dev.get("device_type"),
+                os_family=dev.get("os_family"),
+                create_if_missing=True,
+            ):
+                count += 1
+
+        conn.commit()
+
+        try:
+            from ..main import p_sio
+
+            for dev in devices:
+                await p_sio.emit("device_event", {"data": dev})
+        except Exception as emit_exc:
+            logger.debug("Gateway device websocket emit failed after commit: %s", emit_exc)
+
+        return _collect_response(
+            auth_context=auth_context,
+            organization_id=org_id,
+            count=count,
+            message=f"Upserted {count}/{len(devices)} gateway-discovered devices",
+        )
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Failed to upsert gateway devices: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to store gateway devices")
     finally:
         if cursor:
             cursor.close()

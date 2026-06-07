@@ -10,7 +10,8 @@ def build_reasons(breakdown: dict) -> list[str]:
     if breakdown.get("ml_score", 0) > 0.7 and "Anomalous Traffic Behavior" not in reasons:
         reasons.append("ML Anomaly Detected")
     if breakdown.get("vpn_score", 0) > 0.5 and "Possible VPN/Proxy Usage" not in reasons:
-        reasons.append("VPN Tunneling signature")
+        reason = breakdown.get("vpn_reason") or "VPN Tunneling signature"
+        reasons.append(reason)
     if breakdown.get("baseline_score", 0) > 0.5:
         reasons.append("Behavioral deviation from baseline")
     return list(dict.fromkeys(reasons))

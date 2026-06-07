@@ -1,0 +1,54 @@
+# Multi-stage build for NetVisor Agent
+FROM python:3.11-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libpcap-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements-agent.txt .
+
+# Create a complete offline wheelhouse, including transitive dependencies.
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements-agent.txt
+
+
+# Runtime stage
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies (packet capture, network tools)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpcap0.8 \
+    tcpdump \
+    iputils-ping \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy wheels from builder
+COPY --from=builder /build/wheels /wheels
+COPY --from=builder /build/requirements-agent.txt .
+
+# Install Python packages without reaching the network in the runtime stage.
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-agent.txt
+
+# Copy application code
+COPY agent/ ./agent/
+COPY config/ ./config/
+COPY shared/ ./shared/
+COPY run_agent.py .
+
+# Create non-root user with capabilities for packet capture
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Health check validates the collector can load config and runtime dependencies.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python run_agent.py --health-check || exit 1
+
+# Start agent
+CMD ["python", "run_agent.py"]

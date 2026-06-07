@@ -23,6 +23,7 @@
   top: 0;
   z-index: 20;
   display: flex;
+  width: var(--nv-rail-width);
   height: 100vh;
   flex-direction: column;
   gap: var(--nv-space-5);
@@ -30,6 +31,10 @@
   border-right: 1px solid var(--nv-border);
   background: linear-gradient(180deg, var(--nv-surface-strong), var(--nv-surface-soft));
   backdrop-filter: blur(16px);
+}
+
+.nv-shell--collapsed .nv-rail {
+  width: var(--nv-rail-collapsed-width);
 }
 
 .nv-rail__header {
@@ -44,8 +49,8 @@
   gap: var(--nv-space-3);
   padding: 0.85rem;
   border-radius: var(--nv-radius-md);
-  border: 1px solid rgba(84, 200, 232, 0.16);
-  background: linear-gradient(135deg, rgba(84, 200, 232, 0.08), rgba(255, 255, 255, 0.02));
+  border: 1px solid color-mix(in srgb, var(--color-accent, #54c8e8) 16%, transparent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent, #54c8e8) 8%, transparent), rgba(255, 255, 255, 0.02));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
@@ -55,7 +60,7 @@
   width: 2.3rem;
   place-items: center;
   border-radius: 15px;
-  background: rgba(84, 200, 232, 0.12);
+  background: color-mix(in srgb, var(--color-accent, #54c8e8) 12%, transparent);
   color: var(--nv-accent);
   font-size: 1.1rem;
 }
@@ -128,10 +133,27 @@
 }
 
 .nv-rail__link.is-active {
-  border-color: rgba(84, 200, 232, 0.18);
-  background: linear-gradient(135deg, rgba(84, 200, 232, 0.12), rgba(255, 255, 255, 0.03));
+  position: relative;
+  border-color: color-mix(in srgb, var(--color-accent, #54c8e8) 32%, rgba(255, 255, 255, 0.06));
+  background: 
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 50%),
+    linear-gradient(135deg, color-mix(in srgb, var(--color-accent, #54c8e8) 16%, transparent), rgba(255, 255, 255, 0.02));
   color: var(--nv-text);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 
+    0 4px 16px color-mix(in srgb, var(--color-accent, #54c8e8) 8%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.16);
+}
+
+.nv-rail__link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 4px;
+  background: var(--color-accent, #54c8e8);
+  border-radius: 99px;
+  box-shadow: 0 0 8px var(--color-accent, #54c8e8);
 }
 
 .nv-rail__link-icon {
@@ -185,7 +207,7 @@
 
 .nv-workspace {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   width: 100%;
   min-width: 0;
   overflow-x: clip;
@@ -199,6 +221,7 @@
   min-width: 0;
   flex-direction: column;
   gap: 1.1rem;
+  margin-inline: auto;
 }
 
 .nv-page--balanced {

@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@source "../index.html";
 @source "./**/*.{js,ts,jsx,tsx}";
 
 @theme {
@@ -14,41 +13,39 @@
 }
 
 @import "./styles/tokens.css";
+@import "./styles/themes.css";
+@import "./styles/animations.css";
+@import "./styles/glass.css";
 @import "./styles/base.css";
 @import "./styles/layout.css";
 @import "./styles/components.css";
 
 :root {
-  /* Core Colors */
+  /* Mapped Core Colors from Semantic Tokens */
   --bg-dark: #000000;
-  --bg-card: rgba(11, 15, 26, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-surface: rgba(255, 255, 255, 0.03);
+  --bg-card: var(--color-surface, rgba(11, 15, 26, 0.7));
+  --glass-border: var(--border-glow, rgba(255, 255, 255, 0.08));
+  --glass-surface: var(--color-surface-elevated, rgba(255, 255, 255, 0.03));
 
-  /* Neon Accents - Glows Restored */
-  --primary: #00f5ff;
-  /* Cyan Neon */
-  --primary-glow: rgba(0, 245, 255, 0.15);
+  /* Neon Accents */
+  --primary: var(--color-accent, #00f5ff);
+  --primary-glow: var(--color-accent-glow, rgba(0, 245, 255, 0.15));
 
-  --secondary: #8b5cf6;
-  /* Violet */
+  --secondary: var(--color-secondary, #8b5cf6);
   --secondary-glow: rgba(139, 92, 246, 0.15);
 
-  --danger: #ff2a2a;
-  /* Red Neon */
+  --danger: var(--color-danger, #ff2a2a);
   --danger-glow: rgba(255, 42, 42, 0.15);
 
-  --success: #00ff9d;
-  /* Green Neon */
+  --success: var(--color-success, #00ff9d);
   --success-glow: rgba(0, 255, 157, 0.15);
 
-  --warning: #ffbf00;
-  /* Amber Neon */
+  --warning: var(--color-warning, #ffbf00);
   --warning-glow: rgba(255, 191, 0, 0.15);
 
   /* Text */
-  --text-main: #ffffff;
-  --text-muted: #94a3b8;
+  --text-main: var(--text-primary, #ffffff);
+  --text-muted: var(--text-secondary, #94a3b8);
 
   /* Dimensions */
   --sidebar-width: 260px;
@@ -58,7 +55,7 @@
   --radius-card: 16px;
   --radius-btn: 8px;
 
-  --bg-sidebar: rgba(5, 5, 5, 0.8);
+  --bg-sidebar: var(--color-surface, rgba(5, 5, 5, 0.8));
   --blur-sidebar: blur(20px);
 
   /* React App Specific */
@@ -123,81 +120,60 @@ body {
   pointer-events: none;
   overflow: hidden;
   background-color: var(--bg-dark);
-  background: 
-    radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.18), transparent 45%),
-    radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.15), transparent 45%),
-    radial-gradient(circle at 50% -20%, #0f172a 0%, var(--bg-dark) 100%);
+  background: var(--bg-gradient, radial-gradient(circle at 20% 30%, rgba(6, 182, 212, 0.18), transparent 45%), radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.15), transparent 45%), radial-gradient(circle at 50% -20%, #0f172a 0%, var(--bg-dark) 100%));
+}
+
+@keyframes liquid-morph {
+  0% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+  33% {
+    border-radius: 70% 30% 52% 48% / 60% 40% 60% 40%;
+    transform: translate(80px, -60px) rotate(120deg) scale(1.15);
+  }
+  66% {
+    border-radius: 50% 50% 30% 70% / 50% 60% 40% 50%;
+    transform: translate(-60px, 80px) rotate(240deg) scale(0.9);
+  }
+  100% {
+    border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%;
+    transform: translate(0, 0) rotate(360deg) scale(1);
+  }
 }
 
 .ambient-background__glow {
   position: absolute;
   width: 45rem;
   height: 45rem;
-  border-radius: 50%;
-  filter: blur(140px);
-  opacity: 0.22;
+  filter: blur(90px);
+  opacity: 0.24;
   pointer-events: none;
+  animation: liquid-morph 25s infinite ease-in-out;
 }
-
-
-/* Cyber Flicker Animation */
-@keyframes flicker {
-  0% { opacity: 0.97; }
-  5% { opacity: 0.88; }
-  10% { opacity: 0.95; }
-  15% { opacity: 0.81; }
-  20% { opacity: 0.94; }
-  25% { opacity: 0.88; }
-  30% { opacity: 0.82; }
-  35% { opacity: 0.99; }
-  45% { opacity: 0.92; }
-}
-
-.flicker-slow {
-  animation: flicker 12s infinite;
-}
-
-/* Terminal Cursor */
-.terminal-cursor::after {
-  content: "_";
-  animation: blink 1s infinite;
-}
-
-@keyframes blink {
-  50% { opacity: 0; }
-}
-
-.glass-panel {
-  background: var(--bg-card);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-card);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: border-color 0.3s ease;
-}
-
-.glass-panel:hover {
-  border-color: rgba(6, 182, 212, 0.2);
-}
-
 
 .ambient-background__glow--cyan {
-  top: -10rem;
+  top: -12rem;
   left: -8rem;
-  background: rgba(18, 3, 160, 0.45);
+  background: rgba(6, 182, 212, 0.4);
+  animation-duration: 20s;
+  animation-delay: -3s;
 }
 
 .ambient-background__glow--violet {
-  top: 12rem;
+  top: 15rem;
   right: -12rem;
   background: rgba(139, 92, 246, 0.35);
+  animation-duration: 28s;
+  animation-delay: -7s;
 }
 
 .ambient-background__glow--blue {
-  bottom: -14rem;
-  left: 32%;
+  bottom: -15rem;
+  left: 28%;
   background: rgba(37, 99, 235, 0.3);
+  animation-duration: 34s;
+  animation-delay: -11s;
 }
 
 /* --- Typography --- */
@@ -282,10 +258,10 @@ h6 {
 
 .nav-link:hover,
 .nav-link.active {
-  background: rgba(6, 182, 212, 0.1);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
   border-color: var(--glass-border);
-  box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
+  box-shadow: 0 0 15px color-mix(in srgb, var(--primary) 10%, transparent);
   transform: translateX(5px);
 }
 
@@ -351,16 +327,35 @@ h6 {
 
 .stat-card,
 .chart-card {
-  background: var(--bg-card);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
+  position: relative;
+  overflow: hidden;
+  background: 
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 45%),
+    var(--bg-card);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--glass-border) 70%, rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-card);
+  box-shadow: 
+    var(--nv-shadow-md), 
+    inset 0 1.5px 1.5px rgba(255, 255, 255, 0.16), 
+    inset 0 -1px 1px rgba(0, 0, 0, 0.25);
   padding: 1.5rem;
   overflow-x: auto;
   transition:
     transform 0.2s,
-    box-shadow 0.2s;
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+
+.stat-card::after,
+.chart-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 35%, rgba(255, 255, 255, 0) 36%);
+  opacity: 0.85;
 }
 
 .stat-card:hover {
@@ -668,18 +663,21 @@ tr:hover td {
   background: rgba(0, 255, 157, 0.1);
   color: var(--success);
   border-color: rgba(0, 255, 157, 0.25);
+  animation: neon-pulse-success 3s infinite ease-in-out;
 }
 
 .badge.warning {
   background: rgba(255, 191, 0, 0.12);
   color: var(--warning);
   border-color: rgba(255, 191, 0, 0.25);
+  animation: neon-pulse-warning 3s infinite ease-in-out;
 }
 
 .badge.danger {
   background: rgba(255, 42, 42, 0.12);
   color: #ff8f8f;
   border-color: rgba(255, 42, 42, 0.25);
+  animation: neon-pulse-danger 3s infinite ease-in-out;
 }
 
 .badge.neutral,
@@ -806,54 +804,7 @@ tr:hover td {
   gap: 0.5rem;
 }
 
-.pulse {
-  animation: pulse 2s infinite;
-}
 
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(0, 245, 255, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(0, 245, 255, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(0, 245, 255, 0);
-  }
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1.05); }
-  100% { opacity: 0.6; transform: scale(0.95); }
-}
-
-.pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-.no-flicker {
-  animation: none !important;
-}
-
-@keyframes skeleton-loading {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
-}
-
-.skeleton {
-  background: linear-gradient(90deg, 
-    rgba(255, 255, 255, 0.03) 25%, 
-    rgba(255, 255, 255, 0.08) 37%, 
-    rgba(255, 255, 255, 0.03) 63%
-  );
-  background-size: 400% 100%;
-  animation: skeleton-loading 1.4s ease infinite;
-}
-
-tr.fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
-}
 
 /* --- Mobile --- */
 @media (max-width: 768px) {
@@ -1036,14 +987,7 @@ tr.fade-in {
   transform: scale(0.95);
 }
 
-/* Glassmorphism Polish */
-.glass-panel {
-  background: var(--bg-card);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-card);
-}
+
 
 .page-shell {
   display: flex;
@@ -1738,4 +1682,68 @@ tr.fade-in {
 .bg-highlight {
   background: rgba(0, 247, 255, 0.05) !important;
   transition: background 1s ease;
+}
+
+/* --------------------------------------------------------------------------
+   Performance Guardrails
+   Keep cinematic styling available, but make daily navigation feel immediate.
+   -------------------------------------------------------------------------- */
+
+:root[data-performance="minimal"] *,
+:root[data-performance="standard"] * {
+  scroll-behavior: auto;
+}
+
+:root[data-performance="minimal"] .nv-surface,
+:root[data-performance="minimal"] .nv-section,
+:root[data-performance="minimal"] .nv-metric,
+:root[data-performance="minimal"] .nv-empty,
+:root[data-performance="minimal"] .nv-filterbar,
+:root[data-performance="minimal"] .nv-table-shell,
+:root[data-performance="standard"] .nv-surface,
+:root[data-performance="standard"] .nv-section,
+:root[data-performance="standard"] .nv-metric,
+:root[data-performance="standard"] .nv-empty,
+:root[data-performance="standard"] .nv-filterbar,
+:root[data-performance="standard"] .nv-table-shell {
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  backdrop-filter: blur(10px) saturate(130%);
+}
+
+:root[data-performance="minimal"] .nv-surface::before,
+:root[data-performance="minimal"] .nv-section::before,
+:root[data-performance="minimal"] .nv-metric::before,
+:root[data-performance="minimal"] .nv-table-shell::before,
+:root[data-performance="standard"] .nv-surface::before,
+:root[data-performance="standard"] .nv-section::before,
+:root[data-performance="standard"] .nv-metric::before,
+:root[data-performance="standard"] .nv-table-shell::before,
+:root[data-performance="standard"] .glossy-effect::before,
+:root[data-performance="standard"] .glossy-effect::after {
+  animation: none;
+}
+
+:root[data-performance="minimal"] .ambient-background__glow,
+:root[data-performance="minimal"] .scanlines,
+:root[data-performance="minimal"] .glossy-effect::before,
+:root[data-performance="minimal"] .glossy-effect::after {
+  display: none;
+}
+
+:root[data-performance="minimal"] .nv-section:hover,
+:root[data-performance="minimal"] .nv-metric:hover,
+:root[data-performance="standard"] .nv-section:hover,
+:root[data-performance="standard"] .nv-metric:hover {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

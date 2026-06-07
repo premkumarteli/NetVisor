@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO", validation_alias="NETVISOR_LOG_LEVEL")
     DEBUG: bool = Field(default=False, validation_alias="NETVISOR_DEBUG")
     GEOIP_ASN_DB_PATH: str = Field(
-        default=str(PROJECT_ROOT / "database" / "GeoLite2-ASN.mmdb"),
+        default=str(PROJECT_ROOT / "infra" / "database" / "GeoLite2-ASN.mmdb"),
         validation_alias="NETVISOR_GEOIP_ASN_DB_PATH",
     )
     BACKUP_DIR: str = Field(

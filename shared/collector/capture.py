@@ -40,6 +40,7 @@ class CaptureBackend(ABC):
         self._last_packet_at_ts: Optional[float] = None
         self._last_emit_at_ts: Optional[float] = None
         self._last_error: Optional[str] = None
+        self._error_category: Optional[str] = None
         self._seen_packets = 0
         self._emitted_packets = 0
         self._dropped_packets = 0
@@ -64,6 +65,7 @@ class CaptureBackend(ABC):
             self._last_packet_at_ts = None
             self._last_emit_at_ts = None
             self._last_error = None
+            self._error_category = None
             self._seen_packets = 0
             self._emitted_packets = 0
             self._dropped_packets = 0
@@ -85,11 +87,47 @@ class CaptureBackend(ABC):
             self._emitted_packets += 1
             self._last_emit_at_ts = now
 
-    def _record_drop(self, message: str | None = None) -> None:
+    def _categorize_error(self, message: str | None) -> str:
+        text = str(message or "").strip().lower()
+        if not text or text == "filtered":
+            return "filtered"
+        if "permission" in text or "access is denied" in text or "administrator" in text or "npcap" in text:
+            return "permission"
+        if "interface" in text or "no such device" in text or "adapter" in text:
+            return "interface_missing"
+        if "decode" in text or "malformed" in text:
+            return "decode"
+        if "timeout" in text or "timed out" in text:
+            return "timeout"
+        return "unknown"
+
+    def _record_drop(self, message: str | None = None, category: str | None = None) -> None:
         with self._metrics_lock:
             self._dropped_packets += 1
             if message:
                 self._last_error = message
+                self._error_category = category or self._categorize_error(message)
+
+    def _health_status(
+        self,
+        *,
+        running: bool,
+        started_at: Optional[float],
+        seen_packets: int,
+        dropped_packets: int,
+        drop_rate: float,
+        lag_seconds: Optional[float],
+        error_category: Optional[str],
+    ) -> str:
+        if not running:
+            return "stopped" if started_at else "unknown"
+        if error_category in {"permission", "interface_missing"}:
+            return "unhealthy"
+        if seen_packets <= 0:
+            return "warming"
+        if drop_rate >= 0.1 or (lag_seconds is not None and lag_seconds > 30):
+            return "degraded"
+        return "healthy"
 
     def _normalize_capture_result(self, result) -> bool:
         if result is None:
@@ -106,6 +144,7 @@ class CaptureBackend(ABC):
             last_packet_at = self._last_packet_at_ts
             last_emit_at = self._last_emit_at_ts
             last_error = self._last_error
+            error_category = self._error_category
             seen_packets = self._seen_packets
             emitted_packets = self._emitted_packets
             dropped_packets = self._dropped_packets
@@ -114,6 +153,16 @@ class CaptureBackend(ABC):
         lag_seconds = None
         if last_packet_at is not None:
             lag_seconds = max(time.time() - last_packet_at, 0.0)
+        drop_rate = (float(dropped_packets) / float(seen_packets)) if seen_packets > 0 else 0.0
+        health_status = self._health_status(
+            running=running,
+            started_at=started_at,
+            seen_packets=seen_packets,
+            dropped_packets=dropped_packets,
+            drop_rate=drop_rate,
+            lag_seconds=lag_seconds,
+            error_category=error_category,
+        )
 
         return {
             "requested_backend": self.requested_backend,
@@ -128,6 +177,9 @@ class CaptureBackend(ABC):
             "packets_seen": seen_packets,
             "packets_emitted": emitted_packets,
             "packets_dropped": dropped_packets,
+            "drop_rate": round(drop_rate, 4),
+            "health_status": health_status,
+            "error_category": error_category,
             "last_error": last_error,
         }
 

@@ -74,7 +74,7 @@ const LoginPage = () => {
 
       <form onSubmit={handleLogin} className="nv-auth__form">
         <label className="nv-auth__field">
-          <span className="nv-auth__label">Username</span>
+          <span className="nv-auth__label">Username or email</span>
           <input
             type="text"
             className="nv-auth__input"

@@ -35,3 +35,18 @@ async def get_app_devices(app_name: str, current_user: dict = Depends(require_or
         }
     finally:
         conn.close()
+
+
+@router.get("/{app_name}/workspace")
+async def get_app_workspace(app_name: str, current_user: dict = Depends(require_org_admin)):
+    conn = get_db_connection()
+    try:
+        org_id = current_user.get("organization_id")
+        decoded_name = unquote(app_name)
+        return application_service.get_application_workspace(
+            conn,
+            app_name=decoded_name,
+            organization_id=org_id,
+        )
+    finally:
+        conn.close()

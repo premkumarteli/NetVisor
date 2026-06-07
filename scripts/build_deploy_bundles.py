@@ -15,10 +15,9 @@ CANONICAL_RUNTIME_ROOTS = {
     "agent",
     "gateway",
     "shared",
-    "database",
+    "infra",
     "frontend",
     "config",
-    "deployment",
     "scripts",
     "run_server.py",
     "run_flow_worker.py",
@@ -36,6 +35,11 @@ IGNORE_PATTERNS = shutil.ignore_patterns(
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
+    ".env",
+    ".env.*",
+    "*.session",
+    "*.db",
+    "node_modules",
 )
 
 
@@ -43,8 +47,8 @@ BUNDLES = {
     "server": [
         ("app", "app"),
         ("shared", "shared"),
-        ("database/init.sql", "database/init.sql"),
-        ("database/migrations", "database/migrations"),
+        ("infra/database/init.sql", "database/init.sql"),
+        ("infra/database/migrations", "database/migrations"),
         ("frontend/dist", "frontend/dist"),
         ("requirements-server.txt", "requirements.txt"),
         ("run_server.py", "run_server.py"),
@@ -53,12 +57,12 @@ BUNDLES = {
         ("scripts/run_server.py", "scripts/run_server.py"),
         ("scripts/run_flow_worker.py", "scripts/run_flow_worker.py"),
         ("scripts/run_backup_retention.py", "scripts/run_backup_retention.py"),
-        ("deployment/server/README.md", "README.md"),
-        ("deployment/server/.env.example", ".env.example"),
-        ("deployment/server/docker-compose.yml", "docker-compose.yml"),
-        ("deployment/server/Caddyfile", "Caddyfile"),
-        ("deployment/server/systemd/netvisor-backup-retention.service", "systemd/netvisor-backup-retention.service"),
-        ("deployment/server/systemd/netvisor-backup-retention.timer", "systemd/netvisor-backup-retention.timer"),
+        ("infra/deployment/server/README.md", "README.md"),
+        ("infra/deployment/server/.env.example", ".env.example"),
+        ("infra/deployment/server/docker-compose.yml", "docker-compose.yml"),
+        ("infra/deployment/server/Caddyfile", "Caddyfile"),
+        ("infra/deployment/server/systemd/netvisor-backup-retention.service", "systemd/netvisor-backup-retention.service"),
+        ("infra/deployment/server/systemd/netvisor-backup-retention.timer", "systemd/netvisor-backup-retention.timer"),
     ],
     "agent": [
         ("agent", "agent"),
@@ -68,9 +72,9 @@ BUNDLES = {
         ("run_agent.py", "run_agent.py"),
         ("scripts/run_agent.py", "scripts/run_agent.py"),
         ("scripts/launch_personal_chrome_dpi.cmd", "scripts/launch_personal_chrome_dpi.cmd"),
-        ("deployment/agent/systemd/netvisor-agent.service", "systemd/netvisor-agent.service"),
-        ("deployment/agent/README.md", "README.md"),
-        ("deployment/agent/.env.example", ".env.example"),
+        ("infra/deployment/agent/systemd/netvisor-agent.service", "systemd/netvisor-agent.service"),
+        ("infra/deployment/agent/README.md", "README.md"),
+        ("infra/deployment/agent/.env.example", ".env.example"),
     ],
     "gateway": [
         ("gateway", "gateway"),
@@ -78,9 +82,9 @@ BUNDLES = {
         ("requirements-gateway.txt", "requirements.txt"),
         ("run_gateway.py", "run_gateway.py"),
         ("scripts/run_gateway.py", "scripts/run_gateway.py"),
-        ("deployment/gateway/systemd/netvisor-gateway.service", "systemd/netvisor-gateway.service"),
-        ("deployment/gateway/README.md", "README.md"),
-        ("deployment/gateway/.env.example", ".env.example"),
+        ("infra/deployment/gateway/systemd/netvisor-gateway.service", "systemd/netvisor-gateway.service"),
+        ("infra/deployment/gateway/README.md", "README.md"),
+        ("infra/deployment/gateway/.env.example", ".env.example"),
     ],
 }
 
@@ -131,6 +135,13 @@ def copy_item(source_rel: str, destination_rel: str, bundle_root: Path) -> None:
     if not source.exists():
         raise FileNotFoundError(f"Required bundle asset is missing: {source}")
 
+    if (
+        source.name == ".env"
+        or (source.name.startswith(".env.") and source.name != ".env.example")
+        or source.suffix in {".session", ".db"}
+    ):
+        raise ValueError(f"Refusing to package secret/runtime artifact into deploy bundle: {source_rel}")
+
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     if source.is_dir():
@@ -150,6 +161,10 @@ def build_bundle(bundle_name: str, output_root: Path) -> Path:
 
     for source_rel, destination_rel in BUNDLES[bundle_name]:
         copy_item(source_rel, destination_rel, bundle_root)
+
+    for secret_pattern in (".env", ".env.example.bak", "*.session", "*.db"):
+        if any(bundle_root.rglob(secret_pattern)):
+            raise ValueError(f"Bundle '{bundle_name}' still contains forbidden artifacts matching: {secret_pattern}")
 
     return bundle_root
 

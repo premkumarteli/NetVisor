@@ -75,7 +75,11 @@ class AuthService:
     def authenticate(self, db_conn, username, password) -> Optional[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+            login_identifier = str(username or "").strip()
+            cursor.execute(
+                "SELECT * FROM users WHERE username = %s OR email = %s LIMIT 1",
+                (login_identifier, login_identifier),
+            )
             user = cursor.fetchone()
             if not user:
                 return None

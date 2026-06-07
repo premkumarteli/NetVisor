@@ -9,6 +9,12 @@ class SessionService:
     def __init__(self) -> None:
         self._schema_ready = False
 
+    def _normalize_session_target(self, domain: str | None, external_ip: str | None) -> str:
+        normalized_domain = str(domain or "").strip().lower().rstrip(".")
+        if normalized_domain.startswith("www."):
+            normalized_domain = normalized_domain[4:]
+        return normalized_domain or str(external_ip or "").strip() or "-"
+
     def ensure_table(self, db_conn) -> None:
         if self._schema_ready:
             return
@@ -28,8 +34,7 @@ class SessionService:
             organization_id or "-",
             device_ip,
             application or "Other",
-            domain or "-",
-            external_ip or "-",
+            self._normalize_session_target(domain, external_ip),
         ]
         return sha1("|".join(parts).encode("utf-8")).hexdigest()
 

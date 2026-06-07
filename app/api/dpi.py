@@ -12,6 +12,86 @@ import asyncio
 router = APIRouter()
 logger = logging.getLogger("netvisor.api.dpi")
 
+
+def _normalize_text(value: object) -> str:
+    return str(value or "").strip().lower()
+
+
+def _build_group_key(event: dict) -> str:
+    browser = _normalize_text(event.get("browser_name") or event.get("process_name") or "unknown")
+    domain = _normalize_text(event.get("base_domain") or event.get("domain") or "unknown")
+    content_id = _normalize_text(event.get("content_id"))
+    search_query = _normalize_text(event.get("search_query"))
+    page_title = _normalize_text(event.get("page_title"))
+    page_url = _normalize_text(event.get("page_url"))
+    return f"{browser}|{domain}|{content_id or search_query or page_title or page_url or 'session'}"
+
+
+def _group_app_events(events: list[dict]) -> list[dict]:
+    grouped: dict[str, dict] = {}
+    for event in events:
+        group_key = _build_group_key(event)
+        current = grouped.get(group_key)
+        if current is None:
+            current = {
+                "group_key": group_key,
+                "group_label": event.get("page_title") or event.get("content_id") or event.get("base_domain") or event.get("domain") or "Browser Evidence",
+                "device_ip": event.get("device_ip") or "",
+                "agent_id": event.get("agent_id"),
+                "page_url": event.get("page_url") or event.get("base_domain") or event.get("domain") or "",
+                "base_domain": event.get("base_domain") or event.get("domain") or "Unknown",
+                "page_title": event.get("page_title") or "Untitled Page",
+                "browser_name": event.get("browser_name") or event.get("process_name") or "Unknown",
+                "process_name": event.get("process_name") or "unknown",
+                "content_category": event.get("content_category") or "web",
+                "content_id": event.get("content_id"),
+                "search_query": event.get("search_query"),
+                "event_count": 0,
+                "risk_level": event.get("risk_level") or "safe",
+                "confidence_score": float(event.get("confidence_score") or 0.0),
+                "request_bytes": 0,
+                "response_bytes": 0,
+                "first_seen": event.get("first_seen") or event.get("last_seen") or event.get("timestamp"),
+                "last_seen": event.get("last_seen") or event.get("timestamp"),
+                "page_urls": [],
+                "page_titles": [],
+                "content_ids": [],
+                "search_queries": [],
+            }
+            grouped[group_key] = current
+
+        current["event_count"] += 1
+        current["request_bytes"] += int(event.get("request_bytes") or 0)
+        current["response_bytes"] += int(event.get("response_bytes") or 0)
+        current["confidence_score"] = max(current["confidence_score"], float(event.get("confidence_score") or 0.0))
+        if _normalize_text(event.get("risk_level")) == "critical":
+            current["risk_level"] = "critical"
+        elif _normalize_text(event.get("risk_level")) == "high" and current["risk_level"] != "critical":
+            current["risk_level"] = "high"
+        elif _normalize_text(event.get("risk_level")) == "medium" and current["risk_level"] not in {"critical", "high"}:
+            current["risk_level"] = "medium"
+
+        for field_name, list_name in (
+            ("page_url", "page_urls"),
+            ("page_title", "page_titles"),
+            ("content_id", "content_ids"),
+            ("search_query", "search_queries"),
+        ):
+            value = str(event.get(field_name) or "").strip()
+            if value and value not in current[list_name]:
+                current[list_name].append(value)
+
+        event_last_seen = event.get("last_seen") or event.get("timestamp")
+        if event_last_seen and (not current["last_seen"] or str(event_last_seen) >= str(current["last_seen"])):
+            current["last_seen"] = event_last_seen
+            current["page_url"] = event.get("page_url") or current["page_url"]
+            current["page_title"] = event.get("page_title") or current["page_title"]
+            current["base_domain"] = event.get("base_domain") or event.get("domain") or current["base_domain"]
+
+    grouped_rows = list(grouped.values())
+    grouped_rows.sort(key=lambda row: (str(row.get("last_seen") or ""), row.get("event_count") or 0), reverse=True)
+    return grouped_rows
+
 @router.get("/events", response_model=GlobalWebActivityResponse)
 async def get_dpi_events(
     device_id: Optional[str] = Query(None),
@@ -46,8 +126,7 @@ async def get_dpi_events_by_app(app_name: str, limit: int = Query(100, ge=1, le=
             classified_name = application_service.classify_by_domain(base_domain) or ""
             if service_name.strip().lower() == normalized or classified_name.strip().lower() == normalized:
                 filtered.append(event)
-        events = filtered
-        return {"activity": events}
+        return {"activity": _group_app_events(filtered)}
     finally:
         conn.close()
 

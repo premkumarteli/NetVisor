@@ -20,10 +20,16 @@ def test_classify_app_prefers_sni_over_domain():
 
 def test_classify_app_maps_known_domains_by_base_domain():
     assert application_service.classify_app(SimpleNamespace(domain="rr1---sn.googlevideo.com")) == "YouTube"
+    assert application_service.classify_app(SimpleNamespace(domain="i.ytimg.com")) == "YouTube"
     assert application_service.classify_app(SimpleNamespace(domain="www.instagram.com")) == "Instagram"
     assert application_service.classify_app(SimpleNamespace(domain="static.whatsapp.net")) == "WhatsApp"
+    assert application_service.classify_app(SimpleNamespace(domain="web.telegram.org")) == "Telegram"
+    assert application_service.classify_app(SimpleNamespace(domain="gateway.discord.gg")) == "Discord"
     assert application_service.classify_app(SimpleNamespace(domain="chat.openai.com")) == "ChatGPT"
+    assert application_service.classify_app(SimpleNamespace(domain="claude.ai")) == "Claude"
     assert application_service.classify_app(SimpleNamespace(domain="www.perplexity.ai")) == "Perplexity"
+    assert application_service.classify_app(SimpleNamespace(domain="meet.google.com")) == "Google Meet"
+    assert application_service.classify_app(SimpleNamespace(domain="play.google.com")) == "Google Play"
     assert application_service.classify_by_domain("cloudapp.azure.com") == "Azure CloudApp"
     assert application_service.classify_by_domain("main.vscode-cdn.net") == "Visual Studio Code"
     assert application_service.classify_by_domain("f-log-extension.grammarly.io") == "Grammarly"

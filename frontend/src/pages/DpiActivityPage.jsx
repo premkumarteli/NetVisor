@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { systemService } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -12,6 +12,7 @@ import WebEvidenceDrawer from '../components/DPI/WebEvidenceDrawer';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, getRiskTone } from '../utils/presentation';
 import { getWebEvidencePrimaryLabel, getWebEvidenceScopeLabel, normalizeWebRiskLevel } from '../utils/webEvidence';
+import { beautifyDpiUrl, isDpiNoise } from '../utils/webNoise';
 
 const DpiActivityPage = () => {
   const { deviceIp } = useParams();
@@ -23,6 +24,7 @@ const DpiActivityPage = () => {
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [filter, setFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [hideNoise, setHideNoise] = useState(true);
 
   const fetchActivity = useCallback(async () => {
     try {
@@ -56,18 +58,26 @@ const DpiActivityPage = () => {
   useWebSocket('dpi_event', handleDpiEvent);
 
   const filteredEvents = useMemo(() => {
-    if (filter === 'all') return events;
-    if (filter === 'threats') {
-      return events.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
+    let result = events;
+    if (hideNoise) {
+      result = result.filter((entry) => !isDpiNoise(entry));
     }
-    return events.filter((entry) => entry.content_category === filter);
-  }, [events, filter]);
+    if (filter === 'all') return result;
+    if (filter === 'threats') {
+      return result.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
+    }
+    return result.filter((entry) => entry.content_category === filter);
+  }, [events, filter, hideNoise]);
 
   const filteredGroups = useMemo(() => {
-    if (filter === 'all') return evidenceGroups;
-    if (filter === 'threats') return evidenceGroups.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
-    return evidenceGroups.filter((entry) => entry.content_category === filter);
-  }, [evidenceGroups, filter]);
+    let result = evidenceGroups;
+    if (hideNoise) {
+      result = result.filter((entry) => !isDpiNoise(entry));
+    }
+    if (filter === 'all') return result;
+    if (filter === 'threats') return result.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
+    return result.filter((entry) => entry.content_category === filter);
+  }, [evidenceGroups, filter, hideNoise]);
 
   const stats = useMemo(() => {
     const total = events.length;
@@ -130,7 +140,7 @@ const DpiActivityPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.page_title || 'Untitled page'}</div>
-          <div className="nv-table__meta">{row.page_url || row.base_domain || '-'}</div>
+          <div className="nv-table__meta" title={row.page_url}>{beautifyDpiUrl(row.page_url || row.base_domain)}</div>
         </>
       ),
     },
@@ -173,8 +183,8 @@ const DpiActivityPage = () => {
     <div className="nv-page nv-page--balanced">
       <PageHeader
         eyebrow="Investigation"
-        title={`Browser Activity · ${deviceInfo?.hostname || decodedIp}`}
-        description="Drill into one device’s inspected browser sessions with category filtering, security context, and redacted evidence on demand."
+        title={`Browser Activity - ${deviceInfo?.hostname || decodedIp}`}
+        description="Drill into one device's inspected browser sessions with category filtering, security context, and redacted evidence on demand."
         actions={(
           <>
             <Link className="nv-button nv-button--secondary" to={`/user/${encodeURIComponent(decodedIp)}`}>
@@ -196,7 +206,22 @@ const DpiActivityPage = () => {
         <MetricCard icon="ri-macbook-line" label="Device" value={deviceInfo?.ip || decodedIp} meta={deviceInfo?.hostname || 'Unknown host'} accent="#2dd4bf" />
       </div>
 
-      <SectionCard title="Evidence Groups" caption="Device Deep Dive" className="nv-section--balanced">
+      <SectionCard
+        title="Evidence Groups"
+        caption="Device Deep Dive"
+        className="nv-section--balanced"
+        aside={(
+          <button
+            type="button"
+            className="nv-button nv-button--secondary"
+            onClick={() => setHideNoise(!hideNoise)}
+            style={{ minHeight: '1.95rem', padding: '0 0.65rem', borderRadius: '10px', fontSize: '0.78rem', gap: '0.35rem' }}
+          >
+            <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
+            {hideNoise ? 'Noise Hidden' : 'Showing Raw'}
+          </button>
+        )}
+      >
         <Tabs
           value={filter}
           onChange={setFilter}
@@ -222,7 +247,22 @@ const DpiActivityPage = () => {
         </div>
       </SectionCard>
 
-      <SectionCard title="Raw Sessions" caption="Device Deep Dive" className="nv-section--balanced">
+      <SectionCard
+        title="Raw Sessions"
+        caption="Device Deep Dive"
+        className="nv-section--balanced"
+        aside={(
+          <button
+            type="button"
+            className="nv-button nv-button--secondary"
+            onClick={() => setHideNoise(!hideNoise)}
+            style={{ minHeight: '1.95rem', padding: '0 0.65rem', borderRadius: '10px', fontSize: '0.78rem', gap: '0.35rem' }}
+          >
+            <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
+            {hideNoise ? 'Noise Hidden' : 'Showing Raw'}
+          </button>
+        )}
+      >
         <div className="nv-scroll-region nv-scroll-region--xl">
           <DataTable
             columns={rawColumns}

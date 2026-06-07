@@ -12,6 +12,7 @@ import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, getRiskTone } from '../utils/presentation';
 import { getWebEvidencePrimaryLabel, getWebEvidenceScopeLabel, matchesWebEvidenceFilters, normalizeWebRiskLevel } from '../utils/webEvidence';
+import { beautifyDpiUrl, isDpiNoise } from '../utils/webNoise';
 
 const MAX_EVENTS = 100;
 
@@ -22,6 +23,7 @@ const DpiDashboard = () => {
   const [status, setStatus] = useState({ state: 'disabled', proxy: 'stopped', certificate: 'not_installed', lastActivity: null, eps: 0 });
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ query: '', domain: '', risk: 'all' });
+  const [hideNoise, setHideNoise] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
 
   const fetchData = useCallback(async ({ background = false } = {}) => {
@@ -60,13 +62,13 @@ const DpiDashboard = () => {
   const { status: wsStatus } = useWebSocket('dpi_event', handleDpiEvent);
 
   const filteredEvents = useMemo(
-    () => events.filter((event) => matchesWebEvidenceFilters(event, filters)),
-    [events, filters],
+    () => events.filter((event) => (!hideNoise || !isDpiNoise(event)) && matchesWebEvidenceFilters(event, filters)),
+    [events, filters, hideNoise],
   );
 
   const filteredGroups = useMemo(
-    () => evidenceGroups.filter((event) => matchesWebEvidenceFilters(event, filters)),
-    [evidenceGroups, filters],
+    () => evidenceGroups.filter((event) => (!hideNoise || !isDpiNoise(event)) && matchesWebEvidenceFilters(event, filters)),
+    [evidenceGroups, filters, hideNoise],
   );
 
   const groupedColumns = [
@@ -123,7 +125,9 @@ const DpiDashboard = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.page_title || 'Untitled page'}</div>
-          <div className="nv-table__meta">{row.page_url || row.base_domain || row.domain || '-'}</div>
+          <div className="nv-table__meta" title={row.page_url || row.base_domain || row.domain}>
+            {beautifyDpiUrl(row.page_url || row.base_domain || row.domain)}
+          </div>
         </>
       ),
     },
@@ -176,6 +180,10 @@ const DpiDashboard = () => {
             <button type="button" className="nv-button nv-button--secondary" onClick={() => fetchData()}>
               <i className="ri-refresh-line"></i>
               Refresh
+            </button>
+            <button type="button" className="nv-button nv-button--secondary" onClick={() => setHideNoise((current) => !current)}>
+              <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
+              {hideNoise ? 'Noise Hidden' : 'Showing Raw'}
             </button>
           </>
         )}

@@ -20,6 +20,7 @@ from shared.security import REENROLL_REQUEST_HEADER
 import asyncio
 import hmac
 import logging
+import mysql.connector
 
 
 logger = logging.getLogger("netvisor.api.agents")
@@ -303,6 +304,9 @@ async def register_agent(
             response["agent_credentials"] = None
             response["message"] = "Agent already registered. Use explicit rotation endpoint for credential updates."
         return response
+    except Exception as exc:
+        conn.rollback()
+        raise
     finally:
         if cursor:
             cursor.close()
@@ -366,6 +370,9 @@ async def agent_heartbeat(
             auth_context=auth_context,
             organization_id=org_id,
         )
+    except Exception as exc:
+        conn.rollback()
+        raise
     finally:
         if cursor:
             cursor.close()
@@ -427,26 +434,38 @@ async def receive_web_events(
             source=f"event at index {index}",
         )
 
-    conn = get_db_connection()
-    try:
-        count = web_inspection_service.store_events(conn, events)
-        loop = asyncio.get_event_loop()
-        for event in events:
-            if "timestamp" not in event:
-                from datetime import datetime, timezone
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = get_db_connection()
+        try:
+            count = web_inspection_service.store_events(conn, events)
+            conn.commit()
+            loop = asyncio.get_event_loop()
+            for event in events:
+                if "timestamp" not in event:
+                    from datetime import datetime, timezone
 
-                event["timestamp"] = datetime.now(timezone.utc).isoformat()
-            if "app" not in event:
-                event["app"] = event.get("browser_name") or event.get("process_name") or "Unknown"
+                    event["timestamp"] = datetime.now(timezone.utc).isoformat()
+                if "app" not in event:
+                    event["app"] = event.get("browser_name") or event.get("process_name") or "Unknown"
 
-            event["agent_id"] = authenticated_agent_id
-            loop.create_task(dpi_event_emitter.emit(event))
-        return _collect_response(auth_context=auth_context, count=count)
-    except Exception as exc:
-        logger.error("Failed to store web inspection events: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to store web events")
-    finally:
-        conn.close()
+                event["agent_id"] = authenticated_agent_id
+                loop.create_task(dpi_event_emitter.emit(event))
+            return _collect_response(auth_context=auth_context, count=count)
+        except mysql.connector.Error as exc:
+            conn.rollback()
+            if exc.errno == 1213 and attempt < max_retries - 1:
+                logger.warning("Deadlock encountered while storing web events, retrying (attempt %s/%s)...", attempt + 1, max_retries)
+                await asyncio.sleep(0.1 * (attempt + 1))
+                continue
+            logger.error("Failed to store web inspection events: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to store web events")
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed to store web inspection events: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to store web events")
+        finally:
+            conn.close()
 
 
 @router.post("/rotate-credential")
@@ -516,45 +535,56 @@ async def receive_devices(
             source=f"device at index {index}",
         )
 
-    conn = get_db_connection()
-    cursor = None
-    try:
-        from ..main import p_sio
-
-        cursor = conn.cursor(dictionary=True)
-        requested_org_id = None
-        if devices and isinstance(devices[0], dict):
-            requested_org_id = devices[0].get("organization_id")
-        org_id = _resolve_org_id(cursor, requested_org_id)
-        cursor.close()
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = get_db_connection()
         cursor = None
+        try:
+            from ..main import p_sio
 
-        count = 0
-        for dev in devices:
-            logger.debug("Upserting device: %s for org %s", dev.get("ip"), dev.get("organization_id"))
-            if device_service.touch_device_seen(
-                conn,
-                ip=dev.get("ip"),
-                organization_id=org_id,
-                seen_at=dev.get("last_seen"),
-                agent_id=authenticated_agent_id,
-                hostname=dev.get("hostname"),
-                mac=dev.get("mac"),
-                vendor=dev.get("vendor"),
-                device_type=dev.get("device_type"),
-                os_family=dev.get("os_family"),
-                create_if_missing=True,
-            ):
-                count += 1
-            await p_sio.emit("device_event", {"data": dev})
-
-        conn.commit()
-        logger.info("Upserted %s device(s) from agent scan.", count)
-        return _collect_response(auth_context=auth_context, count=count)
-    except Exception as exc:
-        logger.error("Failed to upsert devices: %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to store devices")
-    finally:
-        if cursor:
+            cursor = conn.cursor(dictionary=True)
+            requested_org_id = None
+            if devices and isinstance(devices[0], dict):
+                requested_org_id = devices[0].get("organization_id")
+            org_id = _resolve_org_id(cursor, requested_org_id)
             cursor.close()
-        conn.close()
+            cursor = None
+
+            count = 0
+            for dev in devices:
+                logger.debug("Upserting device: %s for org %s", dev.get("ip"), dev.get("organization_id"))
+                if device_service.touch_device_seen(
+                    conn,
+                    ip=dev.get("ip"),
+                    organization_id=org_id,
+                    seen_at=dev.get("last_seen"),
+                    agent_id=authenticated_agent_id,
+                    hostname=dev.get("hostname"),
+                    mac=dev.get("mac"),
+                    vendor=dev.get("vendor"),
+                    device_type=dev.get("device_type"),
+                    os_family=dev.get("os_family"),
+                    create_if_missing=True,
+                ):
+                    count += 1
+                await p_sio.emit("device_event", {"data": dev})
+
+            conn.commit()
+            logger.info("Upserted %s device(s) from agent scan.", count)
+            return _collect_response(auth_context=auth_context, count=count)
+        except mysql.connector.Error as exc:
+            conn.rollback()
+            if exc.errno == 1213 and attempt < max_retries - 1:
+                logger.warning("Deadlock encountered while upserting devices, retrying (attempt %s/%s)...", attempt + 1, max_retries)
+                await asyncio.sleep(0.1 * (attempt + 1))
+                continue
+            logger.error("Failed to upsert devices: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to store devices")
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed to upsert devices: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to store devices")
+        finally:
+            if cursor:
+                cursor.close()
+            conn.close()

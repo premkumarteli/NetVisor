@@ -50,6 +50,15 @@ class AgentSummary(BaseModel):
     enrollment_reviewed_at: Optional[str] = None
     enrollment_review_reason: Optional[str] = None
     enrollment_credential_issued_at: Optional[str] = None
+    collector_overall_status: Optional[str] = "unknown"
+    offline_reason: Optional[str] = None
+    upload_failures: int = 0
+    upload_successes: int = 0
+    upload_queue_depth: int = 0
+    upload_consecutive_failures: int = 0
+    last_upload_time: Optional[str] = None
+    last_upload_error: Optional[str] = None
+    capture_error_category: Optional[str] = None
 
 
 class AgentDevice(BaseModel):

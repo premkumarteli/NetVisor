@@ -6,6 +6,7 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
+import ThreatDrawer from '../components/V2/ThreatDrawer';
 import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { getRiskTone } from '../utils/presentation';
@@ -14,6 +15,7 @@ const ThreatsPage = () => {
   const [threats, setThreats] = useState([]);
   const [threatCount, setThreatCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [selectedThreat, setSelectedThreat] = useState(null);
 
   const fetchThreats = useCallback(async ({ background = false } = {}) => {
     if (!background) {
@@ -51,6 +53,15 @@ const ThreatsPage = () => {
     [threats],
   );
 
+  const topReason = useMemo(() => {
+    const counts = new Map();
+    threats.forEach((entry) => {
+      const reason = entry.breakdown?.primary_detection || entry.message || 'Unspecified';
+      counts.set(reason, (counts.get(reason) || 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0] || ['-', 0];
+  }, [threats]);
+
   const threatColumns = [
     {
       key: 'time',
@@ -78,7 +89,12 @@ const ThreatsPage = () => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.message || 'AI detection: suspicious activity'}</div>
-          <div className="nv-table__meta">{row.breakdown?.primary_detection || row.severity || 'Threat intelligence match'}</div>
+          <div className="nv-table__meta">
+            {row.breakdown?.reasons?.slice(0, 2)?.join(' | ')
+              || row.breakdown?.primary_detection
+              || row.severity
+              || 'Threat intelligence match'}
+          </div>
         </>
       ),
     },
@@ -106,8 +122,7 @@ const ThreatsPage = () => {
       <div className="nv-metric-grid">
         <MetricCard icon="ri-shield-flash-line" label="Active Threats" value={threatCount} meta="Open high and critical detections" accent="#fb7185" />
         <MetricCard icon="ri-alarm-warning-line" label="Critical" value={criticalCount} meta="Priority incidents requiring fastest triage" accent="#f97316" />
-        <MetricCard icon="ri-time-line" label="24h Window" value={threats.length} meta="High-severity detections in the last 24 hours" accent="#60a5fa" />
-        <MetricCard icon="ri-focus-3-line" label="Queue State" value={threats.length > 0 ? 'Attention' : 'Quiet'} meta="Threat queue posture" accent="#2dd4bf" />
+        <MetricCard icon="ri-focus-3-line" label="Queue State" value={threats.length > 0 ? 'Attention' : 'Quiet'} meta={`Top signal: ${topReason[0]}`} accent="#2dd4bf" />
       </div>
 
       <SectionCard title="Threat Queue" caption="Table-first Investigation">
@@ -118,11 +133,19 @@ const ThreatsPage = () => {
             columns={threatColumns}
             rows={threats}
             rowKey={(row, index) => row.id || row.flow_id || `${row.timestamp}-${index}`}
+            onRowClick={(row) => setSelectedThreat(row)}
             emptyTitle="No high-risk threats detected"
             emptyDescription="The high-severity queue is currently quiet. Continue monitoring the live feeds for new detections."
           />
         )}
       </SectionCard>
+
+      <ThreatDrawer
+        open={Boolean(selectedThreat)}
+        threat={selectedThreat}
+        onClose={() => setSelectedThreat(null)}
+        title="Threat Audit Details"
+      />
     </div>
   );
 };

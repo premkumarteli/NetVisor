@@ -291,19 +291,98 @@ class DeviceService:
 
         cursor = db_conn.cursor(dictionary=True)
         try:
-            existing = self._find_existing_device(
-                cursor,
-                organization_id=organization_id,
-                mac=mac_value,
-                hostname=hostname_value,
-                ip=normalized_ip,
-            )
-            is_new_device = existing is None
-            
-            if existing:
+            if mac_value:
+                # Check if device is new for audit logging purposes
+                cursor.execute(
+                    """
+                    SELECT 1 FROM devices 
+                    WHERE mac = %s 
+                      AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                    LIMIT 1
+                    """,
+                    (mac_value, organization_id, organization_id)
+                )
+                is_new_device = cursor.fetchone() is None
+
+                cursor.execute(
+                    """
+                    INSERT INTO devices (
+                        ip,
+                        mac,
+                        hostname,
+                        vendor,
+                        device_type,
+                        os_family,
+                        is_online,
+                        organization_id,
+                        agent_id,
+                        first_seen,
+                        last_seen
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        ip = VALUES(ip),
+                        hostname = CASE WHEN VALUES(hostname) <> 'Unknown' THEN VALUES(hostname) ELSE hostname END,
+                        vendor = CASE WHEN VALUES(vendor) <> 'Unknown' THEN VALUES(vendor) ELSE vendor END,
+                        device_type = CASE WHEN VALUES(device_type) <> 'Unknown' THEN VALUES(device_type) ELSE device_type END,
+                        os_family = CASE WHEN VALUES(os_family) <> 'Unknown' THEN VALUES(os_family) ELSE os_family END,
+                        agent_id = COALESCE(VALUES(agent_id), agent_id),
+                        last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                        is_online = TRUE
+                    """,
+                    (
+                        normalized_ip,
+                        mac_value,
+                        hostname_value or "Unknown",
+                        vendor_value or "Unknown",
+                        device_type_value or "Unknown",
+                        os_family_value or "Unknown",
+                        organization_id,
+                        agent_id_value,
+                        seen_dt,
+                        seen_dt,
+                    )
+                )
+
+                self._record_ip_history(
+                    cursor,
+                    mac=mac_value,
+                    ip=normalized_ip,
+                    organization_id=organization_id,
+                    seen_dt=seen_dt,
+                )
+
+                if is_new_device and organization_id:
+                    try:
+                        from ..services.audit_service import audit_service
+                        audit_service.log_agent_registration(
+                            organization_id=str(organization_id),
+                            username="system",
+                            agent_id=agent_id_value or "unknown",
+                            action="device_discovered",
+                            details=f"ip: {normalized_ip}; mac: {mac_value}; hostname: {hostname_value or 'unknown'}"
+                        )
+                    except ImportError:
+                        pass
+                    except Exception as exc:
+                        logger.debug(f"Audit logging failed for device discovery: {exc}")
+                return True
+            else:
+                existing = self._find_existing_device(
+                    cursor,
+                    organization_id=organization_id,
+                    mac=None,
+                    hostname=hostname_value,
+                    ip=normalized_ip,
+                )
+                if not existing:
+                    return False
+
                 existing_last_seen = self._parse_timestamp(existing.get("last_seen"))
                 merged_last_seen = seen_dt if not existing_last_seen else max(existing_last_seen, seen_dt)
                 merged_first_seen = existing.get("first_seen") or seen_dt
+                resolved_mac = normalize_mac(existing.get("mac")) or existing.get("mac")
+
                 cursor.execute(
                     """
                     UPDATE devices
@@ -323,7 +402,7 @@ class DeviceService:
                     """,
                     (
                         hostname_value or existing.get("hostname") or "Unknown",
-                        mac_value or normalize_mac(existing.get("mac")) or existing.get("mac"),
+                        resolved_mac,
                         normalized_ip,
                         vendor_value or existing.get("vendor") or "Unknown",
                         device_type_value or existing.get("device_type") or "Unknown",
@@ -335,72 +414,15 @@ class DeviceService:
                         existing["id"],
                     ),
                 )
+
                 self._record_ip_history(
                     cursor,
-                    mac=mac_value or normalize_mac(existing.get("mac")),
+                    mac=resolved_mac,
                     ip=normalized_ip,
                     organization_id=existing.get("organization_id") or organization_id,
                     seen_dt=merged_last_seen,
                 )
-            else:
-                if not create_if_missing or not mac_value:
-                    return False
-
-                cursor.execute(
-                    """
-                    INSERT INTO devices (
-                        ip,
-                        mac,
-                        hostname,
-                        vendor,
-                        device_type,
-                        os_family,
-                        is_online,
-                        organization_id,
-                        agent_id,
-                        first_seen,
-                        last_seen
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
-                    """,
-                    (
-                        normalized_ip,
-                        mac_value,
-                        hostname_value or "Unknown",
-                        vendor_value or "Unknown",
-                        device_type_value or "Unknown",
-                        os_family_value or "Unknown",
-                        organization_id,
-                        agent_id_value,
-                        seen_dt,
-                        seen_dt,
-                    ),
-                )
-                self._record_ip_history(
-                    cursor,
-                    mac=mac_value,
-                    ip=normalized_ip,
-                    organization_id=organization_id,
-                    seen_dt=seen_dt,
-                )
-                
-                # Audit log for new device discovery
-                if organization_id:
-                    try:
-                        from ..services.audit_service import audit_service
-                        audit_service.log_agent_registration(
-                            organization_id=str(organization_id),
-                            username="system",  # Device discovery is system-generated
-                            agent_id=agent_id_value or "unknown",
-                            action="device_discovered",
-                            details=f"ip: {normalized_ip}; mac: {mac_value or 'unknown'}; hostname: {hostname_value or 'unknown'}"
-                        )
-                    except ImportError:
-                        pass
-                    except Exception as exc:
-                        logger.debug(f"Audit logging failed for device discovery: {exc}")
-            
-            return True
+                return True
         finally:
             cursor.close()
 

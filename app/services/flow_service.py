@@ -315,6 +315,20 @@ class FlowService:
         )
         return cursor.fetchone() is not None
 
+    def _flow_log_exists_by_hash(self, cursor, ingest_hash: str) -> bool:
+        if not ingest_hash:
+            return False
+        cursor.execute(
+            """
+            SELECT id
+            FROM flow_logs
+            WHERE ingest_hash = %s
+            LIMIT 1
+            """,
+            (ingest_hash,),
+        )
+        return cursor.fetchone() is not None
+
     def _enforce_backpressure(self, db_conn, incoming_flows: int) -> None:
         counts = self._queue_status_counts(db_conn) or {}
         pending_flows = max(int(counts.get("pending_flows") or 0), 0)
@@ -360,6 +374,62 @@ class FlowService:
         require_runtime_schema(db_conn)
 
     def _ensure_flow_log_schema(self, db_conn) -> None:
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            columns = {
+                "flow_direction": (
+                    "ALTER TABLE flow_logs "
+                    "ADD COLUMN flow_direction VARCHAR(20) NOT NULL DEFAULT 'unknown' AFTER network_scope"
+                ),
+                "analysis_source": (
+                    "ALTER TABLE flow_logs "
+                    "ADD COLUMN analysis_source VARCHAR(64) NOT NULL DEFAULT 'transport_fallback' AFTER agent_id"
+                ),
+                "analysis_confidence": (
+                    "ALTER TABLE flow_logs "
+                    "ADD COLUMN analysis_confidence FLOAT NOT NULL DEFAULT 0.0 AFTER analysis_source"
+                ),
+                "analysis_signals_json": (
+                    "ALTER TABLE flow_logs "
+                    "ADD COLUMN analysis_signals_json TEXT NULL AFTER analysis_confidence"
+                ),
+                "ingest_hash": (
+                    "ALTER TABLE flow_logs "
+                    "ADD COLUMN ingest_hash CHAR(40) NULL AFTER analysis_signals_json"
+                ),
+            }
+            for column_name, alter_sql in columns.items():
+                if self._column_exists(cursor, "flow_logs", column_name):
+                    continue
+                try:
+                    cursor.execute(alter_sql)
+                except mysql.connector.Error as exc:
+                    if int(getattr(exc, "errno", 0) or 0) != 1060:
+                        raise
+
+            indexes = {
+                "idx_flow_logs_direction_last_seen": (
+                    "CREATE INDEX idx_flow_logs_direction_last_seen ON flow_logs (flow_direction, last_seen)"
+                ),
+                "idx_flow_logs_confidence_last_seen": (
+                    "CREATE INDEX idx_flow_logs_confidence_last_seen ON flow_logs (analysis_confidence, last_seen)"
+                ),
+                "uq_flow_logs_ingest_hash": (
+                    "CREATE UNIQUE INDEX uq_flow_logs_ingest_hash ON flow_logs (ingest_hash)"
+                ),
+            }
+            for index_name, create_sql in indexes.items():
+                if self._index_exists(cursor, "flow_logs", index_name):
+                    continue
+                try:
+                    cursor.execute(create_sql)
+                except mysql.connector.Error as exc:
+                    if int(getattr(exc, "errno", 0) or 0) != 1061:
+                        raise
+            db_conn.commit()
+        finally:
+            cursor.close()
+
         require_runtime_schema(db_conn)
 
     def classify_management_mode(self, flow_data, managed_ip_set: set[str]) -> str:
@@ -392,6 +462,28 @@ class FlowService:
                 value = value.astimezone(timezone.utc).replace(tzinfo=None)
             return value.strftime("%Y-%m-%d %H:%M:%S")
         return value
+
+    def _decode_analysis_signals(self, value) -> list[str]:
+        if not value:
+            return []
+        if isinstance(value, (list, tuple)):
+            raw_signals = value
+        else:
+            try:
+                raw_signals = json.loads(str(value))
+            except (TypeError, ValueError):
+                raw_signals = [value]
+        if isinstance(raw_signals, str):
+            raw_signals = [raw_signals]
+        if not isinstance(raw_signals, (list, tuple)):
+            return []
+
+        signals: list[str] = []
+        for signal in raw_signals:
+            text = str(signal or "").strip()
+            if text and text not in signals:
+                signals.append(text)
+        return signals
 
     def _resolve_organization_id(self, cursor, requested_org_id: str | None, cache: dict[str | None, str | None]) -> str | None:
         if requested_org_id in cache:
@@ -830,7 +922,7 @@ class FlowService:
         if self._schema_ready:
             return
 
-        require_runtime_schema(conn)
+        self._ensure_flow_log_schema(conn)
         self._schema_ready = True
 
     async def flow_writer_worker(self):
@@ -940,6 +1032,11 @@ class FlowService:
         )
 
         for org_id, sanitized in sanitized_batch:
+            if self._flow_log_exists_by_hash(cursor, sanitized.ingest_hash):
+                self._increment_metric("deduplicated_flows_total")
+                metrics_service.increment("flow_deduplicated_flows_total", amount=1)
+                continue
+
             if org_id not in managed_ip_cache:
                 managed_ip_cache[org_id] = managed_device_service.get_managed_ip_set(conn, org_id)
 
@@ -956,8 +1053,12 @@ class FlowService:
             breakdown.update(
                 {
                     "network_scope": sanitized.network_scope,
+                    "flow_direction": sanitized.flow_direction,
                     "internal_device_ip": sanitized.internal_device_ip,
                     "external_endpoint_ip": sanitized.external_endpoint_ip,
+                    "analysis_source": sanitized.analysis_source,
+                    "analysis_confidence": sanitized.analysis_confidence,
+                    "analysis_signals": list(sanitized.analysis_signals),
                 }
             )
 
@@ -995,9 +1096,10 @@ class FlowService:
                     organization_id, src_ip, dst_ip, src_port, dst_port,
                     protocol, start_time, last_seen, packet_count, byte_count,
                     duration, average_packet_size, domain, sni, src_mac, dst_mac,
-                    network_scope, internal_device_ip, external_endpoint_ip, session_id,
-                    application, agent_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    network_scope, flow_direction, internal_device_ip, external_endpoint_ip, session_id,
+                    application, agent_id, analysis_source, analysis_confidence, analysis_signals_json,
+                    ingest_hash
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     org_id,
@@ -1017,11 +1119,16 @@ class FlowService:
                     sanitized.src_mac,
                     sanitized.dst_mac,
                     sanitized.network_scope,
+                    sanitized.flow_direction,
                     sanitized.internal_device_ip,
                     sanitized.external_endpoint_ip,
                     session_id,
                     application,
                     sanitized.agent_id,
+                    sanitized.analysis_source,
+                    sanitized.analysis_confidence,
+                    json.dumps(list(sanitized.analysis_signals)),
+                    sanitized.ingest_hash,
                 ),
             )
 
@@ -1091,6 +1198,9 @@ class FlowService:
                         "risk_score": report["score"],
                         "management_mode": management_mode,
                         "network_scope": sanitized.network_scope,
+                        "flow_direction": sanitized.flow_direction,
+                        "analysis_source": sanitized.analysis_source,
+                        "analysis_confidence": sanitized.analysis_confidence,
                     },
                 )
             )
@@ -1238,6 +1348,10 @@ class FlowService:
                 row["last_seen"] = self._mysql_timestamp(row["last_seen"])
                 row["start_time"] = self._mysql_timestamp(row["start_time"])
                 row["host"] = row.get("sni") or row.get("domain") or ""
+                row["flow_direction"] = row.get("flow_direction") or "unknown"
+                row["analysis_source"] = row.get("analysis_source") or "transport_fallback"
+                row["analysis_confidence"] = float(row.get("analysis_confidence") or 0.0)
+                row["analysis_signals"] = self._decode_analysis_signals(row.get("analysis_signals_json"))
                 if (row.get("application") or "") in {"", "Other", "Unknown"}:
                     row["application"] = application_service.classify_app(row)
 

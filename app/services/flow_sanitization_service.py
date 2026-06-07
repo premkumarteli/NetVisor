@@ -41,6 +41,7 @@ class SanitizedFlow:
     internal_device_mac: Optional[str]
     external_endpoint_ip: Optional[str]
     network_scope: str
+    flow_direction: str
 
     @property
     def ingest_hash(self) -> str:
@@ -107,6 +108,14 @@ class FlowSanitizationService:
         if src_scope == "external" and dst_scope == "external":
             return "external_only"
         return "unknown"
+
+    def _resolve_direction(self, network_scope: str) -> str:
+        return {
+            "egress": "outbound",
+            "ingress": "inbound",
+            "internal_lan": "lateral",
+            "external_only": "external",
+        }.get(network_scope, "unknown")
 
     def sanitize_flow(self, flow: Any, *, organization_id: Optional[str]) -> Optional[SanitizedFlow]:
         src_ip = normalize_ip(getattr(flow, "src_ip", None))
@@ -176,6 +185,8 @@ class FlowSanitizationService:
         if average_packet_size <= 0 and packet_count > 0:
             average_packet_size = float(byte_count) / float(packet_count)
 
+        network_scope = self._resolve_scope(src_scope, dst_scope)
+
         return SanitizedFlow(
             organization_id=organization_id,
             src_ip=src_ip,
@@ -208,7 +219,8 @@ class FlowSanitizationService:
             internal_device_ip=internal_ip,
             internal_device_mac=internal_mac,
             external_endpoint_ip=external_ip,
-            network_scope=self._resolve_scope(src_scope, dst_scope),
+            network_scope=network_scope,
+            flow_direction=self._resolve_direction(network_scope),
         )
 
 

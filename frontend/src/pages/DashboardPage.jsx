@@ -3,21 +3,80 @@ import { useNavigate } from 'react-router-dom';
 import { systemService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useImmersion } from '../immersion/engine/useImmersion';
 import TrafficChart from '../components/Dashboard/TrafficChart';
 import ThreatDistributionChart from '../components/Dashboard/ThreatDistributionChart';
-import PageHeader from '../components/V2/PageHeader';
-import SectionCard from '../components/V2/SectionCard';
-import MetricCard from '../components/V2/MetricCard';
 import StatusBadge from '../components/V2/StatusBadge';
-import Tabs from '../components/V2/Tabs';
-import DataTable from '../components/V2/DataTable';
 import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
-import { formatBrowserLabel, formatByteCount, getRiskTone, parseByteValue } from '../utils/presentation';
+import { formatByteCount, getRiskTone, parseByteValue } from '../utils/presentation';
 import EvidenceDrawer from '../components/V2/EvidenceDrawer';
+
+const severityOrder = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+
+const formatCompact = (value) => {
+  const numeric = Number(value) || 0;
+  return new Intl.NumberFormat('en', {
+    notation: numeric >= 10000 ? 'compact' : 'standard',
+    maximumFractionDigits: numeric >= 10000 ? 1 : 0,
+  }).format(numeric).toUpperCase();
+};
+
+const resolveSeverityCount = (distribution = {}, severity) => {
+  const normalized = String(severity).toUpperCase();
+  return Number(distribution[normalized] ?? distribution[normalized.toLowerCase()] ?? 0);
+};
+
+const SceneMetricCard = ({ icon, label, value, meta, tone = 'accent', signal }) => (
+  <article className={`cinematic-metric cinematic-metric--${tone}`.trim()}>
+    <div className="cinematic-metric__art" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <div className="cinematic-metric__header">
+      <span className="cinematic-metric__icon"><i className={icon}></i></span>
+      <span>{label}</span>
+    </div>
+    <strong>{value}</strong>
+    <p>{meta}</p>
+    {signal ? <small>{signal}</small> : null}
+  </article>
+);
+
+const ThreatFeedItem = ({ alert, onClick }) => {
+  const severity = String(alert.severity || 'HIGH').toUpperCase();
+  return (
+    <button type="button" className={`cinematic-threat cinematic-threat--${severity.toLowerCase()}`} onClick={onClick}>
+      <span className="cinematic-threat__icon"><i className="ri-alarm-warning-line"></i></span>
+      <span className="cinematic-threat__copy">
+        <strong>{alert.message || 'High-risk detection'}</strong>
+        <span>{alert.device_ip || alert.src_ip || 'Unknown asset'}</span>
+        <em>{severity}</em>
+      </span>
+      <span className="cinematic-threat__time">{formatUtcTimestampToLocal(alert.timestamp)}</span>
+    </button>
+  );
+};
+
+const SystemStatusRow = ({ icon, label, value, tone = 'success' }) => (
+  <div className="cinematic-status-row">
+    <span><i className={icon}></i>{label}</span>
+    <strong className={`cinematic-status-row__value cinematic-status-row__value--${tone}`}>{value}</strong>
+  </div>
+);
+
+const SeverityCard = ({ severity, count }) => (
+  <div className={`cinematic-severity cinematic-severity--${severity.toLowerCase()}`}>
+    <span>{severity}</span>
+    <strong>{count}</strong>
+    <small>{count === 1 ? 'open signal' : 'open signals'}</small>
+  </div>
+);
 
 const DashboardPage = () => {
   const navigate = useNavigate();
+  const { activeTheme, themeId } = useImmersion();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({});
   const [devices, setDevices] = useState([]);
@@ -25,6 +84,7 @@ const DashboardPage = () => {
   const [activity, setActivity] = useState([]);
   const [webActivity, setWebActivity] = useState([]);
   const [trafficHistory, setTrafficHistory] = useState([]);
+  const [trafficResolution, setTrafficResolution] = useState('hour'); // 'second' | 'minute' | 'hour'
   const [analytics, setAnalytics] = useState({
     top_applications: [],
     top_devices: [],
@@ -34,7 +94,6 @@ const DashboardPage = () => {
     uncategorized_domains: [],
     summary: {},
   });
-  const [analyticsTab, setAnalyticsTab] = useState('applications');
   const [selectedEvent, setSelectedEvent] = useState(null);
 
   const fetchDashboard = useCallback(async ({ background = false } = {}) => {
@@ -43,13 +102,12 @@ const DashboardPage = () => {
     }
 
     try {
-      const [statsRes, devicesRes, alertsRes, activityRes, webRes, historyRes, analyticsRes] = await Promise.all([
+      const [statsRes, devicesRes, alertsRes, activityRes, webRes, analyticsRes] = await Promise.all([
         systemService.getStats(),
         systemService.getDevices(),
         systemService.getAlerts({ severity: 'HIGH,CRITICAL', resolved: false, hours: 24, limit: 12 }),
         systemService.getActivity(18),
         systemService.getGlobalWebActivity(12),
-        systemService.getTrafficHistory(24),
         systemService.getAnalyticsOverview(24, 6),
       ]);
 
@@ -58,7 +116,6 @@ const DashboardPage = () => {
       setAlerts(alertsRes.data || []);
       setActivity(activityRes.data || []);
       setWebActivity(Array.isArray(webRes.data) ? webRes.data : (webRes.data?.activity || []));
-      setTrafficHistory(historyRes.data || []);
       setAnalytics(analyticsRes.data || {
         top_applications: [],
         top_devices: [],
@@ -77,15 +134,83 @@ const DashboardPage = () => {
     }
   }, []);
 
+  const fetchTrafficHistory = useCallback(async () => {
+    try {
+      let windowSize = 24;
+      if (trafficResolution === 'second') {
+        windowSize = 60;
+      } else if (trafficResolution === 'minute') {
+        windowSize = 60;
+      }
+      const res = await systemService.getTrafficHistory(windowSize, trafficResolution);
+      setTrafficHistory(res.data || []);
+    } catch (error) {
+      console.error('Failed to fetch traffic history', error);
+    }
+  }, [trafficResolution]);
+
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
 
+  useEffect(() => {
+    fetchTrafficHistory();
+  }, [fetchTrafficHistory]);
+
   useVisibilityPolling(() => fetchDashboard({ background: true }), 15000);
+
+  const trafficPollInterval = useMemo(() => {
+    return trafficResolution === 'second' ? 2000 : 15000;
+  }, [trafficResolution]);
+
+  useVisibilityPolling(
+    fetchTrafficHistory,
+    trafficPollInterval
+  );
 
   const handlePacketEvent = useCallback((event) => {
     setActivity((current) => [event, ...current].slice(0, 18));
-  }, []);
+
+    if (trafficResolution === 'second' && event.size) {
+      setTrafficHistory((currentHistory) => {
+        let cleanTs = event.time_str;
+        if (cleanTs) {
+          if (!cleanTs.includes('T') && !cleanTs.includes('Z')) {
+            cleanTs = cleanTs.replace(' ', 'T') + 'Z';
+          }
+          const d = new Date(cleanTs);
+          d.setMilliseconds(0);
+          const alignedIso = d.toISOString();
+
+          const exists = currentHistory.some((h) => h.timestamp === alignedIso);
+          if (exists) {
+            return currentHistory.map((h) => {
+              if (h.timestamp === alignedIso) {
+                return {
+                  ...h,
+                  flow_count: h.flow_count + 1,
+                  byte_count: h.byte_count + (Number(event.size) || 0),
+                };
+              }
+              return h;
+            });
+          } else {
+            const lastItem = currentHistory[currentHistory.length - 1];
+            if (!lastItem || new Date(alignedIso) > new Date(lastItem.timestamp)) {
+              const newItem = {
+                timestamp: alignedIso,
+                hour: alignedIso.replace('T', ' ').replace('Z', ''),
+                flow_count: 1,
+                byte_count: Number(event.size) || 0,
+              };
+              return [...currentHistory.slice(1), newItem];
+            }
+          }
+        }
+        return currentHistory;
+      });
+    }
+  }, [trafficResolution]);
 
   const { status: wsStatus } = useWebSocket('packet_event', handlePacketEvent);
 
@@ -103,295 +228,82 @@ const DashboardPage = () => {
     return Math.round((covered / managedDevices.length) * 100);
   }, [managedDevices, webActivity]);
 
-  const trafficChartData = useMemo(() => ({
-    labels: trafficHistory.map((entry) => {
-      const raw = String(entry.hour || '').split(' ').pop() || '';
-      return raw.slice(0, 5);
-    }),
-    values: trafficHistory.map((entry) => parseByteValue(entry.byte_count || 0) / (1024 * 1024)),
-  }), [trafficHistory]);
+  const trafficChartData = useMemo(() => {
+    const normalized = trafficHistory
+      .map((entry) => ({
+        label: entry.timestamp || entry.hour || '',
+        value: parseByteValue(entry.byte_count || 0),
+      }))
+      .filter((entry) => entry.label);
 
-  const analyticsTabs = [
-    { value: 'applications', label: 'Applications', icon: 'ri-apps-2-line' },
-    { value: 'devices', label: 'Devices', icon: 'ri-macbook-line' },
-    { value: 'conversations', label: 'Conversations', icon: 'ri-links-line' },
-    { value: 'scopes', label: 'Scopes', icon: 'ri-radar-line' },
-  ];
+    return {
+      labels: normalized.map((entry) => entry.label),
+      values: normalized.map((entry) => entry.value),
+    };
+  }, [trafficHistory]);
 
-  const analyticsColumns = useMemo(() => {
-    switch (analyticsTab) {
-      case 'devices':
-        return [
-          {
-            key: 'device',
-            label: 'Device',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary mono">{row.hostname || row.device_ip || 'Unknown device'}</div>
-                <div className="nv-table__meta mono">{row.device_ip || '-'}</div>
-              </>
-            ),
-          },
-          {
-            key: 'coverage',
-            label: 'Coverage',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.management_mode || 'byod'}</div>
-                <div className="nv-table__meta">{row.status || 'Offline'} | {row.top_application || 'Other'}</div>
-              </>
-            ),
-          },
-          {
-            key: 'bandwidth',
-            label: 'Bandwidth',
-            render: (row) => <span className="mono">{row.bandwidth || formatByteCount(row.bandwidth_bytes || 0)}</span>,
-          },
-          {
-            key: 'last_seen',
-            label: 'Last Seen',
-            render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen)}</span>,
-          },
-        ];
-      case 'conversations':
-        return [
-          {
-            key: 'conversation',
-            label: 'Conversation',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary mono">{row.src_ip || '-'} <span className="nv-table__meta">-&gt;</span> {row.dst_ip || '-'}</div>
-                <div className="nv-table__meta">{row.host || '-'}</div>
-              </>
-            ),
-          },
-          {
-            key: 'application',
-            label: 'App / Proto',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.application || 'Other'}</div>
-                <div className="nv-table__meta mono">{row.protocol || 'UNKNOWN'}</div>
-              </>
-            ),
-          },
-          {
-            key: 'bandwidth',
-            label: 'Bandwidth',
-            render: (row) => <span className="mono">{row.bandwidth || formatByteCount(row.bandwidth_bytes || 0)}</span>,
-          },
-          {
-            key: 'last_seen',
-            label: 'Last Seen',
-            render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen)}</span>,
-          },
-        ];
-      case 'scopes':
-        return [
-          {
-            key: 'scope',
-            label: 'Scope',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.network_scope || 'unknown'}</div>
-                <div className="nv-table__meta">Traffic edge summary</div>
-              </>
-            ),
-          },
-          {
-            key: 'devices',
-            label: 'Devices',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.device_count || 0}</div>
-                <div className="nv-table__meta">{row.flow_count || 0} flows</div>
-              </>
-            ),
-          },
-          {
-            key: 'bandwidth',
-            label: 'Bandwidth',
-            render: (row) => <span className="mono">{row.bandwidth || formatByteCount(row.bandwidth_bytes || 0)}</span>,
-          },
-          {
-            key: 'last_seen',
-            label: 'Last Seen',
-            render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen)}</span>,
-          },
-        ];
-      case 'applications':
-      default:
-        return [
-          {
-            key: 'application',
-            label: 'Application',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.application || 'Other'}</div>
-                <div className="nv-table__meta">{row.live_domain || row.last_seen || '24h window'}</div>
-              </>
-            ),
-          },
-          {
-            key: 'devices',
-            label: 'Devices',
-            render: (row) => (
-              <>
-                <div className="nv-table__primary">{row.active_device_count || row.device_count || 0}</div>
-                <div className="nv-table__meta">{row.device_count || 0} visible</div>
-              </>
-            ),
-          },
-          {
-            key: 'bandwidth',
-            label: 'Bandwidth',
-            render: (row) => <span className="mono">{row.bandwidth || formatByteCount(row.bandwidth_bytes || 0)}</span>,
-          },
-          {
-            key: 'last_seen',
-            label: 'Last Seen',
-            render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen)}</span>,
-          },
-        ];
-    }
-  }, [analyticsTab]);
+  const riskDistribution = stats.risk_distribution || {};
+  const highRiskCount = alerts.length || stats.high_risk || 0;
+  const dominantApp = analytics.top_applications?.[0]?.application || 'Classifying';
+  const dominantAppBytes = analytics.top_applications?.[0]?.bandwidth || formatByteCount(analytics.top_applications?.[0]?.bandwidth_bytes || 0);
+  const scene = activeTheme?.scene || {};
+  const liveThreats = alerts.slice(0, 5);
+  const recentSessions = activity.slice(0, 6);
+  const topApps = (analytics.top_applications || []).slice(0, 4);
 
-  const analyticsRows = useMemo(() => {
-    switch (analyticsTab) {
-      case 'devices':
-        return analytics.top_devices || [];
-      case 'conversations':
-        return analytics.top_conversations || [];
-      case 'scopes':
-        return analytics.traffic_scopes || [];
-      case 'applications':
-      default:
-        return analytics.top_applications || [];
-    }
-  }, [analytics, analyticsTab]);
-
-  const analyticsEmpty = useMemo(() => {
-    switch (analyticsTab) {
-      case 'devices':
-        return {
-          title: 'No device rollups yet',
-          description: 'The current window does not have enough device-level flow data to rank endpoints.',
-        };
-      case 'conversations':
-        return {
-          title: 'No conversation rollups yet',
-          description: 'Conversation summaries appear once the backend sees enough flow volume to group endpoints.',
-        };
-      case 'scopes':
-        return {
-          title: 'No traffic edge data yet',
-          description: 'Scope summaries appear after managed or BYOD traffic reaches the backend.',
-        };
-      case 'applications':
-      default:
-        return {
-          title: 'No application rollups yet',
-          description: 'Application summaries appear once the backend has classified enough sessions in the current window.',
-        };
-    }
-  }, [analyticsTab]);
-
-  const alertColumns = [
+  const metricCards = [
     {
-      key: 'threat',
-      label: 'Threat',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.message || 'High-risk detection'}</div>
-          <div className="nv-table__meta">{row.device_ip || row.src_ip || 'Unknown asset'} | {row.application || row.domain || 'network flow'}</div>
-        </>
-      ),
+      icon: 'ri-macbook-line',
+      label: 'Active Devices',
+      value: formatCompact(stats.active_devices || 0),
+      meta: `${stats.total_devices || 0} visible assets`,
+      signal: `${managedDevices.length} managed endpoints`,
+      tone: 'violet',
     },
     {
-      key: 'severity',
-      label: 'Severity',
-      render: (row) => <StatusBadge tone={getRiskTone(row.severity)}>{row.severity || 'HIGH'}</StatusBadge>,
+      icon: 'ri-shield-flash-line',
+      label: 'Active Threats',
+      value: formatCompact(highRiskCount),
+      meta: 'High and critical detections',
+      signal: alerts.length ? 'Investigation queue live' : 'Queue quiet',
+      tone: 'danger',
     },
     {
-      key: 'time',
-      label: 'Last Seen',
-      render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.timestamp)}</span>,
+      icon: 'ri-exchange-box-line',
+      label: 'Flows (24h)',
+      value: formatCompact(stats.flows_24h || 0),
+      meta: `${activity.length} recent sessions`,
+      signal: `${dominantApp} leading app`,
+      tone: 'amber',
+    },
+    {
+      icon: 'ri-navigation-line',
+      label: 'Inspection Coverage',
+      value: `${inspectedCoverage}%`,
+      meta: `${webActivity.length} inspected browser events`,
+      signal: 'Managed visibility window',
+      tone: 'cyan',
     },
   ];
-
-  const webColumns = [
-    {
-      key: 'page_title',
-      label: 'Web Activity',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.page_title || row.base_domain || 'Untitled page'}</div>
-          <div className="nv-table__meta">{row.page_url || row.base_domain || '-'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'context',
-      label: 'Context',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{formatBrowserLabel(row.browser_name, row.process_name)}</div>
-          <div className="nv-table__meta">{row.device_ip || 'Unknown device'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'last_seen',
-      label: 'Last Seen',
-      render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen || row.created_at)}</span>,
-    },
-  ];
-
-  const recentActivityColumns = [
-    {
-      key: 'application',
-      label: 'Application',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.application || 'Other'}</div>
-          <div className="nv-table__meta">{row.domain || row.host || row.dst_ip || '-'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'session',
-      label: 'Session',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.src_ip || '-'}</div>
-          <div className="nv-table__meta">{row.dst_ip || '-'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'severity',
-      label: 'Signal',
-      render: (row) => <StatusBadge tone={getRiskTone(row.severity)}>{row.severity || 'LOW'}</StatusBadge>,
-    },
-    {
-      key: 'bytes',
-      label: 'Bytes',
-      render: (row) => <span className="mono">{formatByteCount(row.byte_count || row.size || 0)}</span>,
-    },
-  ];
-
-  const handleOpenEvidence = (row) => {
-    setSelectedEvent(row);
-  };
 
   return (
-    <div className="nv-page">
-      <PageHeader
-        eyebrow="Overview"
-        title="Operational Overview"
-        description="Track the current security posture, prioritize high-risk detections, and move into investigation workflows without fighting dense dashboard noise."
-        actions={(
-          <>
+    <div className="nv-page cinematic-dashboard" data-cinematic-theme={themeId}>
+      <section className="cinematic-hero">
+        <div className="cinematic-hero__scene" aria-hidden="true">
+          <span className="cinematic-hero__orb cinematic-hero__orb--one"></span>
+          <span className="cinematic-hero__orb cinematic-hero__orb--two"></span>
+          <span className="cinematic-hero__ring cinematic-hero__ring--one"></span>
+          <span className="cinematic-hero__ring cinematic-hero__ring--two"></span>
+          <span className="cinematic-hero__silhouette cinematic-hero__silhouette--one"></span>
+          <span className="cinematic-hero__silhouette cinematic-hero__silhouette--two"></span>
+          <span className="cinematic-hero__skyline"></span>
+          <span className="cinematic-hero__grid"></span>
+        </div>
+        <div className="cinematic-hero__copy">
+          <div className="cinematic-kicker">{scene.eyebrow || 'Operational Workspace'}</div>
+          <h1>{scene.headline || 'Operational Overview'}</h1>
+          <p>{scene.description || 'Track posture, prioritize detections, and move into investigation workflows.'}</p>
+          <div className="cinematic-hero__actions">
             <StatusBadge tone={wsStatus === 'connected' ? 'success' : 'warning'} icon="ri-broadcast-line">
               {wsStatus === 'connected' ? 'Live Feed' : 'Reconnecting'}
             </StatusBadge>
@@ -399,156 +311,225 @@ const DashboardPage = () => {
               <i className="ri-refresh-line"></i>
               Refresh
             </button>
-          </>
-        )}
-      />
+          </div>
+        </div>
+        <div className="cinematic-hero__mode">
+          <span>{activeTheme?.label || 'NetVisor Core'}</span>
+          <strong>{scene.signature || 'Command Core'}</strong>
+          <small>{scene.mood || 'Live security workspace'}</small>
+          <div className="cinematic-hero__mode-meter">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </section>
 
       {loading ? (
         <StatGridSkeleton count={4} />
       ) : (
-        <div className="nv-metric-grid">
-          <MetricCard
-            icon="ri-macbook-line"
-            label="Active Devices"
-            value={stats.active_devices || 0}
-            meta={`${stats.total_devices || 0} visible assets in the current window`}
-            accent="#54c8e8"
-          />
-          <MetricCard
-            icon="ri-shield-flash-line"
-            label="Active Threats"
-            value={alerts.length || stats.high_risk || 0}
-            meta="High and critical detections requiring review"
-            accent="#fb7185"
-          />
-          <MetricCard
-            icon="ri-exchange-box-line"
-            label="Flows (24h)"
-            value={stats.flows_24h || 0}
-            meta={`${activity.length} recent sessions in live feed`}
-            accent="#60a5fa"
-          />
-          <MetricCard
-            icon="ri-navigation-line"
-            label="Inspection Coverage"
-            value={`${inspectedCoverage}%`}
-            meta={`${webActivity.length} recent inspected browser events`}
-            accent="#2dd4bf"
-          />
+        <div className="cinematic-metrics-grid">
+          {metricCards.map((card) => (
+            <SceneMetricCard key={card.label} {...card} />
+          ))}
         </div>
       )}
 
-      <SectionCard
-        title="Traffic Pressure"
-        caption="Primary Intelligence"
-        aside={<StatusBadge tone="accent" icon="ri-line-chart-line">24 hour window</StatusBadge>}
-      >
-        <TrafficChart data={trafficChartData} height={220} />
-      </SectionCard>
+      <div className="cinematic-command-grid">
+        <main className="cinematic-command-grid__main">
+          <section className="cinematic-panel cinematic-panel--traffic">
+            <div className="cinematic-panel__watermark" aria-hidden="true">
+              <i className="ri-pulse-line"></i>
+            </div>
+            <div className="cinematic-panel__header">
+              <div>
+                <div className="cinematic-kicker">Primary Intelligence</div>
+                <h2>Traffic Pressure</h2>
+                <p>
+                  {trafficResolution === 'second' ? 'Real-time bandwidth usage (last 60s).' :
+                   trafficResolution === 'minute' ? 'Hourly network throughput (last 60m).' :
+                   'Daily network throughput (last 24h).'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className="nv-tabs" style={{ display: 'inline-flex', padding: 2, background: 'rgba(0,0,0,0.2)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' }}>
+                  {[
+                    { label: 'Real-time', value: 'second' },
+                    { label: 'Hourly', value: 'minute' },
+                    { label: 'Daily', value: 'hour' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={`nv-tab ${trafficResolution === opt.value ? 'is-active' : ''}`}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        background: trafficResolution === opt.value ? 'var(--nv-accent, #f97316)' : 'transparent',
+                        color: trafficResolution === opt.value ? '#000' : 'var(--nv-text-muted, #94a3b8)',
+                        border: 'none',
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        fontWeight: trafficResolution === opt.value ? '600' : 'normal',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onClick={() => setTrafficResolution(opt.value)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <TrafficChart data={trafficChartData} resolution={trafficResolution} height={250} />
+          </section>
 
-      <SectionCard
-        title="Traffic Intelligence"
-        caption="ManageEngine-class rollups"
-        aside={<StatusBadge tone="accent" icon="ri-dashboard-3-line">Derived from flow_logs and sessions</StatusBadge>}
-      >
-        <Tabs value={analyticsTab} onChange={setAnalyticsTab} items={analyticsTabs} />
-        <div className="nv-scroll-region nv-scroll-region--lg" style={{ marginTop: '1rem' }}>
-          <DataTable
-            columns={analyticsColumns}
-            rows={analyticsRows}
-            rowKey={(row, index) => row.device_ip || row.src_ip || row.application || row.network_scope || `${analyticsTab}-${index}`}
-            emptyTitle={analyticsEmpty.title}
-            emptyDescription={analyticsEmpty.description}
-          />
+          <div className="cinematic-lower-grid">
+            <section className="cinematic-panel">
+              <div className="cinematic-panel__header">
+                <div>
+                  <div className="cinematic-kicker">Threat Composition</div>
+                  <h2>Threat Distribution</h2>
+                </div>
+              </div>
+              {loading ? (
+                <TableSkeleton rows={4} />
+              ) : (
+                <ThreatDistributionChart distribution={riskDistribution} height={180} legendPosition="bottom" />
+              )}
+            </section>
+
+            <section className="cinematic-panel">
+              <div className="cinematic-panel__header">
+                <div>
+                  <div className="cinematic-kicker">Severity Lanes</div>
+                  <h2>Response Breakdown</h2>
+                </div>
+              </div>
+              <div className="cinematic-severity-grid">
+                {severityOrder.map((severity) => (
+                  <SeverityCard key={severity} severity={severity} count={resolveSeverityCount(riskDistribution, severity)} />
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <section className="cinematic-panel cinematic-panel--sessions">
+            <div className="cinematic-panel__watermark" aria-hidden="true">
+              <i className="ri-route-line"></i>
+            </div>
+            <div className="cinematic-panel__header">
+              <div>
+                <div className="cinematic-kicker">Session Stream</div>
+                <h2>Live Network Sessions</h2>
+              </div>
+              <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/activity')}>Open Traffic Feed</button>
+            </div>
+            {loading ? (
+              <TableSkeleton rows={5} />
+            ) : (
+              <div className="cinematic-session-list">
+                {recentSessions.length ? recentSessions.map((row, index) => (
+                  <button
+                    type="button"
+                    className="cinematic-session"
+                    key={row.id || `${row.timestamp || row.time}-${index}`}
+                    onClick={() => setSelectedEvent(row)}
+                  >
+                    <span>
+                      <strong>{row.application || 'Other'}</strong>
+                      <small>{row.domain || row.host || row.dst_ip || '-'}</small>
+                    </span>
+                    <span className="mono">{row.src_ip || '-'} -&gt; {row.dst_ip || '-'}</span>
+                    <StatusBadge tone={getRiskTone(row.severity)}>{row.severity || 'LOW'}</StatusBadge>
+                    <span className="mono">{formatByteCount(row.byte_count || row.size || 0)}</span>
+                  </button>
+                )) : (
+                  <div className="cinematic-empty">No session activity yet. Start the agent or gateway to populate the live stream.</div>
+                )}
+              </div>
+            )}
+          </section>
+        </main>
+
+        <aside className="cinematic-command-grid__rail">
+          <section className="cinematic-panel cinematic-panel--rail">
+            <div className="cinematic-rail-summary" aria-label="Threat summary">
+              <span>{formatCompact(liveThreats.length)}</span>
+              <small>priority alerts</small>
+            </div>
+            <div className="cinematic-panel__header">
+              <div>
+                <div className="cinematic-kicker">Live Threat Feed</div>
+                <h2>Priority Queue</h2>
+              </div>
+              <StatusBadge tone={liveThreats.length ? 'danger' : 'success'} icon="ri-pulse-line">
+                {liveThreats.length ? 'Live' : 'Quiet'}
+              </StatusBadge>
+            </div>
+            <div className="cinematic-threat-list">
+              {liveThreats.length ? liveThreats.map((alert, index) => (
+                <ThreatFeedItem
+                  key={alert.id || `${alert.timestamp}-${index}`}
+                  alert={alert}
+                  onClick={() => navigate('/threats')}
+                />
+              )) : (
+                <div className="cinematic-empty">No active high-priority alerts.</div>
+              )}
+            </div>
+          </section>
+
+          <section className="cinematic-panel cinematic-panel--rail">
+            <div className="cinematic-panel__header">
+              <div>
+                <div className="cinematic-kicker">System Status</div>
+                <h2>Workspace Health</h2>
+              </div>
+            </div>
+            <div className="cinematic-status-list">
+              <SystemStatusRow icon="ri-broadcast-line" label="Sensor Status" value={wsStatus === 'connected' ? 'Streaming' : 'Reconnecting'} tone={wsStatus === 'connected' ? 'success' : 'warning'} />
+              <SystemStatusRow icon="ri-heart-pulse-line" label="Agent Health" value={`${stats.active_devices || 0}/${stats.total_devices || 0} online`} />
+              <SystemStatusRow icon="ri-database-2-line" label="Data Ingestion" value={`${formatCompact(stats.flows_24h || 0)} flows`} />
+              <SystemStatusRow icon="ri-navigation-line" label="Inspection" value={`${inspectedCoverage}% covered`} tone={inspectedCoverage > 0 ? 'success' : 'warning'} />
+            </div>
+          </section>
+
+          <section className="cinematic-panel cinematic-panel--rail">
+            <div className="cinematic-panel__header">
+              <div>
+                <div className="cinematic-kicker">Application Signal</div>
+                <h2>Top Products</h2>
+              </div>
+            </div>
+            <div className="cinematic-app-list">
+              {topApps.length ? topApps.map((app, index) => (
+                <button type="button" key={app.application || index} onClick={() => navigate(`/apps/${encodeURIComponent(app.application || 'Other')}`)}>
+                  <span>{index + 1}</span>
+                  <strong>{app.application || 'Other'}</strong>
+                  <small>{app.bandwidth || formatByteCount(app.bandwidth_bytes || 0)}</small>
+                </button>
+              )) : (
+                <div className="cinematic-empty">Application rollups are still warming up.</div>
+              )}
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <section className="cinematic-strip">
+        <div>
+          <span>{activeTheme?.label || 'Workspace'}</span>
+          <strong>{scene.quote || 'Operational clarity over visual noise.'}</strong>
         </div>
-      </SectionCard>
-
-      {loading ? (
-        <TableSkeleton rows={4} />
-      ) : (
-        <SectionCard
-          title="Threat Summary"
-          caption="What Needs Attention"
-          aside={<button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/threats')}>Open Queue</button>}
-        >
-          <div className="nv-dashboard-pie">
-            <ThreatDistributionChart
-              distribution={stats.risk_distribution}
-              height={208}
-              legendPosition="bottom"
-            />
-          </div>
-        </SectionCard>
-      )}
-
-      {loading ? (
-        <TableSkeleton rows={5} />
-      ) : (
-        <SectionCard
-          title="Recent Alerts"
-          caption="Secondary Live Activity"
-          aside={<button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/threats')}>Investigate</button>}
-        >
-          <div className="nv-scroll-region nv-scroll-region--lg">
-            <DataTable
-              columns={alertColumns}
-              rows={alerts.slice(0, 12)}
-              rowKey={(row, index) => row.id || `${row.timestamp}-${index}`}
-              onRowClick={() => navigate('/threats')}
-              emptyTitle="No active alerts"
-              emptyDescription="The high-severity threat queue is currently quiet."
-            />
-          </div>
-        </SectionCard>
-      )}
-
-      {loading ? (
-        <TableSkeleton rows={5} />
-      ) : (
-        <SectionCard
-          title="Recent Web Activity"
-          caption="Inspection Feed"
-          aside={<button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/dpi')}>Open Inspection</button>}
-        >
-          <div className="nv-scroll-region nv-scroll-region--lg">
-            <DataTable
-              columns={webColumns}
-              rows={webActivity.slice(0, 10)}
-              rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
-              onRowClick={(row) => {
-                if (row.device_ip) {
-                  navigate(`/user/${encodeURIComponent(row.device_ip)}`);
-                } else {
-                  navigate('/dpi');
-                }
-              }}
-              emptyTitle="No inspected sessions"
-              emptyDescription="Enable agent-side inspection and browse through the managed wrappers to populate this feed."
-            />
-          </div>
-        </SectionCard>
-      )}
-
-      <SectionCard
-        title="Live Network Sessions"
-        caption="Triage Feed"
-        aside={<button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/activity')}>Open Traffic Feed</button>}
-      >
-        {loading ? (
-          <TableSkeleton rows={6} />
-        ) : (
-          <div className="nv-scroll-region nv-scroll-region--xl">
-            <DataTable
-              columns={recentActivityColumns}
-              rows={activity.slice(0, 14)}
-              rowKey={(row, index) => row.id || `${row.timestamp || row.time}-${index}`}
-              onRowClick={(row) => handleOpenEvidence(row)}
-              emptyTitle="No session activity yet"
-              emptyDescription="Once the agent or gateway starts sending flow records, the live triage feed will appear here."
-            />
-          </div>
-        )}
-      </SectionCard>
+        {(scene.strip || ['Telemetry', 'Threats', 'Evidence']).map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+        <div>
+          <span>Dominant App</span>
+          <strong>{dominantApp} {dominantAppBytes !== '0 B' ? `- ${dominantAppBytes}` : ''}</strong>
+        </div>
+      </section>
 
       <EvidenceDrawer
         open={Boolean(selectedEvent)}

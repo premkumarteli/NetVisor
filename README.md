@@ -9,6 +9,7 @@ NetVisor is a self-hosted security workspace for managed endpoints and metadata-
 - `gateway/` handles metadata-only BYOD collection.
 - `frontend/` is the analyst console.
 - `shared/` contains runtime code reused by the agent and gateway.
+- `infra/` contains Docker, deployment, and database schema assets.
 
 Generated output lives outside the source tree:
 
@@ -19,7 +20,7 @@ Generated output lives outside the source tree:
 
 1. Run `python scripts/init_env.py` to create a local `.env` from the tracked template.
 2. Edit `.env` with the database, secret, and bootstrap keys.
-3. Initialize the database with `mysql -u root -p < database\init.sql`.
+3. Initialize the database with `mysql -u root -p < infra\database\init.sql`.
 4. Start the backend with `python run_server.py`.
 5. Start the agent with `python run_agent.py`.
 6. Start the gateway with `python run_gateway.py`.
@@ -47,7 +48,7 @@ npm run build
 - [Runbook](docs/runbook.md)
 - [Architecture Spec](docs/architecture-spec.md)
 - [Security Operations](docs/security_operations.md)
-- [Deployment Overview](deployment/README.md)
-- [Server Deployment](deployment/server/README.md)
-- [Agent Deployment](deployment/agent/README.md)
-- [Gateway Deployment](deployment/gateway/README.md)
+- [Deployment Overview](infra/deployment/README.md)
+- [Server Deployment](infra/deployment/server/README.md)
+- [Agent Deployment](infra/deployment/agent/README.md)
+- [Gateway Deployment](infra/deployment/gateway/README.md)

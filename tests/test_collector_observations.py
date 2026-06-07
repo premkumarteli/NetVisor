@@ -119,6 +119,20 @@ def test_build_capture_backend_uses_scapy_on_windows(monkeypatch):
     assert backend.backend_name == "scapy"
 
 
+def test_capture_status_reports_drop_rate_and_error_category():
+    backend = ScapyCaptureBackend(role="agent", interface="Ethernet", requested_backend="scapy")
+    backend._mark_started()
+    backend._record_seen()
+    backend._record_drop("Permission denied opening capture adapter")
+
+    snapshot = backend.status_snapshot()
+
+    assert snapshot["health_status"] == "unhealthy"
+    assert snapshot["error_category"] == "permission"
+    assert snapshot["drop_rate"] == 1.0
+    assert snapshot["packets_dropped"] == 1
+
+
 def test_dpi_observation_payload_omits_raw_headers():
     observation = DpiObservation(
         browser_name="Chrome",

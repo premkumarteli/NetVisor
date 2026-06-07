@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+.venv-1/
+venv/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build artifacts
+build/
+dist/
+*.log
+
+# Runtime/data
+runtime/
+tmp/
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+*.session
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+infra/deployment/**/.env
+!infra/deployment/**/.env.example
+config/*.key
+config/*.pem
+config/*.p12
+config/*.crt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project temp
+tmp_server_*.log
+current_env.txt
+legacy/
+share_agent/
+share_agent.zip
+frontend.zip
+*.zip
+*.tar
+*.tar.gz

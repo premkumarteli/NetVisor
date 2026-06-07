@@ -1,0 +1,222 @@
+services:
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: netvisor-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${NETVISOR_DB_PASSWORD:?Set NETVISOR_DB_PASSWORD in .env}
+      MYSQL_DATABASE: ${NETVISOR_DB_NAME:-network_security}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./infra/database/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+    ports:
+      - "127.0.0.1:3307:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - netvisor
+
+  # Idempotent schema migrations
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: netvisor-migrate
+    env_file:
+      - .env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NETVISOR_DB_HOST: db
+      NETVISOR_DB_USER: ${NETVISOR_DB_USER:-root}
+      NETVISOR_DB_PASSWORD: ${NETVISOR_DB_PASSWORD:?Set NETVISOR_DB_PASSWORD in .env}
+      NETVISOR_DB_NAME: ${NETVISOR_DB_NAME:-network_security}
+    command: >
+      sh -c "
+      python infra/database/migrations/apply_20260416_gateway_security_phase1.py &&
+      python infra/database/migrations/apply_20260417_runtime_schema_phase2.py &&
+      python infra/database/migrations/apply_20260418_flow_ingest_phase3.py &&
+      python infra/database/migrations/apply_20260419_flow_ingest_hardening_phase4.py &&
+      python infra/database/migrations/apply_20260520_flow_truth_phase4.py
+      "
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - netvisor
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: netvisor-backend
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NETVISOR_DB_HOST: db
+      NETVISOR_DB_USER: ${NETVISOR_DB_USER:-root}
+      NETVISOR_DB_PASSWORD: ${NETVISOR_DB_PASSWORD:?Set NETVISOR_DB_PASSWORD in .env}
+      NETVISOR_DB_NAME: ${NETVISOR_DB_NAME:-network_security}
+      NETVISOR_SECRET_KEY: ${NETVISOR_SECRET_KEY:?Set NETVISOR_SECRET_KEY in .env}
+      NETVISOR_AGENT_MASTER_KEY: ${NETVISOR_AGENT_MASTER_KEY:?Set NETVISOR_AGENT_MASTER_KEY in .env}
+      NETVISOR_GATEWAY_MASTER_KEY: ${NETVISOR_GATEWAY_MASTER_KEY:?Set NETVISOR_GATEWAY_MASTER_KEY in .env}
+      AGENT_API_KEY: ${AGENT_API_KEY:?Set AGENT_API_KEY in .env}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Set GATEWAY_API_KEY in .env}
+      NETVISOR_LOG_LEVEL: ${NETVISOR_LOG_LEVEL:-INFO}
+      NETVISOR_SINGLE_ORG_MODE: ${NETVISOR_SINGLE_ORG_MODE:-true}
+      NETVISOR_DEFAULT_ORGANIZATION_ID: ${NETVISOR_DEFAULT_ORGANIZATION_ID:-default-org-id}
+      NETVISOR_CORS_ORIGINS: ${NETVISOR_CORS_ORIGINS:-http://localhost,http://localhost:3000}
+      NETVISOR_BOOTSTRAP_ADMIN_USERNAME: ${NETVISOR_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      NETVISOR_BOOTSTRAP_ADMIN_PASSWORD: ${NETVISOR_BOOTSTRAP_ADMIN_PASSWORD:-}
+      NETVISOR_RELOAD: "false"
+      NETVISOR_TRUST_PROXY_HEADERS: "true"
+      NETVISOR_FORWARDED_ALLOW_IPS: "172.20.0.0/16"
+      NETVISOR_FLOW_WORKER_MODE: "disabled"
+    volumes:
+      - ./runtime:/app/runtime
+      - ./config:/app/config
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=5).read()\""]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netvisor
+
+  # Dedicated flow worker for durable flow ingestion
+  flow-worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.backend
+    container_name: netvisor-flow-worker
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NETVISOR_DB_HOST: db
+      NETVISOR_DB_USER: ${NETVISOR_DB_USER:-root}
+      NETVISOR_DB_PASSWORD: ${NETVISOR_DB_PASSWORD:?Set NETVISOR_DB_PASSWORD in .env}
+      NETVISOR_DB_NAME: ${NETVISOR_DB_NAME:-network_security}
+      NETVISOR_SECRET_KEY: ${NETVISOR_SECRET_KEY:?Set NETVISOR_SECRET_KEY in .env}
+      NETVISOR_AGENT_MASTER_KEY: ${NETVISOR_AGENT_MASTER_KEY:?Set NETVISOR_AGENT_MASTER_KEY in .env}
+      NETVISOR_GATEWAY_MASTER_KEY: ${NETVISOR_GATEWAY_MASTER_KEY:?Set NETVISOR_GATEWAY_MASTER_KEY in .env}
+      AGENT_API_KEY: ${AGENT_API_KEY:?Set AGENT_API_KEY in .env}
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?Set GATEWAY_API_KEY in .env}
+      NETVISOR_FLOW_WORKER_MODE: "external"
+      NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN: "false"
+    command: ["python", "run_flow_worker.py"]
+    volumes:
+      - ./runtime:/app/runtime
+      - ./config:/app/config
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netvisor
+
+  # React Frontend (Nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.frontend
+    container_name: netvisor-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:80:80"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netvisor
+
+  # NetVisor Agent (endpoint telemetry collector)
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: netvisor-agent
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NETVISOR_AGENT_ID: ${NETVISOR_AGENT_ID:-local-agent}
+      NETVISOR_SERVER_URL: http://backend:8000
+      NETVISOR_AGENT_MASTER_KEY: ${NETVISOR_AGENT_MASTER_KEY:-dev-agent-key}
+      NETVISOR_LOG_LEVEL: ${NETVISOR_LOG_LEVEL:-INFO}
+    volumes:
+      - ./config/agent.json:/app/config/agent.json:ro
+      - ./runtime:/app/runtime
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - netvisor
+
+  # NetVisor Gateway (BYOD metadata collector)
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: netvisor-gateway
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      NETVISOR_GATEWAY_ID: ${NETVISOR_GATEWAY_ID:-local-gateway}
+      NETVISOR_SERVER_URL: http://backend:8000
+      NETVISOR_GATEWAY_MASTER_KEY: ${NETVISOR_GATEWAY_MASTER_KEY:-dev-gateway-key}
+      NETVISOR_LOG_LEVEL: ${NETVISOR_LOG_LEVEL:-INFO}
+    volumes:
+      - ./runtime:/app/runtime
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    user: "root"
+    security_opt: []
+    networks:
+      - netvisor
+
+volumes:
+  db_data:
+
+networks:
+  netvisor:
+    driver: bridge

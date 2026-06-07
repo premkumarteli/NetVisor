@@ -44,6 +44,50 @@ const sortApplications = (entries) => [...entries].sort((left, right) => (
   || String(left.application).localeCompare(String(right.application))
 ));
 
+const appKindLabel = (application) => (
+  isNetworkServiceApplication(application) ? 'Network service' : 'Product app'
+);
+
+const compactHost = (host) => {
+  const value = String(host || '').trim();
+  if (!value) return '';
+  return value.length > 28 ? `${value.slice(0, 25)}...` : value;
+};
+
+const appDetectionSummary = (app) => {
+  if (isNetworkServiceApplication(app.application)) {
+    return 'Protocol bucket';
+  }
+  if (app.live_domain) {
+    return `Live: ${compactHost(app.live_domain)}`;
+  }
+  if (app.top_domain) {
+    return `Domain: ${compactHost(app.top_domain)}`;
+  }
+  return 'Flow intelligence';
+};
+
+const appActivitySummary = (app) => {
+  const activeNow = app.live_event_count || app.active_device_count || 0;
+  if (activeNow > 0) {
+    return `${activeNow} live signal${activeNow === 1 ? '' : 's'} right now`;
+  }
+  if (app.last_seen) {
+    return `Last observed ${app.last_seen}`;
+  }
+  return 'No live traffic in the current refresh window';
+};
+
+const appNextStep = (app) => {
+  if (isNetworkServiceApplication(app.application)) {
+    return 'Review if high traffic';
+  }
+  if ((app.live_event_count || 0) > 0) {
+    return 'Open device usage';
+  }
+  return 'Watch history';
+};
+
 const ApplicationsPage = () => {
   const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
@@ -72,7 +116,7 @@ const ApplicationsPage = () => {
     fetchApplications();
   }, [fetchApplications]);
 
-  useVisibilityPolling(fetchApplications, 15000);
+  useVisibilityPolling(fetchApplications, 5000);
 
   const handlePacketEvent = useCallback((event) => {
     setLiveFeed((current) => [event, ...current].slice(0, 160));
@@ -204,6 +248,24 @@ const ApplicationsPage = () => {
     );
   }, [mergedApplications]);
 
+  const pageInsights = useMemo(() => {
+    const topProduct = productApplications[0];
+    const topService = networkApplications[0];
+    const liveEvents = mergedApplications.reduce((sum, app) => sum + (app.live_event_count || 0), 0);
+    const dominantApp = topProduct || topService;
+    return {
+      liveEvents,
+      dominantCopy: dominantApp
+        ? `${dominantApp.application} is the clearest active signal${dominantApp.live_domain ? ` via ${dominantApp.live_domain}` : ''}.`
+        : 'No application signal is active yet.',
+      productCopy: `${totals.productApps} named product app${totals.productApps === 1 ? '' : 's'} separated from protocol noise.`,
+      serviceCopy: `${totals.networkServices} network service bucket${totals.networkServices === 1 ? '' : 's'} kept apart for cleaner reading.`,
+      classificationCopy: classificationRows.length > 0
+        ? `${classificationRows.length} host${classificationRows.length === 1 ? '' : 's'} still need app mapping.`
+        : 'No major classification gaps in the current window.',
+    };
+  }, [classificationRows.length, mergedApplications, networkApplications, productApplications, totals]);
+
   const renderApplicationGrid = (entries, emptyTitle, emptyDescription) => {
     if (entries.length === 0) {
       return (
@@ -224,13 +286,13 @@ const ApplicationsPage = () => {
         {entries.map((app) => {
           const visual = getApplicationVisual(app.application);
           const isLive = (app.live_event_count || 0) > 0 || (app.active_device_count || 0) > 0;
-          const isService = isNetworkServiceApplication(app.application);
           return (
             <button
               key={app.application}
               type="button"
-              className="nv-card-button"
+              className="nv-card-button nv-app-card"
               onClick={() => navigate(`/apps/${encodeURIComponent(app.application)}`)}
+              style={{ '--nv-app-accent': visual.accent }}
             >
               <div className="nv-card-button__header">
                 <div className="nv-pill-card" style={{ padding: 0, border: '0', background: 'transparent' }}>
@@ -249,13 +311,23 @@ const ApplicationsPage = () => {
               <div className="nv-card-button__value">{app.bandwidth || formatByteCount(app.bandwidth_bytes)}</div>
               <div className="nv-card-button__footer">
                 <span>{app.live_event_count || app.active_device_count || 0} active now</span>
-                <span>{app.runtime || formatRuntime(app.runtime_seconds)}</span>
+                  <span>{app.runtime || formatRuntime(app.runtime_seconds)}</span>
+                </div>
+              <div className="nv-app-card__explain">
+                <div>
+                  <span>Meaning</span>
+                  <strong>{appKindLabel(app.application)}</strong>
+                </div>
+                <div>
+                  <span>Detection</span>
+                  <strong>{appDetectionSummary(app)}</strong>
+                </div>
+                <div>
+                  <span>Next step</span>
+                  <strong>{appNextStep(app)}</strong>
+                </div>
               </div>
-              <p style={{ marginTop: '0.75rem', color: 'var(--nv-text-muted)' }}>
-                {isService ? 'Network service bucket' : 'Product app'}
-                {app.last_seen ? ` | Last seen ${app.last_seen}` : ' | Last seen N/A'}
-                {app.live_domain ? ` | ${app.live_domain}` : ''}
-              </p>
+              <p className="nv-app-card__summary">{appActivitySummary(app)}</p>
             </button>
           );
         })}
@@ -268,7 +340,7 @@ const ApplicationsPage = () => {
       <PageHeader
         eyebrow="Inventory"
         title="Application Coverage"
-        description="See which products are active across the network, how much bandwidth they are consuming, and which transport buckets still need separate review."
+        description="Understand which real apps are active, which rows are only network-service buckets, and what each signal means for investigation."
         actions={(
           <button type="button" className="nv-button nv-button--secondary" onClick={fetchApplications}>
             <i className="ri-refresh-line"></i>
@@ -311,6 +383,40 @@ const ApplicationsPage = () => {
           />
         </div>
       )}
+
+      {!loading ? (
+        <SectionCard title="Application Understanding" caption="Plain-language Readout" className="nv-section--clarity">
+          <div className="nv-app-brief">
+            <div className="nv-app-brief__lead">
+              <span className="nv-app-brief__icon">
+                <i className="ri-apps-2-add-line"></i>
+              </span>
+              <div>
+                <h2>{pageInsights.dominantCopy}</h2>
+                <p>NetVisor separates named user apps from protocol buckets so gateway traffic is easier to explain during review.</p>
+              </div>
+            </div>
+            <div className="nv-app-brief__cards">
+              <div className="nv-mini-explainer">
+                <span>Named apps</span>
+                <strong>{pageInsights.productCopy}</strong>
+              </div>
+              <div className="nv-mini-explainer">
+                <span>Services</span>
+                <strong>{pageInsights.serviceCopy}</strong>
+              </div>
+              <div className="nv-mini-explainer">
+                <span>Live feed</span>
+                <strong>{pageInsights.liveEvents} fresh packet signal{pageInsights.liveEvents === 1 ? '' : 's'} in memory.</strong>
+              </div>
+              <div className="nv-mini-explainer">
+                <span>Classification</span>
+                <strong>{pageInsights.classificationCopy}</strong>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Product Apps" caption="Product-level traffic with concrete application identity">
         {loading ? (

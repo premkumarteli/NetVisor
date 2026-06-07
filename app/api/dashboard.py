@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends
 
 from ..core.dependencies import get_current_user, require_org_admin
@@ -31,12 +32,20 @@ async def get_dashboard_activity(
 @router.get("/traffic-history")
 async def get_traffic_history(
     current_user: dict = Depends(require_org_admin),
-    hours: int = 24
+    hours: int = 24,
+    resolution: str = "hour",
+    window: Optional[int] = None,
 ):
     conn = get_db_connection()
     try:
         org_id = current_user.get("organization_id")
-        return dashboard_service.get_traffic_history(conn, hours=hours, organization_id=org_id)
+        return dashboard_service.get_traffic_history(
+            conn,
+            hours=hours,
+            resolution=resolution,
+            window=window,
+            organization_id=org_id,
+        )
     finally:
         conn.close()
 

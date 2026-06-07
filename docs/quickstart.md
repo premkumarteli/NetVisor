@@ -32,7 +32,7 @@ If you are running behind a reverse proxy, also set:
 ## 2. Initialize the database
 
 ```powershell
-mysql -u root -p < database\init.sql
+mysql -u root -p < infra\database\init.sql
 ```
 
 ## 3. Start the backend

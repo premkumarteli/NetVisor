@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
+import { Link, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
 import { systemService } from '../services/api';
-import { isAdminRole } from '../utils/roles';
 import { formatRuntime, getApplicationVisual } from '../utils/apps';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, formatByteCount, getRiskTone, getStatusTone } from '../utils/presentation';
 import { DetailSkeleton } from '../components/UI/Skeletons';
 import PageHeader from '../components/V2/PageHeader';
 import SectionCard from '../components/V2/SectionCard';
-import MetricCard from '../components/V2/MetricCard';
 import StatusBadge from '../components/V2/StatusBadge';
 import Tabs from '../components/V2/Tabs';
 import DataTable from '../components/V2/DataTable';
@@ -18,13 +15,7 @@ import InsightList from '../components/V2/InsightList';
 import DpiSetupGuide from '../components/DPI/DpiSetupGuide';
 import WebEvidenceDrawer from '../components/DPI/WebEvidenceDrawer';
 import { getWebEvidencePrimaryLabel, getWebEvidenceScopeLabel, matchesWebEvidenceFilters, normalizeWebRiskLevel } from '../utils/webEvidence';
-
-const emptySummary = {
-  safety_score: null,
-  recent_activity: [],
-  transparency_log: [],
-  scoped: false,
-};
+import { beautifyDpiUrl, isDpiNoise } from '../utils/webNoise';
 
 const formatConfidence = (value) => {
   const score = Number(value) || 0;
@@ -41,137 +32,11 @@ const UserPage = () => {
   const { deviceIp } = useParams();
   const normalizedDeviceIp = deviceIp ? decodeURIComponent(deviceIp) : null;
 
-  if (normalizedDeviceIp) {
-    return <DeviceWorkspace deviceIp={normalizedDeviceIp} />;
+  if (!normalizedDeviceIp) {
+    return <Navigate to="/dashboard" replace />;
   }
 
-  return <AccountWorkspace />;
-};
-
-const AccountWorkspace = () => {
-  const { user } = useAuth();
-  const [summary, setSummary] = useState(emptySummary);
-
-  useEffect(() => {
-    if (!user) {
-      return;
-    }
-
-    if (!isAdminRole(user.role)) {
-      setSummary(emptySummary);
-      return;
-    }
-
-    systemService.getUserSummary(user.role)
-      .then((res) => setSummary(res.data || emptySummary))
-      .catch(() => setSummary(emptySummary));
-  }, [user]);
-
-  const displayUser = user || {
-    username: 'User',
-    role: 'viewer',
-    email: 'user@netvisor.local',
-  };
-
-  const transparencyColumns = [
-    { key: 'src_ip', label: 'Source', render: (row) => <span className="mono">{row.src_ip || '-'}</span> },
-    { key: 'dst_ip', label: 'Destination', render: (row) => <span className="mono">{row.dst_ip || '-'}</span> },
-    { key: 'domain', label: 'Domain', render: (row) => row.domain || '-' },
-    { key: 'timestamp', label: 'Timestamp', render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.timestamp)}</span> },
-  ];
-
-  const recentItems = summary.recent_activity.slice(0, 6).map((entry, index) => ({
-    key: `${entry.src_ip || 'src'}-${entry.dst_ip || 'dst'}-${index}`,
-    icon: entry.severity === 'HIGH' || entry.severity === 'CRITICAL' ? 'ri-alert-line' : 'ri-links-line',
-    title: entry.application || entry.domain || 'Observed activity',
-    description: `${entry.src_ip || '-'} → ${entry.dst_ip || '-'}`,
-    meta: entry.severity || 'LOW',
-  }));
-
-  return (
-    <div className="nv-page">
-      <PageHeader
-        eyebrow="Personal Workspace"
-        title="My Security Profile"
-        description="Review your current account posture, recent scoped activity, and the metadata transparency log associated with your account."
-      />
-
-      <section className="nv-section nv-identity-card">
-        <div className="nv-identity-card__main">
-          <div className="nv-identity-card__eyebrow">User Identity</div>
-          <div className="nv-identity-card__value">{displayUser.username}</div>
-          <p className="nv-identity-card__meta">{displayUser.email || `${displayUser.username}@netvisor.local`}</p>
-        </div>
-        <div className="nv-identity-card__aside">
-          <div className="nv-stack">
-            <StatusBadge tone="accent" icon="ri-user-star-line">{displayUser.role}</StatusBadge>
-            <StatusBadge tone={summary.scoped ? 'success' : 'warning'} icon="ri-shield-check-line">
-              {summary.scoped ? 'Scoped Activity Available' : 'Awaiting Device Link'}
-            </StatusBadge>
-          </div>
-        </div>
-      </section>
-
-      <div className="nv-metric-grid">
-        <MetricCard
-          icon="ri-shield-check-line"
-          label="Safety Score"
-          value={summary.safety_score ?? '--'}
-          meta={summary.safety_score === null ? 'Linked device telemetry required' : 'Higher is better'}
-          accent="#2dd4bf"
-        />
-        <MetricCard
-          icon="ri-history-line"
-          label="Recent Events"
-          value={summary.recent_activity.length}
-          meta="Scoped activity visible to this account"
-          accent="#60a5fa"
-        />
-        <MetricCard
-          icon="ri-eye-line"
-          label="Transparency Entries"
-          value={summary.transparency_log.length}
-          meta="Metadata-only transparency feed"
-          accent="#54c8e8"
-        />
-        <MetricCard
-          icon="ri-shield-user-line"
-          label="Role Context"
-          value={displayUser.role}
-          meta={summary.scoped ? 'Security telemetry is visible' : 'Privilege does not imply device visibility'}
-          accent="#fbbf24"
-        />
-      </div>
-
-      <div className="nv-grid nv-grid--equal">
-        <SectionCard title="Recent Activity" caption="Investigation Snapshot">
-          {summary.scoped ? (
-            <InsightList items={recentItems} />
-          ) : (
-            <div className="nv-empty" style={{ background: 'transparent', boxShadow: 'none', border: '0' }}>
-              <div className="nv-empty__icon">
-                <i className="ri-shield-user-line"></i>
-              </div>
-              <div className="nv-stack" style={{ gap: '0.5rem' }}>
-                <h3 className="nv-empty__title">No linked device yet</h3>
-                <p className="nv-empty__description">Personal activity will appear here after a managed device is linked to this account.</p>
-              </div>
-            </div>
-          )}
-        </SectionCard>
-
-        <SectionCard title="Transparency Log" caption="Metadata Feed">
-          <DataTable
-            columns={transparencyColumns}
-            rows={summary.transparency_log.slice(0, 8)}
-            rowKey={(row, index) => `${row.src_ip || 'src'}-${row.dst_ip || 'dst'}-${index}`}
-            emptyTitle={summary.scoped ? 'No recent activity' : 'No linked device activity'}
-            emptyDescription={summary.scoped ? 'There are no transparency entries in the current window.' : 'Link a device to expose metadata entries here.'}
-          />
-        </SectionCard>
-      </div>
-    </div>
-  );
+  return <DeviceWorkspace deviceIp={normalizedDeviceIp} />;
 };
 
 const DeviceWorkspace = ({ deviceIp }) => {
@@ -186,6 +51,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
     domain: 'all',
     risk: 'all',
   });
+  const [hideWebNoise, setHideWebNoise] = useState(true);
   const [selectedWebEvent, setSelectedWebEvent] = useState(null);
 
   const fetchProfile = useCallback(async ({ background = false } = {}) => {
@@ -224,12 +90,12 @@ const DeviceWorkspace = ({ deviceIp }) => {
   );
 
   const filteredWebActivity = useMemo(() => {
-    return webActivity.filter((entry) => matchesWebEvidenceFilters(entry, webFilters));
-  }, [webActivity, webFilters]);
+    return webActivity.filter((entry) => (!hideWebNoise || !isDpiNoise(entry)) && matchesWebEvidenceFilters(entry, webFilters));
+  }, [hideWebNoise, webActivity, webFilters]);
 
   const filteredWebEvidenceGroups = useMemo(
-    () => webEvidenceGroups.filter((entry) => matchesWebEvidenceFilters(entry, webFilters)),
-    [webEvidenceGroups, webFilters],
+    () => webEvidenceGroups.filter((entry) => (!hideWebNoise || !isDpiNoise(entry)) && matchesWebEvidenceFilters(entry, webFilters)),
+    [hideWebNoise, webEvidenceGroups, webFilters],
   );
 
   const applicationInsights = useMemo(
@@ -237,7 +103,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
       key: `${profile?.device_ip || 'device'}-${entry.application}`,
       icon: getApplicationVisual(entry.application).icon,
       title: entry.application,
-      description: `${entry.bandwidth} · ${entry.event_count} recent events`,
+      description: `${entry.bandwidth} - ${entry.event_count} recent events`,
       meta: entry.last_seen ? formatUtcTimestampToLocal(entry.last_seen) : entry.runtime || formatRuntime(entry.runtime_seconds),
       onClick: () => navigate(`/apps/${encodeURIComponent(entry.application)}`),
     })),
@@ -249,7 +115,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
       key: `${entry.src_ip || 'src'}-${entry.dst_ip || 'dst'}-${index}`,
       icon: entry.severity === 'HIGH' || entry.severity === 'CRITICAL' ? 'ri-alarm-warning-line' : 'ri-links-line',
       title: entry.application || entry.domain || 'Observed session',
-      description: `${entry.src_ip === profile?.device_ip ? entry.dst_ip : entry.src_ip} · ${entry.protocol || 'Unknown'} · ${formatByteCount(entry.byte_count || entry.size || 0)}`,
+      description: `${entry.src_ip === profile?.device_ip ? entry.dst_ip : entry.src_ip} - ${entry.protocol || 'Unknown'} - ${formatByteCount(entry.byte_count || entry.size || 0)}`,
       meta: formatUtcTimestampToLocal(entry.timestamp || entry.last_seen || entry.time_str || entry.time),
     })),
     [profile?.device_ip, profile?.recent_events],
@@ -314,7 +180,9 @@ const DeviceWorkspace = ({ deviceIp }) => {
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.page_title || 'Untitled'}</div>
-          <div className="nv-table__meta">{row.page_url || row.base_domain}</div>
+          <div className="nv-table__meta" title={row.page_url || row.base_domain}>
+            {beautifyDpiUrl(row.page_url || row.base_domain)}
+          </div>
         </>
       ),
     },
@@ -573,6 +441,10 @@ const DeviceWorkspace = ({ deviceIp }) => {
                 <Link className="nv-button nv-button--ghost" to={`/user/${encodeURIComponent(profile.device_ip)}/web-activity`}>
                   Open Deep Dive
                 </Link>
+                <button type="button" className="nv-button nv-button--secondary" onClick={() => setHideWebNoise((current) => !current)}>
+                  <i className={hideWebNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
+                  {hideWebNoise ? 'Noise Hidden' : 'Showing Raw'}
+                </button>
               </div>
             )}
           >
@@ -649,7 +521,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
             <div className="nv-summary-tile">
               <span>Proxy</span>
               <strong>{inspectionStatus?.proxy_running ? 'Running' : 'Stopped'}</strong>
-              <p>{inspectionStatus?.status || 'disabled'} · port {inspectionStatus?.proxy_port || 8899}</p>
+              <p>{inspectionStatus?.status || 'disabled'} - port {inspectionStatus?.proxy_port || 8899}</p>
             </div>
             <div className="nv-summary-tile">
               <span>Certificate</span>
@@ -659,7 +531,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
             <div className="nv-summary-tile">
               <span>Queue & Upload</span>
               <strong>{inspectionStatus?.queue_size ?? 0}</strong>
-              <p>{inspectionStatus?.uploaded_event_count ?? 0} uploaded · {inspectionStatus?.upload_failures ?? 0} failed</p>
+              <p>{inspectionStatus?.uploaded_event_count ?? 0} uploaded - {inspectionStatus?.upload_failures ?? 0} failed</p>
             </div>
           </div>
 
@@ -671,7 +543,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
               disabled={!inspectionStatus?.agent_id || policyUpdating}
             >
               <i className={inspectionStatus?.inspection_enabled ? 'ri-shield-close-line' : 'ri-shield-check-line'}></i>
-              {policyUpdating ? 'Updating…' : inspectionStatus?.inspection_enabled ? 'Disable Inspection' : 'Enable Inspection'}
+              {policyUpdating ? 'Updating...' : inspectionStatus?.inspection_enabled ? 'Disable Inspection' : 'Enable Inspection'}
             </button>
           </div>
 
@@ -682,7 +554,7 @@ const DeviceWorkspace = ({ deviceIp }) => {
           {inspectionStatus?.drop_reasons && Object.keys(inspectionStatus.drop_reasons).length > 0 ? (
             <div className="nv-inline-actions">
               {Object.entries(inspectionStatus.drop_reasons).map(([reason, count]) => (
-                <StatusBadge key={reason} tone="neutral">{reason.replace(/_/g, ' ')} · {count}</StatusBadge>
+                <StatusBadge key={reason} tone="neutral">{reason.replace(/_/g, ' ')} - {count}</StatusBadge>
               ))}
             </div>
           ) : null}

@@ -1,5 +1,5 @@
 const SectionCard = ({ title, caption, aside, children, className = '' }) => (
-  <section className={`nv-section ${className}`.trim()}>
+  <section className={`nv-section animate-reveal ${className}`.trim()}>
     {(title || caption || aside) ? (
       <div className="nv-section__header">
         <div className="nv-section__heading">

@@ -12,6 +12,66 @@ import xml.etree.ElementTree as ET
 import psutil
 from scapy.all import ARP, Ether, srp
 
+OUI_VENDOR_PREFIXES = {
+    "00:50:56": "VMware",
+    "00:0C:29": "VMware",
+    "00:05:69": "VMware",
+    "00:1C:14": "VMware",
+    "08:00:27": "Oracle VirtualBox",
+    "00:15:5D": "Microsoft Hyper-V",
+    "DC:A6:32": "Raspberry Pi",
+    "B8:27:EB": "Raspberry Pi",
+    "D8:3A:DD": "Ubiquiti",
+    "F0:9F:C2": "Ubiquiti",
+    "00:11:32": "Synology",
+    "06:C9:80": "OPPO / Android",
+    "24:A1:60": "OPPO / Android",
+    "48:74:6E": "OPPO / Android",
+    "80:35:C1": "OPPO / Android",
+    "A4:83:E7": "OPPO / Android",
+    "B0:19:21": "OPPO / Android",
+    "F4:1A:9C": "OPPO / Android",
+    "28:6A:BA": "Apple",
+    "3C:22:FB": "Apple",
+    "7C:D1:C3": "Apple",
+    "A4:C3:F0": "Apple",
+    "F0:18:98": "Apple",
+    "18:65:90": "Samsung",
+    "34:23:BA": "Samsung",
+    "5C:F6:DC": "Samsung",
+    "A0:21:B7": "Samsung",
+    "D0:17:C2": "Samsung",
+    "64:CC:2E": "Xiaomi",
+    "78:02:F8": "Xiaomi",
+    "A4:50:46": "Xiaomi",
+    "C8:3A:35": "Xiaomi",
+    "F8:A4:5F": "Xiaomi",
+}
+
+MOBILE_VENDOR_MARKERS = {"android", "oppo", "samsung", "xiaomi", "redmi", "oneplus", "vivo", "realme", "apple"}
+HOSTNAME_TYPE_HINTS = {
+    "iphone": "Mobile Phone",
+    "ipad": "Tablet",
+    "android": "Mobile Phone",
+    "oppo": "Mobile Phone",
+    "reno": "Mobile Phone",
+    "samsung": "Mobile Phone",
+    "galaxy": "Mobile Phone",
+    "redmi": "Mobile Phone",
+    "xiaomi": "Mobile Phone",
+    "oneplus": "Mobile Phone",
+    "vivo": "Mobile Phone",
+    "realme": "Mobile Phone",
+    "printer": "Printer",
+    "chromecast": "Chromecast / Smart TV",
+    "roku": "Roku / Smart TV",
+    "tv": "Smart TV",
+    "desktop": "Windows Device",
+    "laptop": "Laptop",
+    "raspberry": "Linux/IoT Device",
+    "synology": "NAS / Storage",
+}
+
 
 class DeviceDetector:
     def __init__(self, network=None, local_ip=None):
@@ -407,6 +467,58 @@ class DeviceDetector:
                 continue
 
         return "Unknown Type"
+
+    def resolve_vendor(self, mac):
+        if not mac:
+            return "Unknown"
+
+        normalized = str(mac).replace("-", ":").upper()
+        parts = [part for part in normalized.split(":") if part]
+        if len(parts) < 3:
+            return "Unknown"
+
+        prefix = ":".join(parts[:3])
+        return OUI_VENDOR_PREFIXES.get(prefix, "Unknown")
+
+    def infer_device_type(self, ip, mac=None, hostname=None, active_probe=True):
+        normalized_hostname = str(hostname or "").strip().lower()
+        for marker, device_type in HOSTNAME_TYPE_HINTS.items():
+            if marker in normalized_hostname:
+                return device_type
+
+        vendor = self.resolve_vendor(mac)
+        vendor_lower = vendor.lower()
+        if any(marker in vendor_lower for marker in MOBILE_VENDOR_MARKERS):
+            return "Mobile Phone"
+        if "vmware" in vendor_lower or "virtualbox" in vendor_lower or "hyper-v" in vendor_lower:
+            return "Virtual Machine"
+        if "raspberry" in vendor_lower:
+            return "Linux/IoT Device"
+        if "synology" in vendor_lower:
+            return "NAS / Storage"
+
+        if not active_probe:
+            return "Unknown"
+
+        detected = self.detect_device_type(ip)
+        return "Unknown" if detected == "Unknown Type" else detected
+
+    def identity_confidence(self, *, hostname=None, mac=None, vendor=None, device_type=None):
+        score = 0
+        if self._normalize_hostname(hostname):
+            score += 2
+        if mac and self._is_unicast_entry("192.168.0.1", str(mac).replace("-", ":")):
+            score += 1
+        if vendor and vendor != "Unknown":
+            score += 1
+        if device_type and device_type not in {"Unknown", "Unknown Type"}:
+            score += 1
+
+        if score >= 4:
+            return "high"
+        if score >= 2:
+            return "medium"
+        return "low"
 
     def detect_virtual_mac(self, mac):
         first_octet = int(mac.split(":")[0], 16)

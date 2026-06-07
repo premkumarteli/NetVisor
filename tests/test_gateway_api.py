@@ -399,6 +399,46 @@ def test_gateway_flow_batch_accepts_signed_auth_and_normalizes_payload(monkeypat
     assert buffered[0].metadata_only is True
 
 
+def test_gateway_device_batch_accepts_signed_auth_and_upserts_byod_devices(monkeypatch):
+    monkeypatch.setattr(settings, "BACKEND_TLS_PINS_JSON", "[]")
+    conn = _Connection(gateway_orgs={"GW-1": "default-org-id"})
+    touched = []
+
+    def _touch_device_seen(db_conn, **kwargs):
+        touched.append(kwargs)
+        return True
+
+    monkeypatch.setattr(gateway_api, "get_db_connection", lambda: conn)
+    monkeypatch.setattr(gateway_api.device_service, "touch_device_seen", _touch_device_seen)
+
+    payload = _run(
+        gateway_api.receive_gateway_devices(
+            [
+                {
+                    "gateway_id": "GW-1",
+                    "organization_id": "default-org-id",
+                    "ip": "192.168.137.4",
+                    "mac": "06:c9:80:e9:52:ec",
+                    "hostname": "OPPO-Reno12-5G",
+                    "device_type": "Unknown",
+                    "os_family": "Unknown",
+                    "vendor": "Unknown",
+                    "last_seen": "2026-05-28T17:30:00Z",
+                }
+            ],
+            _rate_limited=True,
+            auth_context={"auth_mode": "signed", "gateway_id": "GW-1", "key_version": 1},
+        )
+    )
+
+    assert payload["count"] == 1
+    assert payload["message"] == "Upserted 1/1 gateway-discovered devices"
+    assert touched[0]["agent_id"] == "GW-1"
+    assert touched[0]["ip"] == "192.168.137.4"
+    assert touched[0]["create_if_missing"] is True
+    assert conn.commits == 1
+
+
 def test_gateway_flow_batch_returns_429_when_backpressure_is_active(monkeypatch):
     monkeypatch.setattr(settings, "BACKEND_TLS_PINS_JSON", "[]")
     monkeypatch.setattr(settings, "AGENT_MAX_CLOCK_SKEW_SECONDS", 60)

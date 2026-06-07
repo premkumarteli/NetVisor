@@ -73,6 +73,23 @@ class GatewayApiClient:
 
     def status_snapshot(self) -> dict:
         credentials = self._credentials() or {}
+        findings: list[dict[str, str]] = []
+        if not self.bootstrap_api_key:
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_bootstrap_key",
+                    "message": "Gateway API bootstrap key is not configured.",
+                }
+            )
+        if not self._pinset():
+            findings.append(
+                {
+                    "severity": "critical",
+                    "code": "missing_tls_pins",
+                    "message": "No backend TLS pins are configured.",
+                }
+            )
         return {
             "bootstrap_api_key_configured": bool(self.bootstrap_api_key),
             "has_credentials": self.has_credentials(),
@@ -80,6 +97,11 @@ class GatewayApiClient:
             "credential_key_version": credentials.get("key_version"),
             "backend_tls_pin_count": len(self._pinset()),
             "state_path": str(self.store.path),
+            "hardening": {
+                "ready": not any(finding["severity"] == "critical" for finding in findings),
+                "finding_count": len(findings),
+                "findings": findings,
+            },
         }
 
     def reset_enrollment(self, *, preserve_pins: bool = True) -> None:

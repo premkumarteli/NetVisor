@@ -4,6 +4,6 @@ scapy
 colorama
 python-dotenv
 psutil
-cryptography
+cryptography<44.1
 tldextract
 mitmproxy
