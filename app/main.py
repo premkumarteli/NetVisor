@@ -45,6 +45,7 @@ def _allowed_origins() -> list[str]:
 
 
 def _validate_runtime_config() -> None:
+    """Validate critical configuration settings on startup (Issue #11)."""
     normalized_same_site = str(settings.AUTH_COOKIE_SAMESITE or "lax").lower()
     if normalized_same_site not in {"lax", "strict", "none"}:
         raise RuntimeError("NETVISOR_AUTH_COOKIE_SAMESITE must be one of: lax, strict, none.")
@@ -73,6 +74,12 @@ def _validate_runtime_config() -> None:
         logger.warning(
             "NETVISOR_ALLOW_LAN_HTTP=true weakens transport security and should only be used in an isolated lab environment."
         )
+    
+    # Issue #11: Validate additional configuration settings
+    config_errors = settings.validate_config()
+    if config_errors:
+        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {err}" for err in config_errors)
+        raise RuntimeError(error_msg)
     
 # Socket.IO setup
 p_sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=_allowed_origins(), cors_credentials=True)
