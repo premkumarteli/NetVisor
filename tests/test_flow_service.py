@@ -472,3 +472,60 @@ def test_flow_log_hash_lookup_prevents_cross_batch_duplicate_counting():
     assert "ingest_hash = %s" in query
     assert params == ("abc123",)
 
+
+@pytest.mark.anyio
+async def test_flow_writer_worker_backoff():
+    from app.services.flow_service import FlowService
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    svc = FlowService()
+    
+    # Mock worker heartbeat loop and other sync db queries
+    svc._worker_heartbeat_loop = AsyncMock()
+    svc._touch_worker_heartbeat_sync = MagicMock()
+    svc._clear_worker_heartbeat_sync = MagicMock()
+    svc._refresh_queue_depth = MagicMock()
+    
+    # Mock collect queue batch to return empty twice, then a batch, then raise CancelledError to exit
+    mock_collect = AsyncMock()
+    mock_collect.side_effect = [
+        [],  # 1st empty claim
+        [],  # 2nd empty claim
+        [{"id": 123, "flow_count": 1}],  # 3rd claim with batch
+        asyncio.CancelledError() # to break the loop
+    ]
+    svc._collect_queue_batch = mock_collect
+    
+    # Mock process batch
+    svc._sync_process_claimed_batch = MagicMock(return_value={"events_to_emit": [], "flow_count": 1})
+    svc._emit_realtime_events = AsyncMock()
+
+    # Track sleep times
+    sleep_times = []
+    async def fake_sleep(t):
+        sleep_times.append(t)
+        
+    with patch("asyncio.sleep", side_effect=fake_sleep):
+        try:
+            await svc.flow_writer_worker()
+        except asyncio.CancelledError:
+            pass
+
+    # Verify backoff logic:
+    # First empty claim: current_poll_seconds starts at 1.0.
+    # Jitter is random.uniform(0.9, 1.1). So sleep_time is between 0.9 and 1.1.
+    # After first empty claim, current_poll_seconds becomes 1.5.
+    # Second empty claim: sleep_time is 1.5 * jitter, i.e., between 1.35 and 1.65.
+    # After second empty claim, current_poll_seconds becomes 2.25.
+    # Third claim has batch, so current_poll_seconds resets back to 1.0.
+    
+    assert len(sleep_times) == 2
+    assert 0.9 <= sleep_times[0] <= 1.1
+    assert 1.35 <= sleep_times[1] <= 1.65
+    
+    # Check claim ratio metrics
+    snapshot = svc.metrics_snapshot()
+    assert snapshot["empty_claim_ratio"] == 0.6667  # 2 empty claims out of 3 total claims before the batch
+    assert snapshot["current_poll_seconds"] == 1.0 # reset on third claim
+
+

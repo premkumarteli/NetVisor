@@ -13,10 +13,32 @@ class FakeCursor:
         self.params = ()
         self.closed = False
         self.results = []
+        self.column_names = ()
 
     def execute(self, query, params=None):
         self.query = " ".join(query.strip().split())
         self.params = params or ()
+
+        # Determine table name dynamically from FROM if present
+        table_name = None
+        if "FROM" in self.query:
+            parts = self.query.split()
+            try:
+                from_idx = parts.index("FROM")
+                if from_idx + 1 < len(parts):
+                    table_name = parts[from_idx + 1].strip("`()")
+            except ValueError:
+                pass
+
+        if table_name and table_name in self.tables:
+            first_row = self.tables[table_name][0] if self.tables[table_name] else {}
+            cols = list(first_row.keys())
+            if not cols:
+                cols = list(db_session.REQUIRED_RUNTIME_COLUMNS.get(table_name, []))
+            self.column_names = tuple(cols)
+        else:
+            self.column_names = ()
+
         if "FROM information_schema.tables" in self.query:
             _, table_name = self.params
             runtime_tables = set(db_session.REQUIRED_RUNTIME_TABLES) | set(self.tables.keys())
@@ -36,8 +58,11 @@ class FakeCursor:
             table_name = self.query.split()[-1]
             self.results = [{"count": len(self.tables.get(table_name, []))}]
         elif self.query.startswith("SELECT * FROM"):
-            table_name = self.query.split()[-1]
-            self.results = [dict(row) for row in self.tables.get(table_name, [])]
+            t_name = self.query.split("FROM")[-1].split("ORDER")[0].split("LIMIT")[0].strip().strip("`()")
+            if "LIMIT 0" in self.query:
+                self.results = []
+            else:
+                self.results = [dict(row) for row in self.tables.get(t_name, [])]
         elif self.query.startswith("DELETE FROM"):
             table_name = self.query.split()[-1]
             self.tables[table_name] = []
@@ -55,7 +80,14 @@ class FakeCursor:
         return self.results[0] if self.results else None
 
     def fetchall(self):
-        return list(self.results)
+        res = list(self.results)
+        self.results = []
+        return res
+
+    def fetchmany(self, size=1):
+        chunk = self.results[:size]
+        self.results = self.results[size:]
+        return chunk
 
     def close(self):
         self.closed = True
@@ -167,4 +199,44 @@ def test_cleanup_old_backups_prunes_expired_directories(tmp_path):
     assert str(expired) in result["deleted_dirs"]
     assert not expired.exists()
     assert recent.exists()
+
+
+def test_export_table_to_csv_streaming_batches(tmp_path):
+    from unittest.mock import patch
+    
+    # Create 2500 fake flow logs
+    flow_logs = [{"id": i, "src_ip": f"10.0.0.{i}", "byte_count": 100} for i in range(1, 2501)]
+    tables = {
+        "flow_logs": flow_logs
+    }
+    conn = FakeConnection(tables)
+    service = SystemService(backup_root=Path(tmp_path))
+    
+    original_fetchmany = FakeCursor.fetchmany
+    calls = []
+    def spy_fetchmany(self, size=1):
+        calls.append(size)
+        return original_fetchmany(self, size)
+        
+    FakeCursor.fetchmany = spy_fetchmany
+    try:
+        result = service._export_table_to_csv(conn, "flow_logs", Path(tmp_path))
+    finally:
+        FakeCursor.fetchmany = original_fetchmany
+        
+    assert result == 2500
+    assert calls == [1000, 1000, 1000, 1000]  # 3 full batches, 1 empty batch to break the loop
+    
+    csv_path = Path(tmp_path) / "flow_logs.csv"
+    assert csv_path.exists()
+    
+    # Read the CSV to make sure all 2500 rows are written
+    import csv
+    with csv_path.open("r", newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        assert len(rows) == 2500
+        assert rows[0]["id"] == "1"
+        assert rows[-1]["id"] == "2500"
+
 

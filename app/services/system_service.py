@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -13,6 +14,9 @@ import psutil
 
 from ..core.config import settings
 from ..db.session import require_runtime_schema
+
+logger = logging.getLogger(__name__)
+
 
 
 class SystemService:
@@ -94,22 +98,39 @@ class SystemService:
     def _export_table_to_csv(self, db_conn, table_name: str, backup_dir: Path) -> int:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(f"SELECT * FROM {table_name}")
-            rows = cursor.fetchall()
+            # Query schema first to get column names safely
+            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+            columns = cursor.column_names or ()
+            if not columns:
+                return 0
+
+            fieldnames = list(columns)
+            order_clause = " ORDER BY id" if "id" in columns else ""
+
+            # Stream query with deterministic ordering
+            cursor.execute(f"SELECT * FROM {table_name}{order_clause}")
+            
+            csv_path = backup_dir / f"{table_name}.csv"
+            total_exported = 0
+            start_time = time.perf_counter()
+
+            with csv_path.open("w", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                writer.writeheader()
+                while True:
+                    rows = cursor.fetchmany(size=1000)
+                    if not rows:
+                        break
+                    for row in rows:
+                        writer.writerow({key: self._serialize_value(value) for key, value in row.items()})
+                    total_exported += len(rows)
+
+            duration = time.perf_counter() - start_time
+            logger.info("SystemService: exported %d rows from '%s' in %.4fs (CSV: %s)",
+                        total_exported, table_name, duration, csv_path.name)
+            return total_exported
         finally:
             cursor.close()
-
-        if not rows:
-            return 0
-
-        csv_path = backup_dir / f"{table_name}.csv"
-        fieldnames = list(rows[0].keys())
-        with csv_path.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.DictWriter(handle, fieldnames=fieldnames)
-            writer.writeheader()
-            for row in rows:
-                writer.writerow({key: self._serialize_value(value) for key, value in row.items()})
-        return len(rows)
 
     def backup_runtime_data(self, db_conn, reason: str = "manual") -> dict:
         summary_cursor = db_conn.cursor(dictionary=True)

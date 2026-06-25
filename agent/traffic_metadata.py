@@ -262,17 +262,42 @@ def _extract_tls_sni(payload: bytes) -> str | None:
     return None
 
 
+# Performance metrics counters for HTTP host parsing
+_HTTP_PARSE_HITS = 0
+_HTTP_PARSE_MISSES = 0
+_HTTP_PARSE_SHORT_CIRCUITS = 0
+
+
 def _extract_http_host(payload: bytes) -> str | None:
+    global _HTTP_PARSE_HITS, _HTTP_PARSE_MISSES, _HTTP_PARSE_SHORT_CIRCUITS
     if not payload:
         return None
 
+    # Cap payload size to avoid parsing/decoding huge payloads
+    chunk = payload[:4096]
+
+    # Fast short-circuit: HTTP headers always have lines separated by CRLF (\r\n)
+    if b"\r\n" not in chunk:
+        _HTTP_PARSE_SHORT_CIRCUITS += 1
+        return None
+
+    # Fast byte-level method/version prefix precheck
+    if not (
+        chunk.startswith((b"GET ", b"POST ", b"PUT ", b"PATCH ", b"DELETE ", b"HEAD ", b"OPTIONS ", b"CONNECT "))
+        or chunk.startswith(b"HTTP/")
+    ):
+        _HTTP_PARSE_SHORT_CIRCUITS += 1
+        return None
+
     try:
-        text = payload.decode("utf-8", errors="ignore")
+        text = chunk.decode("utf-8", errors="ignore")
     except Exception:
+        _HTTP_PARSE_MISSES += 1
         return None
 
     lines = text.splitlines()
     if not lines:
+        _HTTP_PARSE_MISSES += 1
         return None
 
     request_line = lines[0].strip()
@@ -280,6 +305,7 @@ def _extract_http_host(payload: bytes) -> str | None:
         request_line.startswith(("GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ", "CONNECT "))
         or request_line.startswith("HTTP/")
     ):
+        _HTTP_PARSE_MISSES += 1
         return None
 
     for line in lines[1:16]:
@@ -289,8 +315,10 @@ def _extract_http_host(payload: bytes) -> str | None:
         if not sep:
             continue
         if header_name.strip().lower() == "host":
+            _HTTP_PARSE_HITS += 1
             return _normalize_domain(header_value)
 
+    _HTTP_PARSE_MISSES += 1
     return None
 
 

@@ -220,12 +220,27 @@ class ASNLookupService:
 
         # Background HTTP lookup
         with self._pending_lock:
+            # Locked and capped pruning sweep of completed futures (max 50 removals) to prevent memory leak
+            completed_keys = []
+            for k, fut in self._pending.items():
+                if fut.done():
+                    completed_keys.append(k)
+                    if len(completed_keys) >= 50:
+                        break
+            for k in completed_keys:
+                self._pending.pop(k, None)
+
             if ip in self._pending and not self._pending[ip].done():
                 return None, True          # already in flight
             future = self._executor.submit(self._fetch_remote, ip)
             self._pending[ip] = future
 
         return None, True
+
+    @property
+    def pending_count(self) -> int:
+        with self._pending_lock:
+            return sum(1 for fut in self._pending.values() if not fut.done())
 
     def get_cached(self, ip: str) -> Optional[ASNRecord]:
         with self._cache_lock:

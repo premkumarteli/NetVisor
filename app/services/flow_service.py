@@ -935,13 +935,39 @@ class FlowService:
         """Async worker to persist durable flow batches and trigger detection."""
         self._set_metric("worker_mode", str(settings.FLOW_WORKER_MODE or "embedded"))
         heartbeat_task = asyncio.create_task(self._worker_heartbeat_loop())
+
+        # Configure adaptive polling backoff settings
+        import os
+        base_poll_seconds = max(float(settings.FLOW_WORKER_POLL_SECONDS or 1.0), 0.1)
+        max_poll_seconds = max(float(os.getenv("NETVISOR_FLOW_WORKER_MAX_POLL_SECONDS", "5.0")), base_poll_seconds)
+        current_poll_seconds = base_poll_seconds
+
+        # Keep metrics on claim counts
+        empty_claims = 0
+        total_claims = 0
+
         try:
             while True:
                 try:
+                    total_claims += 1
                     claimed_batches = await self._collect_queue_batch()
                     if not claimed_batches:
-                        await asyncio.sleep(max(float(settings.FLOW_WORKER_POLL_SECONDS or 1.0), 0.1))
+                        empty_claims += 1
+                        self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
+                        self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
+
+                        import random
+                        jitter = random.uniform(0.9, 1.1)
+                        sleep_time = min(current_poll_seconds * jitter, max_poll_seconds)
+                        await asyncio.sleep(sleep_time)
+
+                        current_poll_seconds = min(current_poll_seconds * 1.5, max_poll_seconds)
                         continue
+
+                    # Reset polling interval on work found
+                    current_poll_seconds = base_poll_seconds
+                    self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
+                    self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
 
                     for queue_record in claimed_batches:
                         queue_batch_id = int(queue_record["id"])

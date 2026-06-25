@@ -536,3 +536,39 @@ def test_asn_reputation_detector():
         assert is_asn is True
         assert provider == "Mullvad"
 
+
+def test_asn_lookup_pruning_and_pending_count():
+    from concurrent.futures import Future
+    from app.services.vpn_detector import ASNLookupService
+    from unittest.mock import patch
+
+    svc = ASNLookupService()
+    try:
+        f_done1 = Future()
+        f_done1.set_result(None)
+        
+        f_done2 = Future()
+        f_done2.set_result(None)
+        
+        f_pending = Future()
+        
+        with svc._pending_lock:
+            svc._pending["1.1.1.1"] = f_done1
+            svc._pending["2.2.2.2"] = f_done2
+            svc._pending["3.3.3.3"] = f_pending
+            
+        assert svc.pending_count == 1
+        
+        with patch.object(svc._executor, "submit") as mock_submit:
+            mock_submit.return_value = Future()
+            svc.lookup("8.8.8.8")
+            
+        with svc._pending_lock:
+            assert "1.1.1.1" not in svc._pending
+            assert "2.2.2.2" not in svc._pending
+            assert "3.3.3.3" in svc._pending
+            assert "8.8.8.8" in svc._pending
+    finally:
+        svc.shutdown()
+
+

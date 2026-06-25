@@ -52,3 +52,34 @@ def test_extract_flow_hints_uses_http_host_header():
     assert hints == {"domain": "example.com", "sni": None}
     assert extract_domain_hint(packet, cache) == "example.com"
 
+
+def test_extract_http_host_short_circuit_and_counters():
+    from agent.traffic_metadata import _extract_http_host
+    import agent.traffic_metadata
+    
+    # Reset counters
+    agent.traffic_metadata._HTTP_PARSE_HITS = 0
+    agent.traffic_metadata._HTTP_PARSE_MISSES = 0
+    agent.traffic_metadata._HTTP_PARSE_SHORT_CIRCUITS = 0
+    
+    # 1. Short-circuit: no \r\n
+    res = _extract_http_host(b"GET / HTTP/1.1 Host: example.com")
+    assert res is None
+    assert agent.traffic_metadata._HTTP_PARSE_SHORT_CIRCUITS == 1
+    
+    # 2. Short-circuit: no valid prefix
+    res = _extract_http_host(b"INVALID / HTTP/1.1\r\nHost: example.com\r\n")
+    assert res is None
+    assert agent.traffic_metadata._HTTP_PARSE_SHORT_CIRCUITS == 2
+    
+    # 3. Hit
+    res = _extract_http_host(b"GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
+    assert res == "example.com"
+    assert agent.traffic_metadata._HTTP_PARSE_HITS == 1
+    
+    # 4. Miss
+    res = _extract_http_host(b"GET / HTTP/1.1\r\nConnection: keep-alive\r\n\r\n")
+    assert res is None
+    assert agent.traffic_metadata._HTTP_PARSE_MISSES == 1
+
+
