@@ -1,0 +1,26 @@
+{
+  "name": "synology_nas",
+  "input": {
+    "ip": "192.168.1.15",
+    "mac": "00:11:32:99:88:77",
+    "hostname": "synology-backup"
+  },
+  "expected": {
+    "vendor": "Synology",
+    "device_type": "NAS / Storage",
+    "confidence": 0.25,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Synology",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "synology-backup",
+        "weight": 0.10
+      }
+    ]
+  }
+}

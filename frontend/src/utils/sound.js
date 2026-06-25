@@ -33,6 +33,10 @@ export const getSoundStatus = () => {
   return val === 'true';
 };
 
+const getActiveThemeId = () => {
+  return localStorage.getItem('workspace_theme') || 'core';
+};
+
 // Play a soft, clean UI click
 export const playHoverSound = () => {
   const enabled = isSoundEnabled();
@@ -44,13 +48,30 @@ export const playHoverSound = () => {
     const ctx = getAudioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    const theme = getActiveThemeId();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(900, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1300, ctx.currentTime + 0.04);
-
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.04);
+    if (theme === 'cyberpunk-tokyo') {
+      // Futuristic neon beep/hologram chirp
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1400, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(2800, ctx.currentTime + 0.03);
+      gain.gain.setValueAtTime(0.04, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.03);
+    } else if (theme === 'whiteboard-sketch') {
+      // Dry whiteboard marker tap/scribble tick
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(280, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.02);
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.02);
+    } else {
+      // Default soft click
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1300, ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.08, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.04);
+    }
 
     osc.connect(gain);
     gain.connect(ctx.destination);
@@ -69,40 +90,69 @@ export const playSuccessSound = () => {
   try {
     const ctx = getAudioContext();
     const time = ctx.currentTime;
-    
-    // First tone
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = 'triangle';
-    osc1.frequency.setValueAtTime(523.25, time); // C5
-    osc1.frequency.exponentialRampToValueAtTime(659.25, time + 0.1); // E5
-    gain1.gain.setValueAtTime(0.18, time);
-    gain1.gain.exponentialRampToValueAtTime(0.0001, time + 0.15);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start();
-    osc1.stop(time + 0.15);
+    const theme = getActiveThemeId();
 
-    // Second tone slightly delayed
-    setTimeout(() => {
-      try {
-        const time2 = ctx.currentTime;
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'triangle';
-        osc2.frequency.setValueAtTime(783.99, time2); // G5
-        osc2.frequency.exponentialRampToValueAtTime(1046.50, time2 + 0.15); // C6
-        gain2.gain.setValueAtTime(0.12, time2);
-        gain2.gain.exponentialRampToValueAtTime(0.0001, time2 + 0.25);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start();
-        osc2.stop(time2 + 0.25);
-      } catch {
-        // Ignore delayed audio playback errors in the secondary tone path.
-      }
-    }, 80);
+    if (theme === 'cyberpunk-tokyo') {
+      // Cyberpunk clean double sweep chime
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(880, time); // A5
+      osc1.frequency.exponentialRampToValueAtTime(1760, time + 0.08); // A6
+      gain1.gain.setValueAtTime(0.08, time);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start();
+      osc1.stop(time + 0.12);
 
+      setTimeout(() => {
+        try {
+          const time2 = ctx.currentTime;
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'sine';
+          osc2.frequency.setValueAtTime(1318.51, time2); // E6
+          osc2.frequency.exponentialRampToValueAtTime(2637.02, time2 + 0.1); // E7
+          gain2.gain.setValueAtTime(0.06, time2);
+          gain2.gain.exponentialRampToValueAtTime(0.0001, time2 + 0.18);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start();
+          osc2.stop(time2 + 0.18);
+        } catch {}
+      }, 60);
+    } else {
+      // Default success chime
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'triangle';
+      osc1.frequency.setValueAtTime(523.25, time); // C5
+      osc1.frequency.exponentialRampToValueAtTime(659.25, time + 0.1); // E5
+      gain1.gain.setValueAtTime(0.18, time);
+      gain1.gain.exponentialRampToValueAtTime(0.0001, time + 0.15);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start();
+      osc1.stop(time + 0.15);
+
+      setTimeout(() => {
+        try {
+          const time2 = ctx.currentTime;
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'triangle';
+          osc2.frequency.setValueAtTime(783.99, time2); // G5
+          osc2.frequency.exponentialRampToValueAtTime(1046.50, time2 + 0.15); // C6
+          gain2.gain.setValueAtTime(0.12, time2);
+          gain2.gain.exponentialRampToValueAtTime(0.0001, time2 + 0.25);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start();
+          osc2.stop(time2 + 0.25);
+        } catch {}
+      }, 80);
+    }
   } catch (e) {
     console.warn('[NetVisor Sound] Web Audio playback failed', e);
   }
@@ -116,22 +166,55 @@ export const playAlertSound = () => {
     const ctx = getAudioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    const theme = getActiveThemeId();
 
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(150, ctx.currentTime);
-    osc.frequency.linearRampToValueAtTime(300, ctx.currentTime + 0.12);
-    osc.frequency.linearRampToValueAtTime(120, ctx.currentTime + 0.25);
+    if (theme === 'cyberpunk-tokyo') {
+      // High tech neural alert strobe sweep
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(800, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 0.12);
+      osc.frequency.linearRampToValueAtTime(1200, ctx.currentTime + 0.25);
 
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
 
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, ctx.currentTime);
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(900, ctx.currentTime);
 
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(ctx.destination);
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+    } else if (theme === 'whiteboard-sketch') {
+      // Fast squeaky marker scratch sound
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(1100, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(300, ctx.currentTime + 0.08);
+      osc.frequency.linearRampToValueAtTime(1400, ctx.currentTime + 0.18);
+
+      gain.gain.setValueAtTime(0.14, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+    } else {
+      // Default alert
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, ctx.currentTime);
+      osc.frequency.linearRampToValueAtTime(300, ctx.currentTime + 0.12);
+      osc.frequency.linearRampToValueAtTime(120, ctx.currentTime + 0.25);
+
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, ctx.currentTime);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(ctx.destination);
+    }
 
     osc.start();
     osc.stop(ctx.currentTime + 0.3);

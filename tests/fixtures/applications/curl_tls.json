@@ -1,0 +1,9 @@
+{
+  "ja4": "t13d1516h2_3d1a_000a",
+  "domain": "curl.se",
+  "sni": "curl.se",
+  "dst_ip": "104.20.28.101",
+  "src_ip": "10.0.0.5",
+  "protocol": "TCP",
+  "dst_port": 443
+}

@@ -15,6 +15,16 @@ export const ImmersionProvider = ({ children }) => {
 
   const [threatLevel, setThreatLevel] = useState('safe'); // safe, elevated, critical
 
+  const [animationsEnabled, setAnimationsEnabled] = useState(() => {
+    return localStorage.getItem('effects_animations') !== 'false';
+  });
+  const [enhancedEffectsEnabled, setEnhancedEffectsEnabled] = useState(() => {
+    return localStorage.getItem('effects_enhanced') !== 'false';
+  });
+  const [ambientEffectsEnabled, setAmbientEffectsEnabled] = useState(() => {
+    return localStorage.getItem('effects_ambient') !== 'false';
+  });
+
   const activeTheme = THEMES[themeId] || THEMES['core'];
 
   const [palette, setPalette] = useState({
@@ -72,6 +82,15 @@ export const ImmersionProvider = ({ children }) => {
     localStorage.setItem('performance_tier', performanceTier);
   }, [performanceTier]);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-effects-animations', animationsEnabled);
+    document.documentElement.setAttribute('data-effects-enhanced', enhancedEffectsEnabled);
+    document.documentElement.setAttribute('data-effects-ambient', ambientEffectsEnabled);
+    localStorage.setItem('effects_animations', animationsEnabled);
+    localStorage.setItem('effects_enhanced', enhancedEffectsEnabled);
+    localStorage.setItem('effects_ambient', ambientEffectsEnabled);
+  }, [animationsEnabled, enhancedEffectsEnabled, ambientEffectsEnabled]);
+
   const changeTheme = useCallback((newThemeId) => {
     if (THEMES[newThemeId]) {
       setThemeId(newThemeId);
@@ -90,8 +109,25 @@ export const ImmersionProvider = ({ children }) => {
     setThreatLevel,
     changeTheme,
     themesList,
-    palette
-  }), [activeTheme, changeTheme, palette, performanceTier, themeId, themesList, threatLevel]);
+    palette,
+    animationsEnabled,
+    setAnimationsEnabled,
+    enhancedEffectsEnabled,
+    setEnhancedEffectsEnabled,
+    ambientEffectsEnabled,
+    setAmbientEffectsEnabled
+  }), [
+    activeTheme,
+    changeTheme,
+    palette,
+    performanceTier,
+    themeId,
+    themesList,
+    threatLevel,
+    animationsEnabled,
+    enhancedEffectsEnabled,
+    ambientEffectsEnabled
+  ]);
 
   return <ImmersionContext.Provider value={value}>{children}</ImmersionContext.Provider>;
 };

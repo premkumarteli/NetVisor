@@ -1,0 +1,28 @@
+{
+  "name": "sonos_ssdp",
+  "input": {
+    "ip": "192.168.1.56",
+    "mac": "00:0C:29:FF:EE:DD",
+    "hostname": "Unknown",
+    "ssdp_services": ["urn:schemas-upnp-org:device:ZonePlayer"],
+    "ssdp_friendly_name": "Sonos One"
+  },
+  "expected": {
+    "vendor": "VMware",
+    "device_type": "Smart Speaker",
+    "confidence": 0.30,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "VMware",
+        "weight": 0.15
+      },
+      {
+        "source": "ssdp",
+        "value": "Sonos One",
+        "weight": 0.15
+      }
+    ]
+  }
+}

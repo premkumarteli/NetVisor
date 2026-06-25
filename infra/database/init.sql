@@ -45,8 +45,26 @@ CREATE TABLE IF NOT EXISTS agents (
     last_seen DATETIME,
     cpu_usage FLOAT DEFAULT 0.0,
     ram_usage FLOAT DEFAULT 0.0,
+    integrity_status VARCHAR(32) NOT NULL DEFAULT 'unknown',
+    manifest_hash CHAR(64) DEFAULT NULL,
+    cert_serial VARCHAR(64) NULL,
+    cert_fingerprint CHAR(64) NULL,
+    cert_issued_at DATETIME NULL,
+    cert_expires_at DATETIME NULL,
+    cert_status VARCHAR(20) DEFAULT 'none',
     INDEX idx_agents_org_last_seen (organization_id, last_seen),
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS certificate_revocations (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    serial_number VARCHAR(64) NOT NULL,
+    agent_id VARCHAR(100) NULL,
+    revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    revoked_by VARCHAR(100) NULL,
+    reason VARCHAR(255) NULL,
+    UNIQUE KEY uq_cert_revocation_serial (serial_number),
+    INDEX idx_cert_revocation_agent (agent_id)
 );
 
 CREATE TABLE IF NOT EXISTS agent_enrollment_requests (
@@ -123,6 +141,11 @@ CREATE TABLE IF NOT EXISTS gateways (
     organization_id CHAR(36) NULL,
     hostname VARCHAR(100) DEFAULT 'Unknown',
     capture_mode VARCHAR(50) DEFAULT 'promiscuous',
+    cert_serial VARCHAR(64) NULL,
+    cert_fingerprint CHAR(64) NULL,
+    cert_issued_at DATETIME NULL,
+    cert_expires_at DATETIME NULL,
+    cert_status VARCHAR(20) DEFAULT 'none',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -378,6 +401,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     organization_id CHAR(36),
     username VARCHAR(100) NOT NULL,
     action VARCHAR(100) NOT NULL,
+    ip_address VARCHAR(45) NULL,
+    resource VARCHAR(100) NULL,
     details TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_audit_logs_org (organization_id),

@@ -24,6 +24,7 @@ from .services.system_service import system_service
 from .services.web_inspection_service import web_inspection_service
 from .middleware.csrf_protection import CSRFProtectionMiddleware
 from .middleware.transport_security import TransportSecurityMiddleware
+from .middleware.mtls_middleware import MTLSMiddleware
 
 def _resolve_log_level() -> int:
     configured = str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO").upper()
@@ -147,6 +148,7 @@ app = FastAPI(
 
 # Transport security middleware - enforces HTTPS for agent/gateway endpoints, with an explicit lab-only LAN HTTP override
 app.add_middleware(TransportSecurityMiddleware)
+app.add_middleware(MTLSMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(RequestContextMiddleware)
 

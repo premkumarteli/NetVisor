@@ -1,0 +1,9 @@
+{
+  "ja4": "t12d1415h2_5b23_70c2",
+  "domain": "evil-c2-domain.com",
+  "sni": "evil-c2-domain.com",
+  "dst_ip": "185.112.144.12",
+  "src_ip": "10.0.0.5",
+  "protocol": "TCP",
+  "dst_port": 443
+}

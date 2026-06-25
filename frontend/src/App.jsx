@@ -6,6 +6,7 @@ import PageTransition from './components/UI/PageTransition';
 import { AuthProvider } from './context/AuthContext';
 import { ImmersionProvider } from './immersion/engine/ImmersionProvider';
 import { useAuth } from './hooks/useAuth';
+import { useImmersion } from './immersion/engine/useImmersion';
 import './index.css';
 
 import { ADMIN_ROLES } from './utils/roles';
@@ -42,11 +43,21 @@ const HomeRedirect = () => {
     return <Navigate to="/dashboard" replace />;
 };
 
-const RouteLoader = () => (
-  <div className="loading-state route-loading-state">
-    Loading workspace...
-  </div>
-);
+const RouteLoader = () => {
+  const { activeTheme } = useImmersion();
+  
+  const loadingText = activeTheme?.id === 'cyberpunk-tokyo'
+    ? 'NETVISOR TOKYO GRID // CONNECTING DISTRICTS... SYNCING NODES... ESTABLISHING UPLINK... ACCESS GRANTED'
+    : activeTheme?.id === 'whiteboard-sketch'
+    ? 'Sketching Network... Drawing Threat Paths...'
+    : 'Loading workspace...';
+
+  return (
+    <div className="loading-state route-loading-state">
+      {loadingText}
+    </div>
+  );
+};
 
 const pageElement = (Component) => (
   <PageTransition>

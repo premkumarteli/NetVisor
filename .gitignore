@@ -1,4 +1,4 @@
-﻿# Env
+# Env
 .env
 .env.*
 !.env.example
@@ -61,3 +61,11 @@ all_project_code.txt
 build_all_code.py
 current_env.txt
 legacy/
+scratch/
+
+
+# Keys & Certificates
+keys/
+*.pem
+*.sig
+

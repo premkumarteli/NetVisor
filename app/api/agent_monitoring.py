@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..core.dependencies import require_org_admin
 from ..db.session import get_db_connection
@@ -11,6 +11,16 @@ from ..services.audit_service import audit_service
 from ..services.agent_service import agent_service
 
 router = APIRouter()
+
+
+def _resolve_source_ip(request: Request) -> str | None:
+    forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    real_ip = str(request.headers.get("X-Real-IP") or "").strip()
+    if real_ip:
+        return real_ip
+    return request.client.host if request.client else None
 
 
 @router.get("/", response_model=List[AgentSummary])
@@ -37,6 +47,7 @@ async def list_enrollment_requests(current_user: dict = Depends(require_org_admi
 async def approve_enrollment_request(
     request_id: str,
     payload: EnrollmentReviewRequest,
+    request: Request,
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
@@ -51,12 +62,15 @@ async def approve_enrollment_request(
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        
+        source_ip = _resolve_source_ip(request)
         audit_service.log_agent_registration(
             organization_id=str(org_id),
             username=str(current_user.get("username") or "system"),
             agent_id=request_row["agent_id"],
             action="agent_enrollment_approved",
             details=f"request_id: {request_id}; reason: {payload.review_reason}",
+            ip_address=source_ip,
         )
         return request_row
     finally:
@@ -67,6 +81,7 @@ async def approve_enrollment_request(
 async def reject_enrollment_request(
     request_id: str,
     payload: EnrollmentReviewRequest,
+    request: Request,
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
@@ -81,12 +96,15 @@ async def reject_enrollment_request(
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        
+        source_ip = _resolve_source_ip(request)
         audit_service.log_agent_registration(
             organization_id=str(org_id),
             username=str(current_user.get("username") or "system"),
             agent_id=request_row["agent_id"],
             action="agent_enrollment_rejected",
             details=f"request_id: {request_id}; reason: {payload.review_reason}",
+            ip_address=source_ip,
         )
         return request_row
     finally:
@@ -97,6 +115,7 @@ async def reject_enrollment_request(
 async def revoke_agent_enrollment(
     agent_id: str,
     payload: EnrollmentReviewRequest,
+    request: Request,
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
@@ -117,12 +136,15 @@ async def revoke_agent_enrollment(
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         conn.commit()
+        
+        source_ip = _resolve_source_ip(request)
         audit_service.log_agent_registration(
             organization_id=str(org_id),
             username=str(current_user.get("username") or "system"),
             agent_id=agent_id,
             action="agent_enrollment_revoked",
             details=f"review_reason: {payload.review_reason}; credentials_revoked: {revoked_credentials}",
+            ip_address=source_ip,
         )
         return request_row
     finally:

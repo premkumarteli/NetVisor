@@ -22,7 +22,6 @@ from .external_endpoint_service import external_endpoint_service
 from .flow_sanitization_service import flow_sanitization_service
 from .managed_device_service import managed_device_service
 from .metrics_service import metrics_service
-from .risk_engine import risk_engine
 from .session_service import session_service
 from .system_service import system_service
 
@@ -75,6 +74,13 @@ class FlowService:
         }
         self._queue_status_cache: dict | None = None
         self._queue_status_cache_ts = 0.0
+
+    @property
+    def registry(self):
+        if not hasattr(self, "_registry"):
+            from ..engines.registry import EngineRegistry
+            self._registry = EngineRegistry()
+        return self._registry
 
     def _set_metric(self, key: str, value) -> None:
         with self._metrics_lock:
@@ -1022,15 +1028,6 @@ class FlowService:
             seen_hashes.add(sanitized.ingest_hash)
             sanitized_batch.append((org_id, sanitized))
 
-        baseline_cache = self._load_device_baselines(
-            cursor,
-            {
-                sanitized.internal_device_ip
-                for _, sanitized in sanitized_batch
-                if sanitized.internal_device_ip
-            },
-        )
-
         for org_id, sanitized in sanitized_batch:
             if self._flow_log_exists_by_hash(cursor, sanitized.ingest_hash):
                 self._increment_metric("deduplicated_flows_total")
@@ -1044,12 +1041,98 @@ class FlowService:
             source_type = sanitized.source_type
             metadata_only = sanitized.metadata_only
 
-            baseline = baseline_cache.get(sanitized.internal_device_ip) if sanitized.internal_device_ip else None
+            # Convert sanitized dataclass to dictionary context
+            import dataclasses
+            context = dataclasses.asdict(sanitized)
+            
+            # Execute modular engine registry selective analysis
+            result = self.registry.analyze_selective(context, ["threat", "vpn", "application", "risk", "ai"])
+            
+            # Extract the overall risk score and severity from the risk_summary finding
+            risk_summary = next(
+                (f for f in result.findings if f.engine == "risk" and f.finding_type == "risk_summary"),
+                None
+            )
+            risk_score = risk_summary.details.get("risk_score", 0) if risk_summary else 0
+            severity_str = risk_summary.severity.name if risk_summary else "LOW"
+            
+            # Extract application name
+            application = "Other"
+            app_finding = next((f for f in result.findings if f.engine == "application"), None)
+            if app_finding:
+                application = app_finding.details.get("application_name") or "Other"
+            else:
+                app_meta = result.metadata.get("engine_results", {}).get("application", {})
+                if app_meta and "metadata" in app_meta:
+                    application = app_meta["metadata"].get("application") or "Other"
 
-            report = risk_engine.evaluate_flow(sanitized, baseline)
-            application = application_service.classify_app(sanitized)
-            report["application"] = application
-            breakdown = self.build_alert_breakdown(report, management_mode, source_type, metadata_only)
+            # Collect evidence strings from all findings (excluding risk/AI) into reasons
+            reasons = []
+            for f in result.findings:
+                if f.engine in ("risk", "ai"):
+                    continue
+                if f.evidence:
+                    reasons.extend(f.evidence)
+            
+            # Fallback for reasons if empty
+            if not reasons:
+                if risk_summary and risk_summary.evidence:
+                    reasons.extend(risk_summary.evidence)
+                else:
+                    reasons = ["No suspicious activity detected"]
+            
+            # De-duplicate reasons while preserving order
+            reasons = list(dict.fromkeys(reasons))
+            
+            # Gather signals from all findings (excluding risk/AI)
+            signals = [f.finding_type for f in result.findings if f.engine not in ("risk", "ai")]
+            signals = list(set(signals))
+            
+            # Primary detection: use the first finding type if available
+            primary_detection = None
+            non_risk_ai_findings = [f for f in result.findings if f.engine not in ("risk", "ai")]
+            if non_risk_ai_findings:
+                primary_detection = non_risk_ai_findings[0].finding_type
+            
+            # Build report dictionary for database writes
+            report = {
+                "score": risk_score,
+                "severity": severity_str,
+                "reasons": reasons,
+                "signals": signals,
+                "primary_detection": primary_detection,
+                "application": application,
+            }
+            
+            # Build breakdown JSON preserving backward compatibility
+            breakdown = {
+                "management_mode": management_mode,
+                "source_type": source_type,
+                "metadata_only": metadata_only,
+                "application": application,
+                "reasons": reasons,
+                "signals": signals,
+                "primary_detection": primary_detection,
+            }
+
+            # Add VPN details to breakdown if present
+            vpn_meta = result.metadata.get("engine_results", {}).get("vpn", {})
+            if vpn_meta and "metadata" in vpn_meta:
+                vpn_score = float(vpn_meta["metadata"].get("score", 0)) / 100.0
+                breakdown["vpn_score"] = vpn_score
+                breakdown["vpn_provider"] = vpn_meta["metadata"].get("provider")
+                breakdown["vpn_type"] = vpn_meta["metadata"].get("vpn_type")
+            
+            # Add AI analysis summary, recommendations and mitre details to breakdown if present
+            ai_finding = next(
+                (f for f in result.findings if f.engine == "ai" and f.finding_type == "ai_analysis"),
+                None
+            )
+            if ai_finding:
+                breakdown["ai_summary"] = ai_finding.details.get("summary")
+                breakdown["ai_recommendations"] = ai_finding.details.get("recommendations")
+                breakdown["ai_mitre"] = ai_finding.details.get("mitre")
+            
             breakdown.update(
                 {
                     "network_scope": sanitized.network_scope,

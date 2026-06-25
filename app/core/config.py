@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SECURE: bool = Field(default=False, validation_alias="NETVISOR_AUTH_COOKIE_SECURE")
     AUTH_COOKIE_DOMAIN: Optional[str] = Field(default=None, validation_alias="NETVISOR_AUTH_COOKIE_DOMAIN")
     AUTH_COOKIE_PATH: str = Field(default="/", validation_alias="NETVISOR_AUTH_COOKIE_PATH")
+    REFRESH_TOKEN_DAYS: int = Field(default=7, validation_alias="NETVISOR_REFRESH_TOKEN_DAYS")
+    REFRESH_COOKIE_NAME: str = Field(default="netvisor_refresh_token", validation_alias="NETVISOR_REFRESH_COOKIE_NAME")
     CSRF_COOKIE_NAME: str = Field(default="XSRF-TOKEN", validation_alias="NETVISOR_CSRF_COOKIE_NAME")
     CSRF_HEADER_NAME: str = Field(default="X-XSRF-TOKEN", validation_alias="NETVISOR_CSRF_HEADER_NAME")
     RELEASE_VERSION: str = Field(default="", validation_alias="NETVISOR_RELEASE_VERSION")
@@ -93,6 +95,44 @@ class Settings(BaseSettings):
         validation_alias="NETVISOR_BACKUP_DIR",
     )
     BACKUP_RETENTION_DAYS: int = Field(default=30, validation_alias="NETVISOR_BACKUP_RETENTION_DAYS")
+
+    # mTLS settings
+    MTLS_MODE: str = Field(default="disabled", validation_alias="NETVISOR_MTLS_MODE")
+    MTLS_CERT_VALIDITY_DAYS: int = Field(default=90, validation_alias="NETVISOR_MTLS_CERT_VALIDITY_DAYS")
+    MTLS_RENEWAL_WINDOW_DAYS: int = Field(default=30, validation_alias="NETVISOR_MTLS_RENEWAL_WINDOW_DAYS")
+    MTLS_CA_DIR: str = Field(default="runtime/ca", validation_alias="NETVISOR_MTLS_CA_DIR")
+    AUDIT_CHAIN_ENABLED: bool = Field(default=True, validation_alias="NETVISOR_AUDIT_CHAIN_ENABLED")
+    AUDIT_CHAIN_GENESIS: str = Field(default="GENESIS", validation_alias="NETVISOR_AUDIT_CHAIN_GENESIS")
+
+    # Modular Engine Settings
+    NETVISOR_DEVICE_WEIGHT_DHCP: float = 0.40
+    NETVISOR_DEVICE_WEIGHT_MDNS: float = 0.20
+    NETVISOR_DEVICE_WEIGHT_SSDP: float = 0.15
+    NETVISOR_DEVICE_WEIGHT_OUI: float = 0.15
+    NETVISOR_DEVICE_WEIGHT_HOSTNAME: float = 0.10
+    NETVISOR_DEVICE_WEIGHT_ACTIVE_PROBE: float = 0.15
+    NETVISOR_ACTIVE_PROBER_PORTS: list[int] = [8008, 80, 443, 22, 8060, 9100, 502, 3000]
+    NETVISOR_ACTIVE_PROBE_CONF_THRESHOLD: float = 0.50
+
+    NETVISOR_PORT_SCAN_PORTS_THRESHOLD: int = 10
+    NETVISOR_PORT_SCAN_WINDOW_SECONDS: int = 10
+
+    NETVISOR_BRUTE_FORCE_ATTEMPTS_THRESHOLD: int = 15
+    NETVISOR_BRUTE_FORCE_WINDOW_SECONDS: int = 60
+    NETVISOR_BRUTE_FORCE_DURATION_THRESHOLD: float = 1.0
+    NETVISOR_BRUTE_FORCE_BYTES_THRESHOLD: int = 500
+    NETVISOR_BRUTE_FORCE_PORTS: list[int] = [22, 3389, 445, 80, 443]
+
+    NETVISOR_BEACONING_MIN_EVENTS: int = 5
+    NETVISOR_BEACONING_WINDOW_SECONDS: int = 1800
+    NETVISOR_BEACONING_COV_THRESHOLD: float = 0.1
+
+    NETVISOR_DNS_TUNNELING_ENTROPY_THRESHOLD: float = 3.8
+    NETVISOR_DNS_TUNNELING_LABEL_LENGTH: int = 15
+    NETVISOR_DNS_TUNNELING_BLOOM_THRESHOLD: int = 50
+    NETVISOR_DNS_TUNNELING_TTL_SECONDS: int = 3600
+
+    NETVISOR_LARGE_UPLOAD_THRESHOLD_BYTES: int = 5000000
 
     model_config = SettingsConfigDict(
         case_sensitive=True,

@@ -208,6 +208,7 @@ async def register_agent(
                     f"device_ip: {reg.get('device_ip') or '-'}; "
                     f"device_mac: {reg.get('device_mac') or '-'}"
                 ),
+                ip_address=source_ip,
             )
 
         existing_credential = agent_auth_service.get_active_credential(conn, agent_id=agent_id)
@@ -293,6 +294,7 @@ async def register_agent(
                 else "reenrollment" if credential and force_reenroll
                 else "already_registered"
             ),
+            ip_address=source_ip,
         )
 
         conn.commit()
@@ -341,6 +343,8 @@ async def agent_heartbeat(
             inspection_state=hb.get("web_inspection"),
             cpu_usage=float(hb.get("cpu_usage") or 0.0),
             ram_usage=float(hb.get("ram_usage") or 0.0),
+            integrity_status=hb.get("integrity_status"),
+            manifest_hash=hb.get("manifest_hash"),
         )
 
         managed_device_service.upsert_device(
@@ -470,6 +474,7 @@ async def receive_web_events(
 
 @router.post("/rotate-credential")
 async def rotate_agent_credential(
+    request: Request,
     authorization: dict = Body(...),
     _rate_limited: bool = Depends(agent_control_rate_limit),
     auth_context: dict = Depends(validate_agent_key),
@@ -490,10 +495,12 @@ async def rotate_agent_credential(
         credential = agent_auth_service.rotate_credential(conn, agent_id=agent_id)
         conn.commit()
 
+        source_ip = _resolve_source_ip(request)
         audit_service.log_credential_rotation(
             organization_id=str(org_id),
             username="system",
             agent_id=agent_id,
+            ip_address=source_ip,
         )
 
         return _collect_response(
@@ -588,3 +595,211 @@ async def receive_devices(
             if cursor:
                 cursor.close()
             conn.close()
+
+
+# ---------------------------------------------------------------------------
+# mTLS Certificate Enrollment
+# ---------------------------------------------------------------------------
+
+
+@router.get("/certificate/ca")
+async def get_ca_certificate():
+    """Public endpoint: retrieve the CA certificate for trust anchoring."""
+    from ..services.ca import CertificateAuthority
+
+    ca = CertificateAuthority(settings.MTLS_CA_DIR)
+    ca.ensure_ca()
+    return {
+        "ca_cert_pem": ca.get_ca_cert_pem().decode("utf-8"),
+        "ca_fingerprint": ca.get_ca_cert_fingerprint(),
+    }
+
+
+@router.post("/certificate/enroll")
+async def enroll_certificate(request: Request):
+    """Issue a client certificate to an enrolled agent.
+
+    Requires a valid HMAC-signed request (enrolled agent).
+    The agent sends a PEM-encoded CSR in the request body.
+    """
+    from ..services.ca import CertificateAuthority
+
+    conn = get_db_connection()
+    try:
+        body_bytes = await request.body()
+        auth_context = agent_auth_service.authenticate_request(conn, request, body_bytes)
+    except AgentAuthenticationError as exc:
+        conn.close()
+        raise HTTPException(status_code=401, detail=str(exc))
+
+    try:
+        import json
+
+        body = json.loads(body_bytes.decode("utf-8") or "{}")
+        csr_pem = body.get("csr_pem", "")
+        if not csr_pem:
+            raise HTTPException(status_code=400, detail="csr_pem is required")
+
+        authenticated_agent_id = auth_context.get("agent_id", "")
+        role = "agent"
+
+        ca = CertificateAuthority(settings.MTLS_CA_DIR)
+        cert_pem, metadata = ca.issue_client_cert(
+            csr_pem.encode("utf-8") if isinstance(csr_pem, str) else csr_pem,
+            agent_id=authenticated_agent_id,
+            role=role,
+            validity_days=settings.MTLS_CERT_VALIDITY_DAYS,
+        )
+
+        # Store certificate metadata in the agents table
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE agents
+                SET cert_serial = %s,
+                    cert_fingerprint = %s,
+                    cert_issued_at = %s,
+                    cert_expires_at = %s,
+                    cert_status = 'active'
+                WHERE id = %s
+                """,
+                (
+                    metadata["serial"],
+                    metadata["fingerprint"],
+                    metadata["issued_at"],
+                    metadata["expires_at"],
+                    authenticated_agent_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+
+        logger.info(
+            "Certificate enrolled: agent_id=%s serial=%s",
+            authenticated_agent_id,
+            metadata["serial"],
+        )
+
+        return {
+            "certificate_pem": cert_pem.decode("utf-8"),
+            "ca_cert_pem": ca.get_ca_cert_pem().decode("utf-8"),
+            "expires_at": metadata["expires_at"],
+            "serial": metadata["serial"],
+            "fingerprint": metadata["fingerprint"],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Certificate enrollment failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Certificate enrollment failed")
+    finally:
+        conn.close()
+
+
+@router.post("/certificate/renew")
+async def renew_certificate(request: Request):
+    """Renew an agent's client certificate.
+
+    Requires a valid HMAC-signed request. Issues a new certificate with
+    a fresh serial and validity period, revoking the old one.
+    """
+    from ..services.ca import CertificateAuthority
+
+    conn = get_db_connection()
+    try:
+        body_bytes = await request.body()
+        auth_context = agent_auth_service.authenticate_request(conn, request, body_bytes)
+    except AgentAuthenticationError as exc:
+        conn.close()
+        raise HTTPException(status_code=401, detail=str(exc))
+
+    try:
+        import json
+
+        body = json.loads(body_bytes.decode("utf-8") or "{}")
+        csr_pem = body.get("csr_pem", "")
+        if not csr_pem:
+            raise HTTPException(status_code=400, detail="csr_pem is required")
+
+        authenticated_agent_id = auth_context.get("agent_id", "")
+        role = "agent"
+
+        ca = CertificateAuthority(settings.MTLS_CA_DIR)
+
+        # Revoke the previous certificate if one exists
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                "SELECT cert_serial FROM agents WHERE id = %s",
+                (authenticated_agent_id,),
+            )
+            existing = cursor.fetchone()
+            old_serial = (existing or {}).get("cert_serial")
+            if old_serial:
+                ca.revoke_cert(
+                    conn,
+                    serial_number=old_serial,
+                    agent_id=authenticated_agent_id,
+                    revoked_by="system",
+                    reason="certificate_renewal",
+                )
+        finally:
+            cursor.close()
+
+        # Issue new certificate
+        cert_pem, metadata = ca.issue_client_cert(
+            csr_pem.encode("utf-8") if isinstance(csr_pem, str) else csr_pem,
+            agent_id=authenticated_agent_id,
+            role=role,
+            validity_days=settings.MTLS_CERT_VALIDITY_DAYS,
+        )
+
+        # Update metadata
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                """
+                UPDATE agents
+                SET cert_serial = %s,
+                    cert_fingerprint = %s,
+                    cert_issued_at = %s,
+                    cert_expires_at = %s,
+                    cert_status = 'active'
+                WHERE id = %s
+                """,
+                (
+                    metadata["serial"],
+                    metadata["fingerprint"],
+                    metadata["issued_at"],
+                    metadata["expires_at"],
+                    authenticated_agent_id,
+                ),
+            )
+            conn.commit()
+        finally:
+            cursor.close()
+
+        logger.info(
+            "Certificate renewed: agent_id=%s new_serial=%s old_serial=%s",
+            authenticated_agent_id,
+            metadata["serial"],
+            old_serial,
+        )
+
+        return {
+            "certificate_pem": cert_pem.decode("utf-8"),
+            "ca_cert_pem": ca.get_ca_cert_pem().decode("utf-8"),
+            "expires_at": metadata["expires_at"],
+            "serial": metadata["serial"],
+            "fingerprint": metadata["fingerprint"],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Certificate renewal failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Certificate renewal failed")
+    finally:
+        conn.close()
+

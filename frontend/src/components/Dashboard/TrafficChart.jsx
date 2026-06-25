@@ -163,46 +163,42 @@ const TrafficChart = ({ data, resolution = 'hour', height = 260 }) => {
   const nodeStep = Math.max(1, Math.floor(n / 8));
   const nodePts = pts.filter((_, i) => isSparse || i % nodeStep === 0 || i === n - 1);
 
-  // Hex to rgba helper
-  function hexAlpha(hex, a) {
-    if (!hex) return `rgba(249,115,22,${a})`;
-    const h = hex.replace('#', '');
-    const norm = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
-    const v = parseInt(norm, 16);
-    if (!isFinite(v)) return `rgba(249,115,22,${a})`;
-    return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${a})`;
+  // Hex/RGB/RGBA to rgba helper
+  function hexAlpha(colorStr, a) {
+    if (!colorStr) return `rgba(249,115,22,${a})`;
+    const trimmed = colorStr.trim();
+
+    const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+    if (rgbMatch) {
+      const r = rgbMatch[1];
+      const g = rgbMatch[2];
+      const b = rgbMatch[3];
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    if (trimmed.startsWith('#')) {
+      const h = trimmed.replace('#', '');
+      const norm = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+      const v = parseInt(norm, 16);
+      if (isFinite(v)) {
+        return `rgba(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255}, ${a})`;
+      }
+    }
+
+    return trimmed;
   }
 
   const gradId = `tg-${accent.replace('#', '')}`;
 
   return (
     <div style={{ position: 'relative', height }}>
-      {/* Metric strip */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-        {[
-          { label: 'current', val: formatBytes(chartValues[n - 1], true) },
-          { label: 'peak',    val: formatBytes(Math.max(...chartValues), true) },
-          { label: 'avg',     val: formatBytes(chartValues.reduce((a, b) => a + b, 0) / n, true) },
-          { label: 'total consumed', val: formatBytes(chartValues.reduce((a, b) => a + b, 0), false) },
-        ].map(({ label, val }) => (
-          <div key={label} style={{
-            flex: 1, background: hexAlpha(surface, 0.6),
-            border: `1px solid ${hexAlpha(grid, 0.8)}`,
-            borderRadius: 6, padding: '6px 10px',
-          }}>
-            <div style={{ fontSize: 10, color: textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 16, fontWeight: 500, color: accent }}>{val}</div>
-          </div>
-        ))}
-      </div>
-
       {/* SVG chart */}
       <div style={{ position: 'relative' }}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${VIEWBOX_W} ${VIEWBOX_H}`}
           width="100%"
-          height={height - 72}
+          height={height - 24}
           preserveAspectRatio="none"
           style={{ display: 'block', overflow: 'visible', cursor: 'crosshair' }}
           onMouseMove={handleMouseMove}

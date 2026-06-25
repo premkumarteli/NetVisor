@@ -21,7 +21,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.device_detector import DeviceDetector
-from agent.security import AgentApiClient
+from agent.security import AgentApiClient, verify_agent_code_integrity
 from shared.collector import (
     DomainHintCache,
     FlowManager,
@@ -156,6 +156,11 @@ class NetworkAgent:
             bootstrap_api_key=self.api_key,
             initial_pins=self._load_initial_backend_pins(),
         )
+        
+        # Run Code Integrity Check
+        integrity_check = verify_agent_code_integrity(PROJECT_ROOT)
+        self.integrity_status = integrity_check["status"]
+        self.manifest_hash = integrity_check.get("manifest_hash")
         self.local_ip = self._detect_local_ip()
         self.local_mac = self._detect_local_mac()
 
@@ -282,12 +287,21 @@ class NetworkAgent:
                 }
             )
 
-        if self._background_workers_enabled and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
+        server_is_https = getattr(self, "server_url", "").lower().startswith("https://")
+        if self._background_workers_enabled and server_is_https and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
             findings.append(
                 {
                     "severity": "critical",
                     "code": "missing_tls_pins",
                     "message": "Remote agent transport has no configured TLS pins.",
+                }
+            )
+        elif self._background_workers_enabled and not server_is_https and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
+            findings.append(
+                {
+                    "severity": "warning",
+                    "code": "missing_tls_pins",
+                    "message": "Server is using plain HTTP — TLS pinning is not active. Use HTTPS in production.",
                 }
             )
 
@@ -501,6 +515,16 @@ class NetworkAgent:
             logger.error(f"Packet error: {e}")
             return False
 
+    def _handle_auth_rejection(self, exc: Exception) -> bool:
+        """Return True if the exception was a 403 and re-enrollment was triggered."""
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 403:
+            logger.warning("Server rejected agent credentials (403) — clearing state and re-enrolling")
+            self.api_client.reset_enrollment(preserve_pins=True)
+            self._register_agent(force_reenroll=True)
+            return True
+        return False
+
     def _upload_worker(self):
         batch = []
         last_send = time.time()
@@ -530,6 +554,9 @@ class NetworkAgent:
                         failure_count = 0
                         last_send = time.time()
                     except Exception as e:
+                        if self._handle_auth_rejection(e):
+                            failure_count = 0
+                            continue
                         failure_count += 1
                         status_code = getattr(getattr(e, "response", None), "status_code", None)
                         delay = min(self.upload_backoff_max_seconds, 2 ** min(failure_count, 5))
@@ -560,6 +587,8 @@ class NetworkAgent:
                     "cpu_usage": cpu,
                     "ram_usage": ram,
                     "inventory_size": len(self.device_inventory.devices),
+                    "integrity_status": self.integrity_status,
+                    "manifest_hash": self.manifest_hash,
                     "time": datetime.now().isoformat(),
                     "organization_id": self.organization_id,
                     "web_inspection": self.web_inspection.status_snapshot() if hasattr(self, "web_inspection") else {},
@@ -572,8 +601,8 @@ class NetworkAgent:
                     self.flow_manager.organization_id = self.organization_id
                     if hasattr(self, "web_inspection"):
                         self.web_inspection.update_context(organization_id=self.organization_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                self._handle_auth_rejection(exc)
             time.sleep(self.heartbeat_interval)
 
     def _detect_local_ip(self):

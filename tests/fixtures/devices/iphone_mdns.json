@@ -1,0 +1,32 @@
+{
+  "name": "iphone_mdns",
+  "input": {
+    "ip": "192.168.1.51",
+    "mac": "28:6A:BA:22:33:44",
+    "hostname": "iphone-user",
+    "mdns_services": ["_apple-mobdev2._tcp.local", "_airplay._tcp.local"]
+  },
+  "expected": {
+    "vendor": "Apple",
+    "device_type": "Mobile Phone",
+    "confidence": 0.45,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Apple",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "iphone-user",
+        "weight": 0.10
+      },
+      {
+        "source": "mdns",
+        "value": "_apple-mobdev2._tcp.local, _airplay._tcp.local",
+        "weight": 0.20
+      }
+    ]
+  }
+}

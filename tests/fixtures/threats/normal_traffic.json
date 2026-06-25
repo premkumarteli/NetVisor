@@ -1,0 +1,28 @@
+{
+  "name": "normal_traffic",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 443,
+      "protocol": "TCP",
+      "domain": "google.com",
+      "byte_count": 1500,
+      "bytes_out": 200,
+      "duration": 2.5,
+      "last_seen": "2026-03-18 10:20:00"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "dns.google",
+      "byte_count": 80,
+      "bytes_out": 40,
+      "duration": 0.05,
+      "last_seen": "2026-03-18 10:20:01"
+    }
+  ],
+  "expected_findings": []
+}

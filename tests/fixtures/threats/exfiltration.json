@@ -1,0 +1,21 @@
+{
+  "name": "exfiltration",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "198.51.100.22",
+      "dst_port": 443,
+      "protocol": "TCP",
+      "bytes_out": 6000000,
+      "last_seen": "2026-03-18 10:15:00"
+    }
+  ],
+  "expected_findings": [
+    {
+      "finding_type": "large_upload",
+      "severity": "HIGH",
+      "confidence": 0.90,
+      "evidence": ["Large Upload Detected: 6.0MB uploaded from 10.0.0.10 to 198.51.100.22"]
+    }
+  ]
+}

@@ -71,6 +71,8 @@ class AgentService:
         inspection_state: Optional[dict] = None,
         cpu_usage: float = 0.0,
         ram_usage: float = 0.0,
+        integrity_status: Optional[str] = None,
+        manifest_hash: Optional[str] = None,
     ) -> None:
         if not agent_id:
             return
@@ -111,9 +113,9 @@ class AgentService:
                     id, name, hostname, api_key, organization_id, ip_address, os_family, version,
                     inspection_enabled, inspection_status, inspection_proxy_running, inspection_ca_installed,
                     inspection_browsers_json, inspection_last_error, inspection_metrics_json,
-                    last_seen, cpu_usage, ram_usage
+                    last_seen, cpu_usage, ram_usage, integrity_status, manifest_hash
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(), %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP(), %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
                     hostname = VALUES(hostname),
@@ -131,6 +133,8 @@ class AgentService:
                     inspection_metrics_json = VALUES(inspection_metrics_json),
                     cpu_usage = VALUES(cpu_usage),
                     ram_usage = VALUES(ram_usage),
+                    integrity_status = VALUES(integrity_status),
+                    manifest_hash = VALUES(manifest_hash),
                     last_seen = UTC_TIMESTAMP()
                 """,
                 (
@@ -151,6 +155,8 @@ class AgentService:
                     inspection_metrics_json,
                     cpu_usage,
                     ram_usage,
+                    integrity_status or "unknown",
+                    manifest_hash,
                 ),
             )
             db_conn.commit()
@@ -316,6 +322,8 @@ class AgentService:
             "capture_error_category": capture_error_category,
             "cpu_usage": float(row.get("cpu_usage") or 0.0),
             "ram_usage": float(row.get("ram_usage") or 0.0),
+            "integrity_status": row.get("integrity_status") or "unknown",
+            "manifest_hash": row.get("manifest_hash"),
         }
 
     def _json_list(self, value) -> list[str]:
@@ -382,6 +390,8 @@ class AgentService:
                     a.last_seen,
                     a.cpu_usage,
                     a.ram_usage,
+                    a.integrity_status,
+                    a.manifest_hash,
                     aer.request_id AS enrollment_request_id,
                     COALESCE(aer.status, 'approved') AS enrollment_status,
                     aer.attempt_count AS enrollment_attempt_count,

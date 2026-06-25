@@ -1,0 +1,32 @@
+{
+  "name": "linux_server_dhcp",
+  "input": {
+    "ip": "192.168.1.54",
+    "mac": "00:50:56:99:88:77",
+    "hostname": "production-db",
+    "dhcp_fingerprint": "1,3,6,15,26,28,51,58,59"
+  },
+  "expected": {
+    "vendor": "VMware",
+    "device_type": "Linux/Unix Device",
+    "confidence": 0.65,
+    "confidence_level": "medium",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "VMware",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "production-db",
+        "weight": 0.10
+      },
+      {
+        "source": "dhcp",
+        "value": "Linux",
+        "weight": 0.40
+      }
+    ]
+  }
+}

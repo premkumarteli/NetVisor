@@ -1,0 +1,26 @@
+{
+  "name": "ubuntu_laptop",
+  "input": {
+    "ip": "192.168.1.11",
+    "mac": "00:50:56:12:34:56",
+    "hostname": "ubuntu-laptop"
+  },
+  "expected": {
+    "vendor": "VMware",
+    "device_type": "Laptop",
+    "confidence": 0.25,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "VMware",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "ubuntu-laptop",
+        "weight": 0.10
+      }
+    ]
+  }
+}

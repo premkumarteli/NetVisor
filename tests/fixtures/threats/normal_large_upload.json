@@ -1,0 +1,15 @@
+{
+  "name": "normal_large_upload",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 443,
+      "protocol": "TCP",
+      "bytes_out": 4500000,
+      "duration": 5.0,
+      "last_seen": "2026-06-13 12:00:00"
+    }
+  ],
+  "expected_findings": []
+}

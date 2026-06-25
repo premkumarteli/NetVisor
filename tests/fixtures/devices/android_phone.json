@@ -1,0 +1,26 @@
+{
+  "name": "android_phone",
+  "input": {
+    "ip": "192.168.1.12",
+    "mac": "06:C9:80:FF:EE:DD",
+    "hostname": "android-galaxy"
+  },
+  "expected": {
+    "vendor": "OPPO / Android",
+    "device_type": "Mobile Phone",
+    "confidence": 0.25,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "OPPO / Android",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "android-galaxy",
+        "weight": 0.10
+      }
+    ]
+  }
+}

@@ -13,5 +13,17 @@
         Referrer-Policy "same-origin"
     }
 
-    reverse_proxy server:8000
+    tls {
+        client_auth {
+            mode {$NETVISOR_MTLS_CADDY_MODE:request}
+            trusted_ca_cert_file /etc/caddy/ca/ca.crt
+        }
+    }
+
+    reverse_proxy server:8000 {
+        header_up X-Client-Cert-Subject {tls_client_subject}
+        header_up X-Client-Cert-Serial {tls_client_serial}
+        header_up X-Client-Cert-Fingerprint {tls_client_fingerprint}
+        header_up X-Client-Cert-Verified {tls_client_certificate_verified}
+    }
 }

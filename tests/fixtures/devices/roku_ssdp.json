@@ -1,0 +1,28 @@
+{
+  "name": "roku_ssdp",
+  "input": {
+    "ip": "192.168.1.55",
+    "mac": "DC:A6:32:AA:BB:CC",
+    "hostname": "Unknown",
+    "ssdp_services": ["urn:schemas-upnp-org:device:MediaRenderer"],
+    "ssdp_friendly_name": "Living Room Roku"
+  },
+  "expected": {
+    "vendor": "Raspberry Pi",
+    "device_type": "Roku / Smart TV",
+    "confidence": 0.30,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Raspberry Pi",
+        "weight": 0.15
+      },
+      {
+        "source": "ssdp",
+        "value": "Living Room Roku",
+        "weight": 0.15
+      }
+    ]
+  }
+}

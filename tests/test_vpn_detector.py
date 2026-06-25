@@ -40,7 +40,11 @@ from app.services.vpn_detector import (
 @pytest.fixture()
 def detector():
     """VPNDetector wired with a mock ASN service and Tor intelligence."""
-    d = VPNDetector(authorized_domains={"corp.example.com", "vpn.internal.acme.io"})
+    tor = TorIntelligence(start_thread=False)
+    d = VPNDetector(
+        authorized_domains={"corp.example.com", "vpn.internal.acme.io"},
+        tor_service=tor,
+    )
     yield d
     d.shutdown()
 
@@ -184,9 +188,14 @@ class TestTorIntelligence:
             assert tor._exit_nodes == original_nodes
 
     def test_tor_classification_adds_40_points(self, detector):
+        print("\nMOCK DEBUG - Class of detector._tor:", detector._tor.__class__)
+        print("MOCK DEBUG - TorIntelligence class:", TorIntelligence)
+        print("MOCK DEBUG - Are they equal:", detector._tor.__class__ is TorIntelligence)
         with patch.object(TorIntelligence, "is_tor_exit", return_value=True), \
              patch.object(ASNLookupService, "lookup", return_value=(None, False)):
+            print("MOCK DEBUG - inside patch, call is_tor_exit direct on instance:", detector._tor.is_tor_exit("185.220.101.1"))
             result = detector.classify("185.220.101.1")
+            print("MOCK DEBUG - inside patch, result score:", result.score)
 
         assert result.score >= 40
         assert result.is_vpn is True
@@ -433,3 +442,97 @@ def test_vpn_detector_scores_suspicious_port():
     assert score > 0
     assert "port" in reason.lower()
     assert provider is None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Modular Detector Unit Tests (Phase 11B)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_wireguard_heuristic_detector():
+    from app.engines.vpn.wireguard import WireGuardHeuristicDetector
+    detector = WireGuardHeuristicDetector()
+    
+    # 1. Non-UDP flow should be ignored
+    flow_tcp = {"protocol": "TCP", "src_ip": "192.168.1.50", "dst_ip": "10.0.0.99", "src_port": 51820, "dst_port": 51820, "analysis_signals": ["wg_size_148"]}
+    assert detector.analyze(flow_tcp) is False
+
+    # 2. First flow (unidirectional) with wg_size_148
+    flow_init = {"protocol": "UDP", "src_ip": "192.168.1.50", "dst_ip": "10.0.0.99", "src_port": 51820, "dst_port": 51820, "analysis_signals": ["wg_size_148"]}
+    assert detector.analyze(flow_init) is False
+
+    # 3. Reverse direction flow with wg_size_92 -> should trigger bidirectional match
+    flow_resp = {"protocol": "UDP", "src_ip": "10.0.0.99", "dst_ip": "192.168.1.50", "src_port": 51820, "dst_port": 51820, "analysis_signals": ["wg_size_92"]}
+    assert detector.analyze(flow_resp) is True
+
+
+def test_openvpn_signature_detector():
+    from app.engines.vpn.openvpn import OpenVPNSignatureDetector
+    detector = OpenVPNSignatureDetector()
+
+    # 1. No OpenVPN signal
+    flow_clean = {"analysis_signals": []}
+    is_ovpn, reason = detector.analyze(flow_clean)
+    assert is_ovpn is False
+
+    # 2. UDP OpenVPN signal
+    flow_udp = {"analysis_signals": ["openvpn_udp_opcode_7"]}
+    is_ovpn, reason = detector.analyze(flow_udp)
+    assert is_ovpn is True
+    assert "UDP opcode 7" in reason
+
+    # 3. TCP OpenVPN signal
+    flow_tcp = {"analysis_signals": ["openvpn_tcp_opcode_4"]}
+    is_ovpn, reason = detector.analyze(flow_tcp)
+    assert is_ovpn is True
+    assert "TCP opcode 4" in reason
+
+
+def test_tls_certificate_detector():
+    from app.engines.vpn.tls_cert import TLSCertificateDetector
+    detector = TLSCertificateDetector()
+
+    # 1. Matching SNI
+    flow_sni = {"sni": "us-ny.mullvad.net"}
+    is_vpn, reason = detector.analyze(flow_sni)
+    assert is_vpn is True
+    assert "mullvad" in reason
+
+    # 2. Matching Issuer CN
+    flow_issuer = {"issuer_cn": "NordVPN Certification Authority"}
+    is_vpn, reason = detector.analyze(flow_issuer)
+    assert is_vpn is True
+    assert "nordvpn" in reason
+
+    # 3. Matching Subject CN
+    flow_subject = {"subject_cn": "ExpressVPN Egress Endpoint"}
+    is_vpn, reason = detector.analyze(flow_subject)
+    assert is_vpn is True
+    assert "expressvpn" in reason
+
+
+def test_asn_reputation_detector():
+    from app.engines.vpn.asn_detector import ASNReputationDetector
+    from unittest.mock import patch
+    detector = ASNReputationDetector()
+
+    # 1. Test Tor exit node matching
+    with patch("app.services.vpn_detector.TorIntelligence.is_tor_exit", return_value=True):
+        is_tor, is_asn, provider, reason = detector.analyze("185.220.101.1")
+        assert is_tor is True
+        assert provider == "Tor Exit Node"
+
+    # 2. Test Datacenter provider matching
+    with patch("app.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
+        mock_lookup.return_value = {"asn": 16276, "organization": "OVH SAS"}
+        is_tor, is_asn, provider, reason = detector.analyze("1.2.3.4")
+        assert is_asn is True
+        assert provider == "Ovh"
+        assert "ovh" in reason
+
+    # 3. Test VPN provider matching
+    with patch("app.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
+        mock_lookup.return_value = {"asn": 136787, "organization": "Mullvad VPN"}
+        is_tor, is_asn, provider, reason = detector.analyze("5.6.7.8")
+        assert is_asn is True
+        assert provider == "Mullvad"
+

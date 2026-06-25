@@ -4,9 +4,12 @@ import SidePanel from '../V2/SidePanel';
 import StatusBadge from '../V2/StatusBadge';
 import { formatUtcTimestampToLocal } from '../../utils/time';
 import { getRiskTone } from '../../utils/presentation';
+import { useImmersion } from '../../immersion/engine/useImmersion';
 
 const AlertPanel = ({ isOpen, onClose }) => {
     const [alerts, setAlerts] = useState([]);
+    const { activeTheme } = useImmersion();
+    const isCyberpunk = activeTheme?.id === 'cyberpunk-tokyo';
 
     useEffect(() => {
         const handleNewAlert = (alert) => {
@@ -22,7 +25,7 @@ const AlertPanel = ({ isOpen, onClose }) => {
             title="Real-time Threats"
             description="Live threat feed from the detection engine."
             onClose={onClose}
-            footer={
+            footer = {
                 <button
                     type="button"
                     className="nv-button nv-button--secondary"
@@ -49,7 +52,18 @@ const AlertPanel = ({ isOpen, onClose }) => {
                                 <i className={alert.severity === 'CRITICAL' ? 'ri-alarm-warning-line' : 'ri-shield-flash-line'}></i>
                             </div>
                             <div>
-                                <div className="nv-timeline-row__title">{alert.message}</div>
+                                <div className="nv-timeline-row__title">
+                                    {isCyberpunk && alert.severity === 'CRITICAL' ? (
+                                        <span style={{ color: 'var(--color-secondary, #ff007f)', fontWeight: 'bold', display: 'block', fontSize: '0.68rem', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                                            ⚠️ HOSTILE SIGNAL DETECTED
+                                        </span>
+                                    ) : isCyberpunk && alert.severity === 'HIGH' ? (
+                                        <span style={{ color: 'var(--color-warning, #fbbf24)', fontWeight: 'bold', display: 'block', fontSize: '0.68rem', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                                            ⚠️ SUSPICIOUS SIGNAL DETECTED
+                                        </span>
+                                    ) : null}
+                                    {alert.message}
+                                </div>
                                 <div className="nv-timeline-row__meta">
                                     <span className="mono">{alert.src_ip}</span>
                                     {alert.application ? ` · ${alert.application}` : ''}

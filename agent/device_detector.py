@@ -564,6 +564,53 @@ class DeviceDetector:
         }
 
 
+def device_compatibility_wrapper(ip: str, mac: str | None = None, hostname: str | None = None, active_probe: bool = True) -> "EngineResult":
+    from shared.engine import EngineResult, Finding, Severity
+    detector = DeviceDetector()
+    resolved_hostname = hostname or detector.resolve_hostname(ip) or "Unknown"
+    vendor = detector.resolve_vendor(mac)
+    device_type = detector.infer_device_type(ip, mac=mac, hostname=resolved_hostname, active_probe=active_probe)
+    confidence_level = detector.identity_confidence(
+        hostname=resolved_hostname,
+        mac=mac,
+        vendor=vendor,
+        device_type=device_type
+    )
+    
+    # Map confidence level ("high", "medium", "low") to a numeric float
+    confidence_map = {"high": 0.9, "medium": 0.6, "low": 0.3}
+    confidence_val = confidence_map.get(confidence_level, 0.5)
+    
+    evidence = []
+    if mac:
+        evidence.append("MAC Address presence")
+    if vendor != "Unknown":
+        evidence.append(f"Vendor OUI match: {vendor}")
+    if resolved_hostname != "Unknown":
+        evidence.append(f"Hostname resolved: {resolved_hostname}")
+    if device_type != "Unknown Type" and device_type != "Unknown":
+        evidence.append(f"Device type inferred: {device_type}")
+        
+    findings = [
+        Finding(
+            engine="device",
+            finding_type="device_profiled",
+            severity=Severity.INFO,
+            confidence=confidence_val,
+            evidence=evidence,
+            target_ip=ip,
+            target_mac=mac,
+            details={
+                "hostname": resolved_hostname,
+                "vendor": vendor,
+                "device_type": device_type,
+                "confidence_level": confidence_level
+            }
+        )
+    ]
+    return EngineResult(findings=findings, metadata={"device_type": device_type, "confidence": confidence_level})
+
+
 if __name__ == "__main__":
     network_range = input("Enter network range (e.g., 192.168.1.0/24): ").strip()
 

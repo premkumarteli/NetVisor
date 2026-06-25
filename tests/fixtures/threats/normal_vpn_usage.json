@@ -1,0 +1,13 @@
+{
+  "name": "normal_vpn_usage",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "185.220.101.1",
+      "dst_port": 1194,
+      "protocol": "UDP",
+      "last_seen": "2026-06-13 12:00:00"
+    }
+  ],
+  "expected_findings": []
+}

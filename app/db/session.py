@@ -66,6 +66,36 @@ REQUIRED_SECURITY_TABLES = {
             INDEX idx_gateway_nonce_expires_at (expires_at)
         )
     """,
+    "user_refresh_tokens": """
+        CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            user_id VARCHAR(100) NOT NULL,
+            token_hash CHAR(64) NOT NULL,
+            family_id VARCHAR(255) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_used_at DATETIME NULL,
+            revoked TINYINT NOT NULL DEFAULT 0,
+            revoked_reason VARCHAR(50) NULL,
+            ip_address VARCHAR(45) NULL,
+            user_agent VARCHAR(255) NULL,
+            UNIQUE KEY uq_token_hash (token_hash),
+            INDEX idx_user_refresh_tokens_family (family_id),
+            INDEX idx_user_refresh_tokens_user (user_id)
+        )
+    """,
+    "certificate_revocations": """
+        CREATE TABLE IF NOT EXISTS certificate_revocations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            serial_number VARCHAR(64) NOT NULL,
+            agent_id VARCHAR(100) NULL,
+            revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            revoked_by VARCHAR(100) NULL,
+            reason VARCHAR(255) NULL,
+            UNIQUE KEY uq_cert_revocation_serial (serial_number),
+            INDEX idx_cert_revocation_agent (agent_id)
+        )
+    """,
 }
 
 REQUIRED_SECURITY_COLUMNS = {
@@ -76,7 +106,21 @@ REQUIRED_SECURITY_COLUMNS = {
         "last_password_change": (
             "ALTER TABLE users ADD COLUMN last_password_change DATETIME DEFAULT CURRENT_TIMESTAMP AFTER locked_until"
         ),
-    }
+    },
+    "audit_logs": {
+        "ip_address": "ALTER TABLE audit_logs ADD COLUMN ip_address VARCHAR(45) NULL AFTER action",
+        "resource": "ALTER TABLE audit_logs ADD COLUMN resource VARCHAR(100) NULL AFTER ip_address",
+        "entry_hash": "ALTER TABLE audit_logs ADD COLUMN entry_hash CHAR(64) NULL",
+        "chain_hash": "ALTER TABLE audit_logs ADD COLUMN chain_hash CHAR(64) NULL",
+        "prev_id": "ALTER TABLE audit_logs ADD COLUMN prev_id INT NULL",
+    },
+    "agents": {
+        "cert_serial": "ALTER TABLE agents ADD COLUMN cert_serial VARCHAR(64) NULL",
+        "cert_fingerprint": "ALTER TABLE agents ADD COLUMN cert_fingerprint CHAR(64) NULL",
+        "cert_issued_at": "ALTER TABLE agents ADD COLUMN cert_issued_at DATETIME NULL",
+        "cert_expires_at": "ALTER TABLE agents ADD COLUMN cert_expires_at DATETIME NULL",
+        "cert_status": "ALTER TABLE agents ADD COLUMN cert_status VARCHAR(20) DEFAULT 'none'",
+    },
 }
 
 REQUIRED_RUNTIME_TABLES = (
@@ -114,6 +158,8 @@ REQUIRED_RUNTIME_COLUMNS = {
         "inspection_metrics_json",
         "cpu_usage",
         "ram_usage",
+        "integrity_status",
+        "manifest_hash",
     },
     "agent_enrollment_requests": {
         "agent_id",

@@ -1,0 +1,23 @@
+{
+  "name": "port_scan",
+  "flows": [
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 21, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:00"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 22, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:01"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 23, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:02"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 25, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:03"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 80, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:04"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 110, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:05"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 143, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:06"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 443, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:07"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 445, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:08"},
+    {"src_ip": "10.0.0.10", "dst_ip": "192.168.1.1", "dst_port": 3389, "byte_count": 100, "duration": 0.1, "last_seen": "2026-03-18 10:00:09"}
+  ],
+  "expected_findings": [
+    {
+      "finding_type": "port_scan",
+      "severity": "HIGH",
+      "confidence": 0.90,
+      "evidence": ["Port Scanning Detected: 10 unique ports scanned from 10.0.0.10 in 10s"]
+    }
+  ]
+}

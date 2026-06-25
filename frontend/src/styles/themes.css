@@ -32,10 +32,10 @@
 :root[data-theme="cyberpunk-tokyo"] {
   /* High contrast, neon pink and bright cyan */
   --color-surface: rgba(13, 2, 21, 0.85);
-  --color-surface-elevated: rgba(255, 0, 128, 0.05);
-  --color-accent: #ff007f; /* Neon Pink */
-  --color-accent-glow: rgba(255, 0, 127, 0.25);
-  --color-secondary: #00f0ff; /* Cyan */
+  --color-surface-elevated: rgba(0, 240, 255, 0.05);
+  --color-accent: #00f0ff; /* Cyan primary */
+  --color-accent-glow: rgba(0, 240, 255, 0.25);
+  --color-secondary: #ff007f; /* Neon Pink secondary */
   --color-danger: #ff2a2a;
   --color-success: #39ff14; /* Neon Green */
   --color-warning: #fce803;
@@ -43,11 +43,15 @@
   --text-primary: #f0f0f0;
   --text-secondary: #b894b4;
   
-  --border-glow: rgba(255, 0, 127, 0.3);
+  --border-glow: rgba(0, 240, 255, 0.3);
   --panel-opacity: 0.85;
-  --bg-gradient: radial-gradient(circle at top left, rgba(255, 0, 127, 0.15), transparent 30%),
-                 radial-gradient(circle at bottom right, rgba(0, 240, 255, 0.15), transparent 30%),
+  --bg-gradient: radial-gradient(circle at top left, rgba(0, 240, 255, 0.15), transparent 30%),
+                 radial-gradient(circle at bottom right, rgba(255, 0, 127, 0.15), transparent 30%),
                  linear-gradient(180deg, #090212 0%, #05010a 100%);
+                 
+  --nv-shadow-lg: 0 0 25px rgba(0, 240, 255, 0.35);
+  --nv-shadow-md: 0 0 15px rgba(0, 240, 255, 0.25);
+  --nv-shadow-sm: 0 0 8px rgba(0, 240, 255, 0.15);
 }
 
 /* --------------------------------------------------------------------------
@@ -185,27 +189,26 @@
   --bg-gradient: linear-gradient(180deg, #000000 0%, #0a0500 100%);
 }
 
+
 /* --------------------------------------------------------------------------
-   9. AI CORE INTERFACE
+   11. WHITEBOARD SKETCH (PLAYFUL HANDMADE)
    -------------------------------------------------------------------------- */
-:root[data-theme="ai-core"] {
-  --color-surface: rgba(245, 247, 250, 0.85);
-  --color-surface-elevated: rgba(255, 255, 255, 0.9);
-  --color-accent: #0066ff; /* Clean Blue */
-  --color-accent-glow: rgba(0, 102, 255, 0.15);
-  --color-secondary: #00ccff;
-  --color-danger: #ff3333;
-  --color-success: #00cc66;
-  --color-warning: #ff9900;
+:root[data-theme="whiteboard-sketch"] {
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-accent: #111111;
+  --color-accent-glow: rgba(0, 0, 0, 0.02);
+  --color-secondary: #444444;
+  --color-danger: #b91c1c;      /* Red marker */
+  --color-success: #15803d;     /* Green marker */
+  --color-warning: #b45309;     /* Amber marker */
   
-  --text-primary: #1a1a2e;
-  --text-secondary: #606f7b;
+  --text-primary: #111111;
+  --text-secondary: #333333;
   
-  --border-glow: rgba(0, 102, 255, 0.15);
-  --panel-opacity: 0.85;
-  --bg-gradient: radial-gradient(circle at top right, rgba(0, 204, 255, 0.05), transparent 50%),
-                 radial-gradient(circle at bottom left, rgba(0, 102, 255, 0.05), transparent 50%),
-                 linear-gradient(180deg, #f0f4f8 0%, #e2e8f0 100%);
+  --border-glow: #111111;
+  --panel-opacity: 1;
+  --bg-gradient: linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
 }
 
 /* --------------------------------------------------------------------------
@@ -266,4 +269,14 @@
   --cinematic-scene-b: rgba(255, 107, 203, 0.28);
   --cinematic-scene-c: rgba(77, 238, 234, 0.18);
   --cinematic-line-art: rgba(255, 255, 255, 0.1);
+}
+
+
+:root[data-theme="whiteboard-sketch"] {
+  --cinematic-hero-bg: #ffffff;
+  --cinematic-card-bg: #ffffff;
+  --cinematic-scene-a: transparent;
+  --cinematic-scene-b: transparent;
+  --cinematic-scene-c: transparent;
+  --cinematic-line-art: rgba(17, 17, 17, 0.1);
 }

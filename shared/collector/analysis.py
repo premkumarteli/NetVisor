@@ -209,6 +209,31 @@ def _classify_application(packet, transport_protocol: str, src_port: int, dst_po
     _, DNS, DNSQR, _, _, _, Raw, TCP, UDP = _load_scapy_primitives()
     payload = bytes(packet[Raw].load) if packet.haslayer(Raw) else b""
     signals: list[str] = []
+    
+    # OpenVPN & WireGuard payload heuristics
+    if payload:
+        if transport_protocol == "UDP":
+            payload_len = len(payload)
+            first_byte = payload[0]
+            
+            # WireGuard message types: 1=Initiation, 2=Response, 3=Cookie, 4=Data
+            is_wg = payload_len in (148, 92, 32) and first_byte in (1, 2, 3, 4)
+            if is_wg:
+                signals.append(f"wg_size_{payload_len}")
+            
+            # Differentiate OpenVPN UDP from QUIC short headers on standard QUIC ports (443, 8443).
+            # QUIC short headers always start with binary 01xxxxxx (0x40 to 0x7F).
+            is_quic_header = (src_port in (443, 8443) or dst_port in (443, 8443)) and (0x40 <= first_byte <= 0x7F)
+            
+            opcode = (first_byte >> 3) & 0x1F
+            if 1 <= opcode <= 10 and not is_wg and not is_quic_header:
+                signals.append(f"openvpn_udp_opcode_{opcode}")
+        elif transport_protocol == "TCP" and len(payload) >= 3:
+            first_byte = payload[2]
+            opcode = (first_byte >> 3) & 0x1F
+            if 1 <= opcode <= 10:
+                signals.append(f"openvpn_tcp_opcode_{opcode}")
+
     application_protocol = transport_protocol
     service_name: Optional[str] = None
     source = "transport_fallback"

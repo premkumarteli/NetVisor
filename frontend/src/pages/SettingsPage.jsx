@@ -8,12 +8,22 @@ import StatusBadge from '../components/V2/StatusBadge';
 import Switch from '../components/V2/Switch';
 import GlassModal from '../components/V2/GlassModal';
 import { getSoundStatus, toggleSound, playSuccessSound } from '../utils/sound';
+import { useImmersion } from '../immersion/engine/useImmersion';
 
 const SettingsPage = () => {
   const [stats, setStats] = useState({ cpu_percent: 0, mem_used_mb: 0, mem_total_mb: 1024, maintenance_mode: false });
   const [systemActive, setSystemActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(() => getSoundStatus());
+  
+  const {
+    animationsEnabled,
+    setAnimationsEnabled,
+    enhancedEffectsEnabled,
+    setEnhancedEffectsEnabled,
+    ambientEffectsEnabled,
+    setAmbientEffectsEnabled
+  } = useImmersion();
   
   const [modalConfig, setModalConfig] = useState({
     open: false,
@@ -230,6 +240,34 @@ const SettingsPage = () => {
 
               <div className="nv-inline-actions" style={{ marginTop: '0.45rem' }}>
                 <StatusBadge tone="accent" icon="ri-shield-check-line">Runtime healthy</StatusBadge>
+              </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Visual Fidelity" caption="Theme Effects">
+            <div className="nv-stack" style={{ gap: '1.2rem' }}>
+              <div className="nv-inline-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="nv-table__primary">Animations</div>
+                  <div className="nv-table__meta">Enable transitions, glitches, and pulses</div>
+                </div>
+                <Switch checked={animationsEnabled} onChange={() => setAnimationsEnabled(!animationsEnabled)} />
+              </div>
+
+              <div className="nv-inline-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="nv-table__primary">Enhanced Effects</div>
+                  <div className="nv-table__meta">Enable card scanlines, glows, and sweeps</div>
+                </div>
+                <Switch checked={enhancedEffectsEnabled} onChange={() => setEnhancedEffectsEnabled(!enhancedEffectsEnabled)} />
+              </div>
+
+              <div className="nv-inline-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div className="nv-table__primary">Ambient Effects</div>
+                  <div className="nv-table__meta">Enable background rain, particles, and grids</div>
+                </div>
+                <Switch checked={ambientEffectsEnabled} onChange={() => setAmbientEffectsEnabled(!ambientEffectsEnabled)} />
               </div>
             </div>
           </SectionCard>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import logging
 import os
 import hashlib
 import json
@@ -25,7 +26,10 @@ from shared.security import (
     sign_request,
 )
 
+from .mtls import GatewayMTLS
 from .state import GatewayStateStore
+
+logger = logging.getLogger(__name__)
 
 
 class GatewayApiClient:
@@ -36,6 +40,8 @@ class GatewayApiClient:
         bootstrap_api_key: str,
         store: GatewayStateStore | None = None,
         initial_pins: list[dict] | None = None,
+        gateway_id: str = "",
+        mtls_renewal_days: int = 30,
     ) -> None:
         self.session = requests.Session()
         self.bootstrap_api_key = str(bootstrap_api_key or "")
@@ -53,6 +59,14 @@ class GatewayApiClient:
         if initial_pins and not self._state.get("backend_tls_pins"):
             self._state["backend_tls_pins"] = list(initial_pins)
             self._persist()
+
+        # mTLS client certificate management
+        self._gateway_id = gateway_id or os.getenv("NETVISOR_GATEWAY_ID", "")
+        self._mtls_renewal_days = mtls_renewal_days
+        mtls_state_dir = state_path.parent / "mtls" if state_path.is_file() else state_path / "mtls"
+        self._mtls = GatewayMTLS(mtls_state_dir, self._gateway_id)
+        # Attach client cert to session if available
+        self._mtls.configure_session(self.session)
 
     def _persist(self) -> None:
         self.store.save(self._state)
@@ -97,6 +111,7 @@ class GatewayApiClient:
             "credential_key_version": credentials.get("key_version"),
             "backend_tls_pin_count": len(self._pinset()),
             "state_path": str(self.store.path),
+            **self._mtls.status_info(),
             "hardening": {
                 "ready": not any(finding["severity"] == "critical" for finding in findings),
                 "finding_count": len(findings),
@@ -245,6 +260,72 @@ class GatewayApiClient:
             self._state["backend_tls_pins"] = pins
         if isinstance(credentials, dict) or isinstance(pins, list):
             self._persist()
+
+    # ------------------------------------------------------------------
+    # mTLS certificate lifecycle
+    # ------------------------------------------------------------------
+
+    def enroll_certificate(self, server_url: str) -> bool:
+        """Request a client certificate from the server after gateway enrollment."""
+        if self._mtls.has_certificate() and not self._mtls.needs_renewal(self._mtls_renewal_days):
+            return True  # Already have a valid, non-expiring-soon cert
+
+        if not self.has_credentials():
+            return False  # Need enrolled HMAC credentials first
+
+        try:
+            csr_pem = self._mtls.generate_csr()
+
+            endpoint = "certificate/renew" if self._mtls.has_certificate() else "certificate/enroll"
+            url = f"{server_url.rstrip('/')}/api/v1/gateway/{endpoint}"
+
+            response = self.request(
+                "POST",
+                url,
+                json_body={"csr_pem": csr_pem.decode("utf-8")},
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                logger.warning(
+                    "Certificate enrollment failed: HTTP %s: %s",
+                    response.status_code,
+                    response.text[:200],
+                )
+                return False
+
+            payload = response.json()
+            cert_pem = payload.get("certificate_pem", "")
+            ca_cert_pem = payload.get("ca_cert_pem", "")
+
+            if not cert_pem or not ca_cert_pem:
+                logger.warning("Certificate enrollment returned empty certificate.")
+                return False
+
+            self._mtls.store_certificate(
+                cert_pem.encode("utf-8"),
+                ca_cert_pem.encode("utf-8"),
+            )
+            # Reconfigure the session with the new cert
+            self._mtls.configure_session(self.session)
+
+            logger.info(
+                "mTLS certificate %s: serial=%s expires=%s",
+                endpoint.split("/")[-1],
+                payload.get("serial"),
+                payload.get("expires_at"),
+            )
+            return True
+        except Exception as exc:
+            logger.warning("Certificate enrollment error: %s", exc)
+            return False
+
+    def check_certificate_renewal(self, server_url: str) -> None:
+        """Check if the client certificate needs renewal and renew if so."""
+        if not self._mtls.needs_renewal(self._mtls_renewal_days):
+            return
+        logger.info("Client certificate nearing expiry, requesting renewal...")
+        self.enroll_certificate(server_url)
 
     def _extract_peer_certificate(self, response: requests.Response) -> bytes | None:
         connection = getattr(response.raw, "connection", None) or getattr(response.raw, "_connection", None)

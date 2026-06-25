@@ -125,6 +125,7 @@ export const systemService = {
   getAppsSummary: () => api.get("/apps/summary"),
   getDpiGlobalStatus: () => api.get("/dpi/status"),
   getAppDevices: (appName) => api.get(`/apps/${encodeURIComponent(appName)}/devices`),
+  getAppWorkspace: (appName) => api.get(`/apps/${encodeURIComponent(appName)}/workspace`),
   getAppDpiEvents: (appName) => api.get(`/dpi/apps/${encodeURIComponent(appName)}`),
   getAnalyticsOverview: (hours = 24, limit = 8) =>
     api.get("/analytics/overview", { params: { hours, limit } }),

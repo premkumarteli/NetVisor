@@ -1,0 +1,32 @@
+{
+  "name": "chromecast_mdns",
+  "input": {
+    "ip": "192.168.1.52",
+    "mac": "D8:3A:DD:77:88:99",
+    "hostname": "Chromecast-LivingRoom",
+    "mdns_services": ["_googlecast._tcp.local"]
+  },
+  "expected": {
+    "vendor": "Ubiquiti",
+    "device_type": "Chromecast / Smart TV",
+    "confidence": 0.45,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Ubiquiti",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "Chromecast-LivingRoom",
+        "weight": 0.10
+      },
+      {
+        "source": "mdns",
+        "value": "_googlecast._tcp.local",
+        "weight": 0.20
+      }
+    ]
+  }
+}

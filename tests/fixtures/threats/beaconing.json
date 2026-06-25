@@ -1,0 +1,18 @@
+{
+  "name": "beaconing",
+  "flows": [
+    {"src_ip": "10.0.0.10", "dst_ip": "198.18.0.10", "dst_port": 8080, "byte_count": 2400, "duration": 0.5, "last_seen": "2026-03-18 10:02:00"},
+    {"src_ip": "10.0.0.10", "dst_ip": "198.18.0.10", "dst_port": 8080, "byte_count": 2400, "duration": 0.5, "last_seen": "2026-03-18 10:02:30"},
+    {"src_ip": "10.0.0.10", "dst_ip": "198.18.0.10", "dst_port": 8080, "byte_count": 2400, "duration": 0.5, "last_seen": "2026-03-18 10:03:00"},
+    {"src_ip": "10.0.0.10", "dst_ip": "198.18.0.10", "dst_port": 8080, "byte_count": 2400, "duration": 0.5, "last_seen": "2026-03-18 10:03:30"},
+    {"src_ip": "10.0.0.10", "dst_ip": "198.18.0.10", "dst_port": 8080, "byte_count": 2400, "duration": 0.5, "last_seen": "2026-03-18 10:04:00"}
+  ],
+  "expected_findings": [
+    {
+      "finding_type": "beaconing",
+      "severity": "HIGH",
+      "confidence": 0.90,
+      "evidence": ["Possible C2 Beaconing: periodic connections with interval of 30.0s and low variance"]
+    }
+  ]
+}

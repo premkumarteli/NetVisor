@@ -1,0 +1,69 @@
+{
+  "name": "slow_port_scan",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 20,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:06"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 22,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:12"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 23,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:18"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 24,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:24"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 25,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:30"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 26,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:36"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 27,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:42"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 28,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:48"
+    }
+  ],
+  "expected_findings": []
+}

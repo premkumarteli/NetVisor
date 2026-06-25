@@ -1,0 +1,326 @@
+{
+  "name": "cdn_dns_queries",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-01.example.com",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-02.example.com",
+      "last_seen": "2026-06-13 12:00:01"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-03.example.com",
+      "last_seen": "2026-06-13 12:00:02"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-04.example.com",
+      "last_seen": "2026-06-13 12:00:03"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-05.example.com",
+      "last_seen": "2026-06-13 12:00:04"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-06.example.com",
+      "last_seen": "2026-06-13 12:00:05"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-07.example.com",
+      "last_seen": "2026-06-13 12:00:06"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-08.example.com",
+      "last_seen": "2026-06-13 12:00:07"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-09.example.com",
+      "last_seen": "2026-06-13 12:00:08"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-10.example.com",
+      "last_seen": "2026-06-13 12:00:09"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-11.example.com",
+      "last_seen": "2026-06-13 12:00:10"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-12.example.com",
+      "last_seen": "2026-06-13 12:00:11"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-13.example.com",
+      "last_seen": "2026-06-13 12:00:12"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-14.example.com",
+      "last_seen": "2026-06-13 12:00:13"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-15.example.com",
+      "last_seen": "2026-06-13 12:00:14"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-16.example.com",
+      "last_seen": "2026-06-13 12:00:15"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-17.example.com",
+      "last_seen": "2026-06-13 12:00:16"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-18.example.com",
+      "last_seen": "2026-06-13 12:00:17"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-19.example.com",
+      "last_seen": "2026-06-13 12:00:18"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-20.example.com",
+      "last_seen": "2026-06-13 12:00:19"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-21.example.com",
+      "last_seen": "2026-06-13 12:00:20"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-22.example.com",
+      "last_seen": "2026-06-13 12:00:21"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-23.example.com",
+      "last_seen": "2026-06-13 12:00:22"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-24.example.com",
+      "last_seen": "2026-06-13 12:00:23"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-25.example.com",
+      "last_seen": "2026-06-13 12:00:24"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-26.example.com",
+      "last_seen": "2026-06-13 12:00:25"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-27.example.com",
+      "last_seen": "2026-06-13 12:00:26"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-28.example.com",
+      "last_seen": "2026-06-13 12:00:27"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-29.example.com",
+      "last_seen": "2026-06-13 12:00:28"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-30.example.com",
+      "last_seen": "2026-06-13 12:00:29"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-31.example.com",
+      "last_seen": "2026-06-13 12:00:30"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-32.example.com",
+      "last_seen": "2026-06-13 12:00:31"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-33.example.com",
+      "last_seen": "2026-06-13 12:00:32"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-34.example.com",
+      "last_seen": "2026-06-13 12:00:33"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-35.example.com",
+      "last_seen": "2026-06-13 12:00:34"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-36.example.com",
+      "last_seen": "2026-06-13 12:00:35"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-37.example.com",
+      "last_seen": "2026-06-13 12:00:36"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-38.example.com",
+      "last_seen": "2026-06-13 12:00:37"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-39.example.com",
+      "last_seen": "2026-06-13 12:00:38"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "cdn-40.example.com",
+      "last_seen": "2026-06-13 12:00:39"
+    }
+  ],
+  "expected_findings": []
+}

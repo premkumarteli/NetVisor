@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import health, auth, devices, flows, alerts, agents, gateway, dashboard, system, apps, analytics, agent_monitoring, web_inspection, dpi, logs
+from . import health, auth, devices, flows, alerts, agents, gateway, dashboard, system, apps, analytics, agent_monitoring, web_inspection, dpi, logs, certificates, audit_integrity
 
 api_router = APIRouter()
 
@@ -19,3 +19,5 @@ api_router.include_router(analytics.router, prefix="/analytics", tags=["analytic
 api_router.include_router(web_inspection.router, prefix="/web", tags=["web-inspection"])
 api_router.include_router(dpi.router, prefix="/dpi", tags=["dpi"])
 api_router.include_router(logs.router, prefix="/logs", tags=["logs"])
+api_router.include_router(certificates.router, prefix="/admin", tags=["certificates"])
+api_router.include_router(audit_integrity.router, prefix="/admin/audit", tags=["audit"])

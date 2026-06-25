@@ -1,0 +1,82 @@
+{
+  "name": "decay_expiry",
+  "initial_flows": [
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 20,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:01"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 22,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:02"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 23,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:03"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 24,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:04"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 25,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:05"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 26,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:06"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 27,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:07"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 28,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:08"
+    },
+    {
+      "src_ip": "10.0.0.200",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 29,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:09"
+    }
+  ],
+  "expiry_flow": {
+    "src_ip": "10.0.0.200",
+    "dst_ip": "192.168.1.1",
+    "dst_port": 80,
+    "protocol": "TCP",
+    "last_seen": "2026-06-13 12:06:00"
+  }
+}

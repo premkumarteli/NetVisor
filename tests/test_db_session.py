@@ -60,6 +60,9 @@ class _SchemaCursor:
         if normalized.startswith("CREATE TABLE IF NOT EXISTS gateway_request_nonces"):
             self.conn.tables.add("gateway_request_nonces")
             return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS user_refresh_tokens"):
+            self.conn.tables.add("user_refresh_tokens")
+            return
         if normalized.startswith("ALTER TABLE users ADD COLUMN status"):
             self.conn.columns.setdefault("users", set()).add("status")
             return
@@ -71,6 +74,39 @@ class _SchemaCursor:
             return
         if normalized.startswith("ALTER TABLE users ADD COLUMN last_password_change"):
             self.conn.columns.setdefault("users", set()).add("last_password_change")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS certificate_revocations"):
+            self.conn.tables.add("certificate_revocations")
+            return
+        if normalized.startswith("ALTER TABLE audit_logs ADD COLUMN ip_address"):
+            self.conn.columns.setdefault("audit_logs", set()).add("ip_address")
+            return
+        if normalized.startswith("ALTER TABLE audit_logs ADD COLUMN resource"):
+            self.conn.columns.setdefault("audit_logs", set()).add("resource")
+            return
+        if normalized.startswith("ALTER TABLE audit_logs ADD COLUMN entry_hash"):
+            self.conn.columns.setdefault("audit_logs", set()).add("entry_hash")
+            return
+        if normalized.startswith("ALTER TABLE audit_logs ADD COLUMN chain_hash"):
+            self.conn.columns.setdefault("audit_logs", set()).add("chain_hash")
+            return
+        if normalized.startswith("ALTER TABLE audit_logs ADD COLUMN prev_id"):
+            self.conn.columns.setdefault("audit_logs", set()).add("prev_id")
+            return
+        if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_serial"):
+            self.conn.columns.setdefault("agents", set()).add("cert_serial")
+            return
+        if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_fingerprint"):
+            self.conn.columns.setdefault("agents", set()).add("cert_fingerprint")
+            return
+        if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_issued_at"):
+            self.conn.columns.setdefault("agents", set()).add("cert_issued_at")
+            return
+        if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_expires_at"):
+            self.conn.columns.setdefault("agents", set()).add("cert_expires_at")
+            return
+        if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_status"):
+            self.conn.columns.setdefault("agents", set()).add("cert_status")
             return
         raise AssertionError(f"Unexpected query: {normalized}")
 
@@ -130,6 +166,7 @@ def test_ensure_security_schema_creates_missing_tables_and_columns(monkeypatch):
         "agent_request_nonces",
         "gateway_credentials",
         "gateway_request_nonces",
+        "user_refresh_tokens",
     } <= conn.tables
     assert {
         "status",
@@ -137,6 +174,10 @@ def test_ensure_security_schema_creates_missing_tables_and_columns(monkeypatch):
         "locked_until",
         "last_password_change",
     } <= conn.columns["users"]
+    assert {
+        "ip_address",
+        "resource",
+    } <= conn.columns["audit_logs"]
     assert conn.commits == 1
 
 
@@ -149,6 +190,7 @@ def test_security_schema_status_reports_missing_objects(monkeypatch):
     assert status["ready"] is False
     assert "agent_credentials" in status["missing_tables"]
     assert "gateway_credentials" in status["missing_tables"]
+    assert "user_refresh_tokens" in status["missing_tables"]
     assert "users.status" in status["missing_columns"]
 
 

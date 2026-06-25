@@ -454,16 +454,18 @@ class SystemService:
         action: str,
         details: str,
         organization_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        resource: Optional[str] = None,
     ) -> None:
         self.ensure_tables(db_conn)
         cursor = db_conn.cursor()
         try:
             cursor.execute(
                 """
-                INSERT INTO audit_logs (organization_id, username, action, details)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO audit_logs (organization_id, username, action, ip_address, resource, details)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (organization_id, username or "unknown", action, details),
+                (organization_id, username or "unknown", action, ip_address, resource, details),
             )
         finally:
             cursor.close()
@@ -501,6 +503,7 @@ class SystemService:
         active: bool,
         username: str,
         organization_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
     ) -> dict:
         self._set_setting(db_conn, "monitoring_active", active)
         self.log_action(
@@ -509,6 +512,8 @@ class SystemService:
             action="monitoring_toggle",
             details=f"Monitoring {'enabled' if active else 'disabled'}",
             organization_id=organization_id,
+            ip_address=ip_address,
+            resource="monitoring_active",
         )
         db_conn.commit()
         return {"status": "success", "message": "Monitoring state updated"}
@@ -519,6 +524,7 @@ class SystemService:
         active: bool,
         username: str,
         organization_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
     ) -> dict:
         self._set_setting(db_conn, "maintenance_mode", active)
         self.log_action(
@@ -527,6 +533,8 @@ class SystemService:
             action="maintenance_toggle",
             details=f"Maintenance mode {'enabled' if active else 'disabled'}",
             organization_id=organization_id,
+            ip_address=ip_address,
+            resource="maintenance_mode",
         )
         db_conn.commit()
         return {
@@ -539,6 +547,7 @@ class SystemService:
         db_conn,
         username: str,
         organization_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
     ) -> dict:
         self.log_action(
             db_conn,
@@ -546,6 +555,8 @@ class SystemService:
             action="force_scan",
             details="Triggered simulated network scan",
             organization_id=organization_id,
+            ip_address=ip_address,
+            resource="network_scan",
         )
         db_conn.commit()
         return {"status": "success", "message": "Network scan triggered (simulation)"}
@@ -561,7 +572,7 @@ class SystemService:
         try:
             params = []
             query = """
-                SELECT created_at, username, action, details
+                SELECT created_at, username, action, ip_address, resource, details
                 FROM audit_logs
             """
             if organization_id:
@@ -581,6 +592,8 @@ class SystemService:
                     {
                         "time": timestamp,
                         "action": row.get("action"),
+                        "ip_address": row.get("ip_address"),
+                        "resource": row.get("resource"),
                         "details": row.get("details") or f"User: {row.get('username')}",
                     }
                 )
@@ -593,8 +606,20 @@ class SystemService:
         db_conn,
         username: str,
         organization_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
     ) -> dict:
         result = self.backup_and_reset_runtime_data(db_conn, reason="manual_reset")
+        # Post-reset audit trail log entry
+        self.log_action(
+            db_conn,
+            username=username,
+            action="reset_operational_data",
+            details=f"Cleared runtime row(s). Backup saved to {result['backup']['backup_dir'] or 'backup dir'}.",
+            organization_id=organization_id,
+            ip_address=ip_address,
+            resource="database",
+        )
+        db_conn.commit()
         return {
             "status": "success",
             "message": result["message"],

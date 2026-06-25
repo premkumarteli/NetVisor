@@ -78,6 +78,27 @@ class ASNLookupService:
         org = (result.autonomous_system_organization or "").strip()
         return org or None
 
+    def lookup_asn_details(self, ip_value: str | None) -> Optional[dict]:
+        if not ip_value:
+            return None
+        try:
+            ipaddress.ip_address(ip_value)
+        except ValueError:
+            return None
+
+        reader = self._get_reader()
+        if reader is None:
+            return None
+
+        try:
+            result = reader.asn(ip_value)
+            return {
+                "asn": result.autonomous_system_number,
+                "organization": (result.autonomous_system_organization or "").strip()
+            }
+        except Exception:
+            return None
+
     def classify_ip(self, ip_value: str | None) -> Optional[str]:
         org = self.lookup_organization(ip_value)
         if not org:

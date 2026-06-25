@@ -67,6 +67,7 @@ services:
       - ./run_server.py:/srv/netvisor/run_server.py:ro
       - ./requirements.txt:/srv/netvisor/requirements.txt:ro
       - server_runtime:/srv/netvisor/runtime
+      - ./runtime/ca:/srv/netvisor/runtime/ca:ro
     command: >
       sh -c "
       pip install --no-cache-dir -r requirements.txt &&
@@ -113,8 +114,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      NETVISOR_MTLS_CADDY_MODE: ${NETVISOR_MTLS_CADDY_MODE:-request}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./runtime/ca/ca.crt:/etc/caddy/ca/ca.crt:ro
       - caddy_data:/data
       - caddy_config:/config
     ports:

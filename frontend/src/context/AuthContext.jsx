@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { authService } from "../services/api";
 import { isAdminRole } from "../utils/roles";
 import { AuthContext } from "./auth-context";
+import { ensureRealtimeConnection } from "../socket";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -11,7 +12,11 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     try {
       const res = await authService.getCurrentUser();
-      setUser(res.data?.authenticated ? res.data : null);
+      const authenticatedUser = res.data?.authenticated ? res.data : null;
+      setUser(authenticatedUser);
+      if (authenticatedUser) {
+        ensureRealtimeConnection(true);
+      }
     } catch {
       setUser(null);
     } finally {

@@ -263,12 +263,21 @@ class GatewayCollector:
                 }
             )
 
-        if self._background_workers_enabled and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
+        server_is_https = getattr(self, "server_url", "").lower().startswith("https://")
+        if self._background_workers_enabled and server_is_https and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
             findings.append(
                 {
                     "severity": "critical",
                     "code": "missing_tls_pins",
                     "message": "Remote gateway transport has no configured TLS pins.",
+                }
+            )
+        elif self._background_workers_enabled and not server_is_https and transport_snapshot.get("backend_tls_pin_count", 0) == 0:
+            findings.append(
+                {
+                    "severity": "warning",
+                    "code": "missing_tls_pins",
+                    "message": "Server is using plain HTTP — TLS pinning is not active. Use HTTPS in production.",
                 }
             )
 
@@ -450,6 +459,16 @@ class GatewayCollector:
             retry_delay = min(retry_delay * 2, 30)
         return False
 
+    def _handle_auth_rejection(self, exc: Exception) -> bool:
+        """Return True if the exception was a 403 and re-enrollment was triggered."""
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 403:
+            print(f"{Fore.YELLOW}[!] Server rejected gateway credentials (403) — triggering re-enrollment")
+            self.client.reset_enrollment(preserve_pins=True)
+            self._ensure_enrolled(force_reenroll=True)
+            return True
+        return False
+
     def _heartbeat_worker(self) -> None:
         while self.is_running:
             try:
@@ -458,7 +477,8 @@ class GatewayCollector:
                     response.raise_for_status()
                     self._apply_server_metadata(response.json())
             except Exception as exc:
-                print(f"{Fore.YELLOW}[!] Gateway heartbeat failed: {exc}")
+                if not self._handle_auth_rejection(exc):
+                    print(f"{Fore.YELLOW}[!] Gateway heartbeat failed: {exc}")
             time.sleep(self.heartbeat_interval)
 
     def _on_flow_expired(self, summary: FlowSummary) -> None:
@@ -532,7 +552,8 @@ class GatewayCollector:
             response.raise_for_status()
             self._apply_server_metadata(response.json())
         except Exception as exc:
-            print(f"{Fore.YELLOW}[!] Gateway device sync failed: {exc}")
+            if not self._handle_auth_rejection(exc):
+                print(f"{Fore.YELLOW}[!] Gateway device sync failed: {exc}")
 
     def _discovery_worker(self) -> None:
         interval = max(int(os.getenv("NETVISOR_GATEWAY_DISCOVERY_SECONDS", "15")), 5)
@@ -598,6 +619,9 @@ class GatewayCollector:
                         failure_count = 0
                         last_send = time.time()
                     except Exception as exc:
+                        if self._handle_auth_rejection(exc):
+                            failure_count = 0
+                            continue
                         failure_count += 1
                         status_code = getattr(getattr(exc, "response", None), "status_code", None)
                         delay = min(self.upload_backoff_max_seconds, 2 ** min(failure_count, 5))

@@ -40,6 +40,33 @@ The current architecture separates visibility into two paths:
 
 ---
 
+## Architecture Evolution
+
+| Version | Stack / Components | Key Focus |
+| :--- | :--- | :--- |
+| **Version 1** | Flask + MySQL | Basic user auth and prototype network table views. |
+| **Version 2** | Flask + Zeek | Live network visibility via passive Zeek log ingestion. |
+| **Version 3** | Frontend + Agent + Server | Component decoupling into separate directories. |
+| **Version 4** | FastAPI + React | API performance upgrades and interactive analyst dashboard. |
+| **Version 5** | Agent + Gateway + Backend | Differentiated managed agent vs metadata-only gateway collection. |
+| **Version 6** | Modular Engine Platform | Unified detection engines registry with concurrency controls. |
+
+---
+
+# PHASE 1 – FOUNDATION (Oct 2025 – Nov 2025)
+
+> **Goal:** Build a basic network monitoring prototype.
+> 
+> **Key Achievements:**
+> - Flask authentication
+> - MySQL integration
+> - Activity dashboard
+> - Initial scanner
+> 
+> **Key Learning:** *A security platform requires more than user management.*
+
+---
+
 ## 2025-10-22 - Initial Working Prototype
 
 **Work completed**
@@ -246,6 +273,38 @@ The current architecture separates visibility into two paths:
 
 - `Network4.zip`.
 
+---
+
+### Phase 1 Reflection
+
+**What Went Well:**
+- Established initial Flask route blueprints, user session management, and basic database interaction.
+- Designed early network activity layout using static HTML/JS tables.
+
+**Challenges:**
+- The prototype was monolithic, making it hard to decouple networking from core UI logic.
+- Hardcoded local credentials in early file snapshots highlighted a need for secure configuration management.
+
+**Next Phase Goals:**
+- Explore packet capture programmatic engines (Scapy) and initial VPN/ML detection models.
+- Modularize the repository into separate component folders.
+
+---
+
+# PHASE 2 – NETWORK VISIBILITY (Dec 2025 – Jan 2026)
+
+> **Goal:** Understand network traffic and VPN detection.
+> 
+> **Key Achievements:**
+> - Packet capture experiments
+> - VPN detection research
+> - ML evaluation
+> - Interface debugging
+> 
+> **Key Learning:** *Network visibility is challenging due to adapter diversity.*
+
+---
+
 ## 2025-12-01 - Project Report Updates
 
 **Work completed**
@@ -364,6 +423,38 @@ The current architecture separates visibility into two paths:
 **Evidence**
 
 - Recovered `frontend`, `dashboard`, `agent`, and `server` folders.
+
+---
+
+### Phase 2 Reflection
+
+**What Went Well:**
+- Programmatic capture scripts successfully analyzed local DNS and TCP handshake sequences.
+- Decoupled code logic into separate `agent`, `server`, and `frontend` folders.
+
+**Challenges:**
+- Windows network adapter diversity caused frequent capture failures due to improper Npcap interface strings.
+- Signature-only VPN detection generated high false positives.
+
+**Next Phase Goals:**
+- Migrate the backend to FastAPI and frontend to React for performance and maintainability.
+- Move the codebase to Git for proper version tracking.
+
+---
+
+# PHASE 3 – ARCHITECTURE MODERNIZATION (Feb – Mar 2026)
+
+> **Goal:** Transform the prototype into a scalable platform.
+> 
+> **Key Achievements:**
+> - Git migration
+> - FastAPI migration
+> - React frontend
+> - Agent-server separation
+> 
+> **Key Learning:** *Scalability requires modular architecture.*
+
+---
 
 ## 2026-02-06 - Dashboard Iteration
 
@@ -658,6 +749,38 @@ The current architecture separates visibility into two paths:
 
 - `20260326_security_hardening_phase1.sql`.
 
+---
+
+### Phase 3 Reflection
+
+**What Went Well:**
+- Successfully initialized Git repository and established safety baselines (authorization guards, connection pools).
+- Completed FastAPI backend cutover and React frontend development.
+
+**Challenges:**
+- Splitting the system introduced circular dependency risks and integration issues on initial startup.
+- Raw browser inspection log volumes created analytical clutter.
+
+**Next Phase Goals:**
+- Harden flow log ingestion and deduplicate redundant security alerts.
+- Develop privacy-preserving gateway sensor capture paths.
+
+---
+
+# PHASE 4 – ENTERPRISE FEATURES (Apr – May 2026)
+
+> **Goal:** Add security hardening and operational features.
+> 
+> **Key Achievements:**
+> - Gateway architecture
+> - DPI visibility
+> - Enrollment system
+> - Security migrations
+> 
+> **Key Learning:** *Privacy and visibility must be balanced.*
+
+---
+
 ## 2026-04-16 - Gateway Security Migration
 
 **Work completed**
@@ -869,6 +992,39 @@ The current architecture separates visibility into two paths:
 - Manual gateway and UI screenshots from 2026-05-29.
 - Current React application pages and styles.
 
+---
+
+### Phase 4 Reflection
+
+**What Went Well:**
+- Built the metadata-only gateway sensor with secure LAN-transport overrides.
+- Implemented robust admin-approved enrollment routines for agents.
+
+**Challenges:**
+- Large-scale telemetry queries triggered database slowdowns on older schemas.
+- Scapy packet parsing behavior changed after updating system dependencies.
+
+**Next Phase Goals:**
+- Transform traditional detection services into a modular, registry-driven engine platform.
+- Resolve VPN false positives caused by Google QUIC traffic.
+
+---
+
+# PHASE 5 – ENGINE PLATFORM (Jun 2026)
+
+> **Goal:** Replace legacy detection logic with modular engines.
+> 
+> **Key Achievements:**
+> - Device Engine
+> - Threat Engine
+> - VPN Engine
+> - Registry Architecture
+> - Risk Correlation
+> 
+> **Key Learning:** *Modular engines improve maintainability and testing.*
+
+---
+
 ## 2026-06-01 - Historical Recovery and Logbook Reconstruction
 
 **Work completed**
@@ -904,16 +1060,207 @@ The current architecture separates visibility into two paths:
 - Agent and gateway enrollment, preflight checks, security hardening, deployment documentation, CI checks, and role-based bundle generation.
 - Code-level buffering, retry, search optimization, alert deduplication, and flow-ingestion hardening support.
 
-### Pending Verification and Hardening
+---
 
-- Verify gateway upload retry and backoff behavior under backend connection resets.
-- Reduce gateway-to-UI delay while preventing backend overload.
-- Verify offline buffering and replay across backend restarts.
-- Validate server, agent, and gateway deployment on separate machines.
-- Tune VPN and threat detection false positives with repeatable traffic tests.
-- Run final end-to-end acceptance tests for all documented threat scenarios.
-- Continue readability improvements for remaining console pages.
-- Confirm Docker cold-start behavior, database readiness, backup retention, and restore procedures in a clean deployment.
+### June 2026 Summary
+
+During June, the project transitioned from a traditional service-oriented detection model to a modular engine-based architecture. Device classification, threat detection, VPN detection, and risk correlation were migrated into independent engines, significantly improving maintainability, testability, and scalability.
+
+---
+
+## 2026-06-13 - Engine Foundations, Device & Threat Modularization
+
+**Work completed**
+
+- Implemented standard engine contracts (`Severity`, `Finding`, `EngineResult`, `BaseEngine`) under `shared/engine/` to decouple engine implementations from FastAPI routes.
+- Migrated device classification to a dedicated, priority-driven `DevicePipeline` (`app/engines/device/pipeline.py`) incorporating mDNS service type advertisements, SSDP UPnP headers, OUI vendor lookups, DHCP Option 55 parameter lists, and conditional active probing.
+- Created `SlidingWindowStore` under `app/engines/threat/state.py` to prune expired telemetry buckets.
+- Implemented modular `PortScanDetector` to alert on 10 unique ports scanned within 10 seconds.
+- Created `EngineRegistry` in `app/engines/registry.py` to handle dynamic registration, constructor injection of engine configs, and selective context execution.
+- Rewrote the NDR correlation layer (`RiskEngine`), implementing exponential scoring decay, duplicate correlation alert suppression, and compounded host risk calculations.
+
+**Problem found**
+
+- Legacy active prober was blocking socket timeouts, slowing ingestion when encountering offline devices.
+- Direct dictionary key access crashed when processing custom mocked list objects in testing.
+
+**Solution or learning**
+
+- Implemented safe float/int parsing and a generic `get_flow_field` wrapper to support both object attribute and dictionary key lookups.
+- Bound active prober execution to occur only if device type is unknown and confidence is low (< 0.50).
+
+**Evidence**
+
+- Created unit tests in `tests/test_device_engine_parities.py` and `tests/test_threat_engine_parities.py` verifying 100% exact matches or enhancements over legacy behavior.
+
+---
+
+## 2026-06-16 - Fuzz Testing, Structured AI & Application JA4 Modernization
+
+**Work completed**
+
+- Added negative testing fixtures (`slow_port_scan.json`, `random_intervals.json`, `cdn_dns_queries.json`, `normal_large_upload.json`, `normal_vpn_usage.json`) and boundary conditions.
+- Hardened Threat Engine detectors (brute force, beaconing, exfiltration) with robust try-except conversion blocks.
+- Upgraded the AI Engine to return structured playbooks and MITRE mappings, using template playbooks.
+- Modernized the Application Engine using **JA4 client TLS fingerprints** to classify tools like Curl, Python Requests, Go HTTP Client, Tor Browser, and Cobalt Strike C2 payloads.
+- Integrated live ASN metadata lookup in `ApplicationService` to retrieve autonomous system names and numbers.
+
+**Problem found**
+
+- Fuzz tests with empty dictionaries, null fields, and out-of-bound integers caused unhandled ValueErrors and type crashes in the threat heuristics pipeline.
+
+**Solution or learning**
+
+- Implemented type-safe fallbacks (e.g. defaulting malformed ports to `0` and malformed byte counts to `0`) across all detectors to ensure engines fail gracefully.
+
+**Evidence**
+
+- Created `tests/test_engine_resilience.py` running fuzz checks across all registered registry engines. Verified zero failures.
+
+---
+
+## 2026-06-19 - Concurrency Hardening & VPN Engine Pipeline
+
+**Work completed**
+
+- Implemented thread safety using re-entrant locks (`RLock`) across all shared mutable stores, including `SlidingWindowStore`, `DNSTunnelingDetector`, `SuppressionStore`, and `ApplicationService`.
+- Created Scapy-based programmatic PCAP generator `tests/helpers/pcap_generator.py` to write raw test captures.
+- Modernized the VPN Engine, introducing a modular `VPNPipeline` orchestrating `ASNReputationDetector`, `TLS_Cert_Detector`, `OpenVPNSignatureDetector`, and `WireGuardHeuristicDetector` (verifying payload sizes `148`/`92`/`32` with bidirectional constraints).
+
+**Problem found**
+
+- Heavy concurrent ingest loads caused random `RuntimeError: dictionary changed size during iteration` crashes in state pruning loops.
+- WireGuard heuristics triggered false alarms on standard unidirectional UDP flows.
+
+**Solution or learning**
+
+- Locked all pruning loops and return copies of stores using `RLock`.
+- Enforced a strict sorted bidirectional IP/port pair tracking mechanism for WireGuard flows.
+
+**Evidence**
+
+- Created concurrency tests `test_concurrent_engine_execution` and `test_parallel_risk_correlation` in `tests/test_engine_resilience.py`.
+- Verified WireGuard and OpenVPN PCAP captures propagate alerts correctly via `tests/test_pcap_pipeline.py`.
+
+---
+
+## 2026-06-20 - Ingestion Worker Cutover & Real PCAP Telemetry Validation
+
+**Work completed**
+
+- Refactored `_persist_batch_on_connection` in `FlowService` to natively run `registry.analyze_selective` and write alerts backward-compatibly to `alerts` and `device_risks`.
+- Removed retired database queries (legacy device baselines and cache reads).
+- Evaluated the ingest pipeline against real (non-synthetic) network traffic PCAP captures for WireGuard, OpenVPN, Tor exit nodes, and benign web browsing.
+
+**Problem found**
+
+- `SanitizedFlow` is a python dataclass, not a Pydantic model. Standard `.model_dump()` crashed.
+- Circular dependency issues arose during FastAPI system startup when importing the registry.
+
+**Solution or learning**
+
+- Converted flows to dictionary contexts via `dataclasses.asdict()`.
+- Implemented the registry as a lazy property inside `FlowService` to defer imports.
+
+**Evidence**
+
+- Verified score parity inside `tests/test_flowservice_registry_parity.py` and validated real datasets in `tests/test_real_traffic_evaluation.py`. All **437 tests** passed.
+
+---
+
+## 2026-06-21 - Live Verification, QUIC False Positive Tuning & Legacy Retirement (Today)
+
+**Work completed**
+
+- Resolved a critical dashboard VPN feed display bug where the VPN Page was empty because `vpn_score` and `vpn_provider` were missing from the DB breakdown.
+- Fixed a false-positive OpenVPN opcode signature collision with standard Google QUIC (UDP 443) traffic.
+- Permanently retired and deleted all legacy service files (`risk_engine.py`, `flow_analyzer.py`, `dns_analyzer.py`, `baseline_engine.py`, legacy tests, and adapters).
+
+**Problem found**
+
+- QUIC short headers (first byte `0x40` to `0x7F`) when right-shifted by 3 yielded `8` or `9`, which matched the OpenVPN UDP control frame opcode parser.
+- The dashboard and system log endpoints filter VPN alerts using `breakdown.vpn_score > 0.3`. Since this key was omitted by the modular registry, alerts did not display.
+
+**Solution or learning**
+
+- Excluded shifted UDP opcode checks on ports 443/8443 if the payload starts with a QUIC short header byte (`0x40 <= first_byte <= 0x7F`).
+- Injected `vpn_score`, `vpn_provider`, and `vpn_type` into the breakdown dictionary in `flow_service.py` to restore dashboard display.
+
+**Evidence**
+
+- Verified live dashboard display of WireGuard and OpenVPN.
+- All remaining **427 tests** in the test suite pass cleanly with zero errors.
+
+---
+
+### Phase 5 Reflection
+
+**What Went Well:**
+- Decoupled detection into discrete engines (Device, Threat, VPN, Risk, AI) under a central `EngineRegistry`.
+- Eliminated legacy code redundancy, verified engine resilience via fuzzing, and optimized database write-paths.
+- Successfully resolved the OpenVPN opcode collision against Google QUIC traffic.
+
+**Challenges:**
+- Managing concurrency locks (`RLock`) on shared stores was critical to prevent race conditions during heavy ingestion.
+- Dashboard integration required retrofitting specific database keys to maintain backward compatibility.
+
+**Next Goals:**
+- Continue refining ML heuristics and roll out agent platform to production systems.
+
+---
+
+## Major Engineering Challenges Solved
+
+### 1. VPN False Positives (OpenVPN vs. QUIC)
+- **Problem:** Google QUIC traffic over UDP port 443 triggered false alarms in the OpenVPN opcode signature parser because QUIC short headers right-shifted by 3 yielded bytes `8` or `9`, matching the OpenVPN control frames.
+- **Solution:** Added protocol-aware checks to exclude packet evaluations on ports 443/8443 if the payload matches a QUIC short header byte range (`0x40 <= first_byte <= 0x7F`).
+
+### 2. Windows Adapter Selection
+- **Problem:** Npcap on Windows devices lists multiple virtual, Bluetooth, and inactive network adapters, causing application crashes on startup when opening invalid capture strings.
+- **Solution:** Normalized interface selection, checking for active loopback or WLAN configurations and validating capture paths via `\Device\NPF_{...}` before launching listeners.
+
+### 3. Circular Imports on Startup
+- **Problem:** Dynamic registry configurations and service instantiation caused circular import dependencies during FastAPI initialization.
+- **Solution:** Defer engine registry imports by referencing the registry as a lazy property inside the data service layer (`FlowService`).
+
+### 4. Concurrent Processing Crashes
+- **Problem:** High-volume traffic ingestion caused concurrent write/read race conditions on shared stores, yielding `RuntimeError: dictionary changed size during iteration`.
+- **Solution:** Wrapped all shared memory lookups, sliding-window storage, and suppression pipelines in re-entrant locks (`RLock`) to ensure thread-safe operations.
+
+### 5. Dashboard Readability
+- **Problem:** Raw network session streams cluttered the console, causing analyst fatigue and UI lag.
+- **Solution:** Introduced application-level evidence grouping and formatted data logs to group individual web sessions under high-level parent assets.
+
+---
+
+## Visual Development Timeline
+
+Below is a curated series of screenshots capturing the project's user interface evolution:
+
+- **Figure 1: Early Flask Login Page**  
+  *Initial Flask authentication layout featuring secure password validation and role redirection.*
+- **Figure 2: First Activity Dashboard**  
+  *Early HTML/JS design displaying raw IP traffic and basic table layouts.*
+- **Figure 3: FastAPI Migration & React Console**  
+  *Modern modular layout showing the transitioned React console and interactive grid dashboard.*
+- **Figure 4: Gateway Device Detection**  
+  *The updated device console showcasing metadata-only discovery of hotspot-connected BYOD assets.*
+- **Figure 5: Modern React Analyst Console**  
+  *The completed high-fidelity analyst workstation showing live status telemetry, active threat alerts, and correlated risk scores.*
+
+---
+
+## Conclusion
+
+NetVisor started as a simple Flask authentication prototype on 22 October 2025 and evolved into a modular, high-fidelity cyber-security workspace consisting of:
+- **FastAPI backend:** Serves as the ingestion and orchestration engine, handling telemetry, alerts, and operational status.
+- **React analyst console:** A modern dashboard offering unified workspace visualization across network nodes.
+- **Managed endpoint agent:** Provides deep device details and granular DPI browser inspection capabilities.
+- **Gateway sensor:** Collects metadata-only network flows from BYOD and hotspot-connected assets, maintaining user privacy.
+- **Modular detection engines:** Decouples device, threat, VPN, and AI operations into a registry-driven plug-and-play architecture.
+- **Risk correlation framework:** Correlates multiple independent indicators into host risk scores using exponential decay.
+
+This project provided deep, hands-on experience in networking, systems security, backend scalability, modern frontend architectures, and software engineering best practices.
 
 ---
 

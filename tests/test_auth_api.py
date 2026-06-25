@@ -43,11 +43,14 @@ def test_login_sets_http_only_session_cookie(monkeypatch):
         "organization_id": "org-1",
     }
 
+    from datetime import datetime, timezone, timedelta
     monkeypatch.setattr(auth_api, "get_db_connection", lambda: conn)
     monkeypatch.setattr(auth_api.auth_service, "authenticate", lambda *_args: user)
+    monkeypatch.setattr(auth_api.auth_service, "create_refresh_token", lambda *_args, **_kwargs: ("mock-refresh-token", datetime.now(timezone.utc) + timedelta(days=7)))
     monkeypatch.setattr(auth_api.metrics_service, "increment", lambda *args, **kwargs: None)
     monkeypatch.setattr(auth_api.audit_service, "log_auth_attempt", lambda *args, **kwargs: None)
     monkeypatch.setattr(settings, "SECRET_KEY", "unit-test-secret-key-123")
+    monkeypatch.setattr(settings, "REFRESH_COOKIE_NAME", "netvisor_refresh_token")
     monkeypatch.setattr(settings, "ACCESS_TOKEN_MINUTES", 30)
     monkeypatch.setattr(settings, "AUTH_COOKIE_NAME", "netvisor_session")
     monkeypatch.setattr(settings, "AUTH_COOKIE_SAMESITE", "lax")

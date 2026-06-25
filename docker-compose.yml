@@ -41,7 +41,8 @@ services:
       python infra/database/migrations/apply_20260417_runtime_schema_phase2.py &&
       python infra/database/migrations/apply_20260418_flow_ingest_phase3.py &&
       python infra/database/migrations/apply_20260419_flow_ingest_hardening_phase4.py &&
-      python infra/database/migrations/apply_20260520_flow_truth_phase4.py
+      python infra/database/migrations/apply_20260520_flow_truth_phase4.py &&
+      python infra/database/migrations/apply_20260607_mtls_certificates.py
       "
     depends_on:
       db:
@@ -82,8 +83,11 @@ services:
       NETVISOR_TRUST_PROXY_HEADERS: "true"
       NETVISOR_FORWARDED_ALLOW_IPS: "172.20.0.0/16"
       NETVISOR_FLOW_WORKER_MODE: "disabled"
+      NETVISOR_MTLS_MODE: ${NETVISOR_MTLS_MODE:-disabled}
+      NETVISOR_MTLS_CA_DIR: runtime/ca
     volumes:
       - ./runtime:/app/runtime
+      - ./runtime/ca:/app/runtime/ca
       - ./config:/app/config
     ports:
       - "127.0.0.1:8000:8000"

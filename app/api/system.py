@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from ..core.config import settings
@@ -15,6 +15,17 @@ admin_mutation_rate_limit = request_rate_limit(
     window_seconds=60,
     bucket="admin_mutation",
 )
+
+
+def _resolve_source_ip(request: Request) -> str | None:
+    forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip() or None
+    real_ip = str(request.headers.get("X-Real-IP") or "").strip()
+    if real_ip:
+        return real_ip
+    return request.client.host if request.client else None
+
 
 
 class ToggleRequest(BaseModel):
@@ -70,6 +81,9 @@ async def get_system_logs(current_user: dict = Depends(require_org_admin), limit
         ][:limit]
         return {
             "admin": system_service.list_logs(conn, organization_id=org_id, limit=limit),
+
+
+
             "vpn": vpn_alerts,
         }
     finally:
@@ -79,16 +93,19 @@ async def get_system_logs(current_user: dict = Depends(require_org_admin), limit
 @router.post("/settings/maintenance")
 async def set_maintenance_mode(
     payload: ToggleRequest,
+    request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
     try:
+        ip = _resolve_source_ip(request)
         return system_service.set_maintenance(
             conn,
             active=payload.active,
             username=current_user.get("username", "admin"),
             organization_id=current_user.get("organization_id"),
+            ip_address=ip,
         )
     finally:
         conn.close()
@@ -97,16 +114,19 @@ async def set_maintenance_mode(
 @router.post("/settings/monitoring")
 async def set_monitoring_state(
     payload: ToggleRequest,
+    request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
     try:
+        ip = _resolve_source_ip(request)
         return system_service.set_monitoring(
             conn,
             active=payload.active,
             username=current_user.get("username", "admin"),
             organization_id=current_user.get("organization_id"),
+            ip_address=ip,
         )
     finally:
         conn.close()
@@ -114,15 +134,18 @@ async def set_monitoring_state(
 
 @router.post("/actions/scan")
 async def trigger_scan(
+    request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
     try:
+        ip = _resolve_source_ip(request)
         return system_service.trigger_scan(
             conn,
             username=current_user.get("username", "admin"),
             organization_id=current_user.get("organization_id"),
+            ip_address=ip,
         )
     finally:
         conn.close()
@@ -130,15 +153,18 @@ async def trigger_scan(
 
 @router.post("/reset-data")
 async def reset_data(
+    request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
 ):
     conn = get_db_connection()
     try:
+        ip = _resolve_source_ip(request)
         return system_service.reset_operational_data(
             conn,
             username=current_user.get("username", "admin"),
             organization_id=current_user.get("organization_id"),
+            ip_address=ip,
         )
     finally:
         conn.close()

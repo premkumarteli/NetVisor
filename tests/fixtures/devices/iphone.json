@@ -1,0 +1,26 @@
+{
+  "name": "iphone",
+  "input": {
+    "ip": "192.168.1.13",
+    "mac": "28:6A:BA:11:22:33",
+    "hostname": "my-iphone"
+  },
+  "expected": {
+    "vendor": "Apple",
+    "device_type": "Mobile Phone",
+    "confidence": 0.25,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Apple",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "my-iphone",
+        "weight": 0.10
+      }
+    ]
+  }
+}

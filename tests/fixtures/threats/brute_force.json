@@ -1,0 +1,28 @@
+{
+  "name": "brute_force",
+  "flows": [
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:00"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:01"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:02"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:03"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:04"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:05"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:06"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:07"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:08"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:09"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:10"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:11"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:12"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:13"},
+    {"src_ip": "10.0.0.10", "dst_ip": "10.0.0.20", "dst_port": 22, "byte_count": 120, "duration": 0.2, "last_seen": "2026-03-18 10:05:14"}
+  ],
+  "expected_findings": [
+    {
+      "finding_type": "brute_force",
+      "severity": "CRITICAL",
+      "confidence": 0.90,
+      "evidence": ["Potential Brute Force Attack: 15 failed logins on port 22 from 10.0.0.10 to 10.0.0.20 in 60s"]
+    }
+  ]
+}

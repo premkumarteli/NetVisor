@@ -50,8 +50,12 @@ socket.io.on('reconnect_failed', () => {
   emitStatus('error');
 });
 
-export const ensureRealtimeConnection = () => {
-  if (!socket.connected) {
+export const ensureRealtimeConnection = (force = false) => {
+  if (force) {
+    socket.disconnect();
+    emitStatus('connecting');
+    socket.connect();
+  } else if (!socket.connected) {
     emitStatus('connecting');
     socket.connect();
   }

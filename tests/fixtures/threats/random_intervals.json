@@ -1,0 +1,41 @@
+{
+  "name": "random_intervals",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:30"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:01:14"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:01:26"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:02:27"
+    }
+  ],
+  "expected_findings": []
+}

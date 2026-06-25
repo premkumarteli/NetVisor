@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import StatusBadge from '../V2/StatusBadge';
 import { playHoverSound } from '../../utils/sound';
+import { useImmersion } from '../../immersion/engine/useImmersion';
 
 const adminGroups = [
   {
@@ -39,6 +40,7 @@ const adminGroups = [
 
 const Sidebar = ({ isCollapsed, isMobileOpen, onCloseMobile }) => {
   const { isAdmin } = useAuth();
+  const { activeTheme } = useImmersion();
   const groups = isAdmin ? adminGroups : [];
 
   return (
@@ -80,6 +82,11 @@ const Sidebar = ({ isCollapsed, isMobileOpen, onCloseMobile }) => {
                 {!isCollapsed ? (
                   <span className="nv-rail__link-copy">
                     <strong>{link.label}</strong>
+                    {activeTheme?.terminology?.[link.label.toLowerCase()] ? (
+                      <span className="nv-rail__link-immersion">
+                        {activeTheme.terminology[link.label.toLowerCase()]}
+                      </span>
+                    ) : null}
                     <span>{link.hint}</span>
                   </span>
                 ) : null}

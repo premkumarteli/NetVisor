@@ -1,0 +1,26 @@
+{
+  "name": "chromecast",
+  "input": {
+    "ip": "192.168.1.14",
+    "mac": "D8:3A:DD:44:55:66",
+    "hostname": "livingroom-chromecast"
+  },
+  "expected": {
+    "vendor": "Ubiquiti",
+    "device_type": "Chromecast / Smart TV",
+    "confidence": 0.25,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Ubiquiti",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "livingroom-chromecast",
+        "weight": 0.10
+      }
+    ]
+  }
+}

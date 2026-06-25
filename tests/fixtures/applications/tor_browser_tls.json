@@ -1,0 +1,9 @@
+{
+  "ja4": "t13d1516h2_9a12_108a",
+  "domain": "torproject.org",
+  "sni": "torproject.org",
+  "dst_ip": "109.105.109.105",
+  "src_ip": "10.0.0.5",
+  "protocol": "TCP",
+  "dst_port": 443
+}

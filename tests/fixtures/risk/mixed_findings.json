@@ -1,0 +1,126 @@
+{
+  "name": "mixed_findings",
+  "flows": [
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "185.220.101.1",
+      "dst_port": 1194,
+      "protocol": "UDP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 20,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 21,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:01"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 22,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:02"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 23,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:03"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 24,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:04"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 25,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:05"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 26,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:06"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 27,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:07"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 28,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:08"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "192.168.1.1",
+      "dst_port": 29,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:09"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:00"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:00:30"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:01:00"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:01:30"
+    },
+    {
+      "src_ip": "10.0.0.100",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 80,
+      "protocol": "TCP",
+      "last_seen": "2026-06-13 12:02:00"
+    }
+  ],
+  "expected_correlations": [
+    "credential_attack"
+  ],
+  "unexpected_correlations": [
+    "active_c2",
+    "suspicious_exfiltration",
+    "credential_stuffing"
+  ]
+}

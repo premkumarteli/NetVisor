@@ -1,0 +1,32 @@
+{
+  "name": "apple_tv_mdns",
+  "input": {
+    "ip": "192.168.1.53",
+    "mac": "7C:D1:C3:11:22:33",
+    "hostname": "Apple-TV-Bedroom",
+    "mdns_services": ["_airplay._tcp.local", "_raop._tcp.local"]
+  },
+  "expected": {
+    "vendor": "Apple",
+    "device_type": "Smart TV",
+    "confidence": 0.45,
+    "confidence_level": "low",
+    "evidence_sources": [
+      {
+        "source": "oui",
+        "value": "Apple",
+        "weight": 0.15
+      },
+      {
+        "source": "hostname",
+        "value": "Apple-TV-Bedroom",
+        "weight": 0.10
+      },
+      {
+        "source": "mdns",
+        "value": "_airplay._tcp.local, _raop._tcp.local",
+        "weight": 0.20
+      }
+    ]
+  }
+}

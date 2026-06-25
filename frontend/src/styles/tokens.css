@@ -151,19 +151,6 @@
   --nv-neutral: #cc8800;
 }
 
-/* --- AI Core Interface (light theme) --- */
-:root[data-theme="ai-core"] {
-  --nv-bg: #f0f4f8;
-  --nv-bg-elevated: rgba(252, 254, 255, 0.92);
-  --nv-surface-soft: rgba(246, 249, 252, 0.96);
-  --nv-surface-strong: rgba(255, 255, 255, 0.98);
-  --nv-border-strong: rgba(0, 102, 255, 0.16);
-  --nv-text-soft: #3b5168;
-  --nv-neutral: #606f7b;
-  --nv-shadow-lg: 0 30px 72px rgba(15, 23, 42, 0.12);
-  --nv-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.1);
-  --nv-shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.08);
-}
 
 /* --- Legacy Light Theme --- */
 [data-theme="light"] {
@@ -187,3 +174,630 @@
   --nv-shadow-md: 0 16px 36px rgba(15, 23, 42, 0.1);
   --nv-shadow-sm: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
+
+
+/* --- Whiteboard Sketch (playful hand-drawn) --- */
+:root[data-theme="whiteboard-sketch"] {
+  --nv-bg: #ffffff;
+  --nv-bg-elevated: #ffffff;
+  --nv-surface: #ffffff;
+  --nv-surface-soft: #ffffff;
+  --nv-surface-strong: #ffffff;
+  --nv-border: #111111;
+  --nv-border-strong: #111111;
+  --nv-text: #111111;
+  --nv-text-soft: #222222;
+  --nv-text-muted: #555555;
+  --nv-accent: #111111;
+  --nv-accent-strong: #111111;
+  --nv-accent-soft: rgba(0, 0, 0, 0.02);
+  --nv-neutral: #555555;
+  --nv-shadow-lg: none;
+  --nv-shadow-md: none;
+  --nv-shadow-sm: none;
+}
+
+
+/* --- Whiteboard Sketch Custom Styling --- */
+:root[data-theme="whiteboard-sketch"] .stat-card,
+:root[data-theme="whiteboard-sketch"] .chart-card,
+:root[data-theme="whiteboard-sketch"] .cinematic-panel,
+:root[data-theme="whiteboard-sketch"] .cinematic-metric,
+:root[data-theme="whiteboard-sketch"] .cinematic-hero,
+:root[data-theme="whiteboard-sketch"] .activity-log,
+:root[data-theme="whiteboard-sketch"] .nv-section,
+:root[data-theme="whiteboard-sketch"] .nv-card {
+  background: #ffffff !important;
+  border: 2.5px solid #111111 !important;
+  /* Wobbly hand-drawn border-radius */
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px !important;
+  /* Flat marker drop shadow */
+  box-shadow: 3px 4px 0px rgba(0, 0, 0, 0.85) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+/* Let's make borders solid charcoal for other borders too */
+:root[data-theme="whiteboard-sketch"] hr,
+:root[data-theme="whiteboard-sketch"] .border-b,
+:root[data-theme="whiteboard-sketch"] .border-t,
+:root[data-theme="whiteboard-sketch"] .border-r,
+:root[data-theme="whiteboard-sketch"] .border-l,
+:root[data-theme="whiteboard-sketch"] .border {
+  border-color: #111111 !important;
+}
+
+/* Wobbly Buttons and Inputs */
+:root[data-theme="whiteboard-sketch"] button,
+:root[data-theme="whiteboard-sketch"] .action-btn,
+:root[data-theme="whiteboard-sketch"] .filter-pill,
+:root[data-theme="whiteboard-sketch"] select,
+:root[data-theme="whiteboard-sketch"] input {
+  border: 2px solid #111111 !important;
+  border-radius: 120px 15px 100px 15px/15px 100px 15px 120px !important;
+  box-shadow: 2px 3px 0px rgba(0, 0, 0, 0.9) !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+  font-family: 'Architects Daughter', cursive !important;
+}
+
+:root[data-theme="whiteboard-sketch"] button:hover,
+:root[data-theme="whiteboard-sketch"] .action-btn:hover,
+:root[data-theme="whiteboard-sketch"] .filter-pill:hover {
+  transform: translate(-1px, -1px) scale(1.02);
+  box-shadow: 3px 4px 0px rgba(0, 0, 0, 0.9) !important;
+}
+
+:root[data-theme="whiteboard-sketch"] button:active,
+:root[data-theme="whiteboard-sketch"] .action-btn:active,
+:root[data-theme="whiteboard-sketch"] .filter-pill:active {
+  transform: translate(1px, 1px) scale(0.98);
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.9) !important;
+}
+
+/* Sidebar and Header solid black lines */
+:root[data-theme="whiteboard-sketch"] .sidebar {
+  background: #ffffff !important;
+  border-right: 2.5px solid #111111 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .header {
+  background: #ffffff !important;
+  border-bottom: 2.5px solid #111111 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Custom styling for active settings / menu cards in whiteboard theme */
+:root[data-theme="whiteboard-sketch"] .nv-theme-card.is-active,
+:root[data-theme="whiteboard-sketch"] .workspace-theme-card.is-active {
+  border: 2.5px solid #111111 !important;
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-menu {
+  background: #ffffff !important;
+  border: 2px solid #111111 !important;
+  box-shadow: 3px 4px 0px rgba(0, 0, 0, 0.9) !important;
+  border-radius: 12px !important;
+}
+
+/* Alternating slight card rotation */
+:root[data-theme="whiteboard-sketch"] .stat-card:nth-child(even),
+:root[data-theme="whiteboard-sketch"] .chart-card:nth-child(even),
+:root[data-theme="whiteboard-sketch"] .nv-card:nth-child(even) {
+  transform: rotate(0.4deg);
+}
+
+:root[data-theme="whiteboard-sketch"] .stat-card:nth-child(odd),
+:root[data-theme="whiteboard-sketch"] .chart-card:nth-child(odd),
+:root[data-theme="whiteboard-sketch"] .nv-card:nth-child(odd) {
+  transform: rotate(-0.4deg);
+}
+
+:root[data-theme="whiteboard-sketch"] .stat-card:hover,
+:root[data-theme="whiteboard-sketch"] .chart-card:hover,
+:root[data-theme="whiteboard-sketch"] .nv-card:hover {
+  transform: scale(1.01) rotate(0deg) !important;
+  box-shadow: 5px 6px 0px rgba(0, 0, 0, 0.95) !important;
+}
+
+/* Override monospace and code snippets in whiteboard sketch */
+:root[data-theme="whiteboard-sketch"] code,
+:root[data-theme="whiteboard-sketch"] .mono {
+  font-family: 'Architects Daughter', cursive !important;
+}
+
+/* Ambient whiteboard background grid paper */
+:root[data-theme="whiteboard-sketch"] .ambient-background {
+  background-color: #ffffff !important;
+  background-image:
+    linear-gradient(#ececec 1px, transparent 1px),
+    linear-gradient(90deg, #ececec 1px, transparent 1px) !important;
+  background-size: 30px 30px !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .ambient-background__glow {
+  display: none !important;
+}
+
+/* Outlined parenthesized status badges */
+:root[data-theme="whiteboard-sketch"] .nv-badge {
+  border-radius: 20px 8px 18px 8px/8px 18px 8px 20px !important;
+  border: 1.5px solid #111111 !important;
+  background: transparent !important;
+  color: #111111 !important;
+  padding: 0.16rem 0.5rem !important;
+  animation: none !important;
+  position: relative !important;
+  font-family: 'Architects Daughter', cursive !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge::before {
+  content: "( " !important;
+  font-weight: 800 !important;
+  margin-right: 2px !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge::after {
+  content: " )" !important;
+  font-weight: 800 !important;
+  margin-left: 2px !important;
+}
+
+/* Preserve threat colors with legible marker tones on white background */
+:root[data-theme="whiteboard-sketch"] .nv-badge--danger {
+  border-color: #b91c1c !important;
+  color: #b91c1c !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge--warning {
+  border-color: #b45309 !important;
+  color: #b45309 !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge--success {
+  border-color: #15803d !important;
+  color: #15803d !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge--neutral {
+  border-color: #555555 !important;
+  color: #555555 !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-badge--accent {
+  border-color: #111111 !important;
+  color: #111111 !important;
+}
+
+/* Hero elements restyling */
+:root[data-theme="whiteboard-sketch"] .cinematic-hero__orb,
+:root[data-theme="whiteboard-sketch"] .cinematic-hero__silhouette,
+:root[data-theme="whiteboard-sketch"] .cinematic-hero__mode-meter {
+  display: none !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .cinematic-hero__ring {
+  border-color: #111111 !important;
+  box-shadow: none !important;
+  opacity: 0.15 !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .cinematic-hero__skyline {
+  opacity: 0.05 !important;
+  filter: grayscale(1) !important;
+}
+
+/* --- Cyberpunk Tokyo Custom Styling --- */
+:root[data-theme="cyberpunk-tokyo"] .stat-card,
+:root[data-theme="cyberpunk-tokyo"] .chart-card,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-hero,
+:root[data-theme="cyberpunk-tokyo"] .activity-log,
+:root[data-theme="cyberpunk-tokyo"] .nv-section,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric,
+:root[data-theme="cyberpunk-tokyo"] .nv-card {
+  clip-path: none !important;
+  border-radius: 4px !important;
+  border: 1px solid rgba(0, 240, 255, 0.2) !important;
+  border-left: 4px solid var(--color-accent) !important; /* Cyberpunk left-accent line */
+  background: linear-gradient(135deg, rgba(10, 5, 20, 0.9) 0%, rgba(18, 5, 30, 0.94) 100%) !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.06) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* Hover effects for cyberpunk cards */
+:root[data-theme="cyberpunk-tokyo"] .stat-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .chart-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .nv-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.25) !important;
+  border-color: rgba(0, 240, 255, 0.4) !important;
+}
+
+/* Alternate sidebar and header with cyan highlights */
+:root[data-theme="cyberpunk-tokyo"] .sidebar {
+  background: rgba(10, 5, 20, 0.95) !important;
+  border-right: 2px solid var(--color-accent) !important;
+  box-shadow: 2px 0 15px rgba(0, 240, 255, 0.1) !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .header {
+  background: rgba(10, 5, 20, 0.92) !important;
+  border-bottom: 2px solid var(--color-accent) !important;
+  box-shadow: 0 2px 15px rgba(0, 240, 255, 0.1) !important;
+}
+
+/* Buttons and Inputs */
+:root[data-theme="cyberpunk-tokyo"] button,
+:root[data-theme="cyberpunk-tokyo"] .action-btn,
+:root[data-theme="cyberpunk-tokyo"] .filter-pill,
+:root[data-theme="cyberpunk-tokyo"] select,
+:root[data-theme="cyberpunk-tokyo"] input {
+  clip-path: none !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--color-accent) !important;
+  background: rgba(13, 2, 21, 0.6) !important;
+  color: #f0f0f0 !important;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.15) !important;
+  transition: all 0.2s ease !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] button:hover,
+:root[data-theme="cyberpunk-tokyo"] .action-btn:hover,
+:root[data-theme="cyberpunk-tokyo"] .filter-pill:hover {
+  background: var(--color-accent) !important;
+  color: #05010a !important; /* Crisp dark text on cyan */
+  font-weight: 700 !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+:root[data-theme="cyberpunk-tokyo"] button:active,
+:root[data-theme="cyberpunk-tokyo"] .action-btn:active {
+  transform: translateY(1px);
+}
+
+/* Outlined Angular Brackets Status Badges */
+:root[data-theme="cyberpunk-tokyo"] .nv-badge {
+  border-radius: 4px !important;
+  clip-path: none !important;
+  border: 1.5px solid var(--color-accent) !important;
+  background: rgba(0, 240, 255, 0.05) !important;
+  color: var(--color-accent) !important;
+  padding: 0.16rem 0.6rem !important;
+  animation: holo-flicker 6s infinite alternate !important;
+  position: relative !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge::before {
+  content: "< " !important;
+  font-weight: 800 !important;
+  color: inherit !important;
+  margin-right: 2px !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge::after {
+  content: " >" !important;
+  font-weight: 800 !important;
+  color: inherit !important;
+  margin-left: 2px !important;
+}
+
+/* Custom threat severities for badges (Pink is secondary/warning) */
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--danger {
+  border-color: var(--color-secondary) !important; /* Pink danger */
+  background: rgba(255, 0, 127, 0.08) !important;
+  color: var(--color-secondary) !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--warning {
+  border-color: var(--color-warning) !important;
+  background: rgba(252, 232, 3, 0.08) !important;
+  color: var(--color-warning) !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--success {
+  border-color: var(--color-success) !important;
+  background: rgba(57, 255, 20, 0.08) !important;
+  color: var(--color-success) !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--neutral {
+  border-color: var(--text-secondary) !important;
+  background: rgba(184, 148, 180, 0.08) !important;
+  color: var(--text-secondary) !important;
+}
+
+/* Holographic Flicker/Glitch animations */
+@keyframes holo-flicker {
+  0%, 19.9%, 22%, 62.9%, 64%, 64.9%, 70%, 100% {
+    opacity: 0.99;
+    filter: hue-rotate(0deg);
+  }
+  20%, 21.9%, 63%, 63.9%, 69.9% {
+    opacity: 0.88;
+    filter: hue-rotate(15deg);
+  }
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--danger,
+:root[data-theme="cyberpunk-tokyo"] .nv-badge--warning,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-hero__title {
+  animation: holo-flicker 8s infinite alternate !important;
+}
+
+/* Glowing text metrics */
+:root[data-theme="cyberpunk-tokyo"] .nv-metric__value {
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.5) !important;
+  color: #ffffff !important;
+}
+
+/* Custom glowing scrollbar */
+:root[data-theme="cyberpunk-tokyo"] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.3) !important;
+  border: 1px solid var(--color-accent) !important;
+  border-radius: 99px !important;
+}
+:root[data-theme="cyberpunk-tokyo"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent) !important;
+}
+
+/* Custom timeline rows in Cyberpunk Tokyo and Whiteboard Sketch */
+:root[data-theme="cyberpunk-tokyo"] .nv-timeline-row {
+  border: 1px solid rgba(0, 240, 255, 0.2) !important;
+  border-left: 4px solid var(--color-accent) !important;
+  background: rgba(10, 5, 20, 0.85) !important;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.1) !important;
+  animation: holo-flicker 12s infinite alternate !important;
+  margin-bottom: 8px !important;
+  clip-path: none !important;
+  border-radius: 4px !important;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-timeline-row {
+  border: 2px solid #111111 !important;
+  background: #ffffff !important;
+  box-shadow: 2px 3px 0px rgba(0, 0, 0, 0.9) !important;
+  border-radius: 120px 15px 100px 15px/15px 100px 15px 120px !important;
+  margin-bottom: 8px !important;
+}
+
+/* ==========================================================================
+   Cyberpunk Tokyo & Whiteboard Sketch Interactive & Terminology Overrides
+   ========================================================================== */
+
+/* --- Terminology Subtitle in Sidebar --- */
+.nv-rail__link-immersion {
+  font-size: 0.65rem;
+  color: var(--nv-accent);
+  opacity: 0.8;
+  display: block;
+  margin-top: 2px;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-rail__link-immersion {
+  font-family: var(--nv-font-display);
+  font-size: 0.62rem;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 1px;
+  display: block;
+  opacity: 0.85;
+}
+
+:root[data-theme="whiteboard-sketch"] .nv-rail__link-immersion {
+  font-family: 'Architects Daughter', cursive;
+  font-size: 0.65rem;
+  color: #ff0055;
+  text-transform: uppercase;
+  margin-top: 1px;
+  display: block;
+}
+
+/* --- Active Sidebar Link PULSE --- */
+:root[data-theme="cyberpunk-tokyo"] .nv-rail__link.is-active {
+  border-radius: 4px !important;
+  border: 1px solid var(--color-accent) !important;
+  border-left: 5px solid var(--color-accent) !important;
+  background: rgba(0, 240, 255, 0.08) !important;
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.15) !important;
+  animation: active-link-pulse 2s infinite ease-in-out !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-rail__link.is-active::after {
+  display: none !important;
+}
+
+@keyframes active-link-pulse {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.12);
+    background: rgba(0, 240, 255, 0.08) !important;
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(0, 240, 255, 0.3);
+    background: rgba(0, 240, 255, 0.15) !important;
+  }
+}
+
+/* --- Card Hover Scan Sweep --- */
+:root[data-theme="cyberpunk-tokyo"] .stat-card,
+:root[data-theme="cyberpunk-tokyo"] .chart-card,
+:root[data-theme="cyberpunk-tokyo"] .nv-card,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .stat-card::after,
+:root[data-theme="cyberpunk-tokyo"] .chart-card::after,
+:root[data-theme="cyberpunk-tokyo"] .nv-card::after,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric::after,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric::after,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 10;
+  top: -5px;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .stat-card:hover::after,
+:root[data-theme="cyberpunk-tokyo"] .chart-card:hover::after,
+:root[data-theme="cyberpunk-tokyo"] .nv-card:hover::after,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric:hover::after,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric:hover::after,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel:hover::after {
+  animation: cyber-scan-sweep 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes cyber-scan-sweep {
+  0% {
+    top: -5px;
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.8;
+  }
+  100% {
+    top: 105%;
+    opacity: 0;
+  }
+}
+
+/* --- Phase 2: Cursors, Hover Elevation, Threat Pulses, Transitions --- */
+
+/* Cursors */
+:root[data-theme="cyberpunk-tokyo"] .stat-card,
+:root[data-theme="cyberpunk-tokyo"] .chart-card,
+:root[data-theme="cyberpunk-tokyo"] .nv-card,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel,
+:root[data-theme="cyberpunk-tokyo"] .nv-timeline-row,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-threat {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><line x1='8' y1='0' x2='8' y2='16' stroke='%2300f0ff' stroke-width='1.5'/><line x1='0' y1='8' x2='16' y2='8' stroke='%2300f0ff' stroke-width='1.5'/><circle cx='8' cy='8' r='2' fill='none' stroke='%23ff007f' stroke-width='1'/></svg>") 8 8, crosshair !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] button,
+:root[data-theme="cyberpunk-tokyo"] a,
+:root[data-theme="cyberpunk-tokyo"] input,
+:root[data-theme="cyberpunk-tokyo"] select,
+:root[data-theme="cyberpunk-tokyo"] .nv-theme-trigger,
+:root[data-theme="cyberpunk-tokyo"] .nv-theme-card {
+  cursor: pointer !important;
+}
+
+/* Card Hover Elevation */
+:root[data-theme="cyberpunk-tokyo"] .stat-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .chart-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .nv-card:hover,
+:root[data-theme="cyberpunk-tokyo"] .nv-metric:hover,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-metric:hover,
+:root[data-theme="cyberpunk-tokyo"] .cinematic-panel:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.25) !important;
+  border-color: rgba(0, 240, 255, 0.4) !important;
+}
+
+/* Threat Pulses */
+@keyframes threat-icon-pulse-red {
+  0%, 100% {
+    transform: scale(1);
+    color: var(--color-secondary, #ff007f);
+    filter: drop-shadow(0 0 4px rgba(255, 0, 127, 0.4));
+  }
+  50% {
+    transform: scale(1.18);
+    color: #ff3399;
+    filter: drop-shadow(0 0 10px rgba(255, 0, 127, 0.9));
+  }
+}
+
+:root[data-theme="cyberpunk-tokyo"] .is-threat-pulsing .cinematic-metric__icon i,
+:root[data-theme="cyberpunk-tokyo"] .is-threat-pulsing .nv-metric__icon i {
+  animation: threat-icon-pulse-red 1.5s infinite ease-in-out !important;
+  color: var(--color-secondary, #ff007f) !important;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .is-threat-pulsing {
+  border-color: var(--color-secondary) !important;
+  box-shadow: 0 0 15px rgba(255, 0, 127, 0.15) !important;
+}
+
+/* Route Transitions (Fast Scan swipe) */
+:root[data-theme="cyberpunk-tokyo"] .nv-page {
+  position: relative;
+}
+
+:root[data-theme="cyberpunk-tokyo"] .nv-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.2) 50%, transparent);
+  height: 200%;
+  width: 100%;
+  z-index: 9999;
+  pointer-events: none;
+  animation: page-scan-swipe 0.6s cubic-bezier(0.15, 0.85, 0.45, 1) forwards;
+}
+
+@keyframes page-scan-swipe {
+  0% {
+    transform: translateY(-50%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(50%);
+    opacity: 0;
+  }
+}
+
+/* --- Phase 3: Performance Fidelity Toggles --- */
+
+/* Animations Toggle */
+:root[data-effects-animations="false"] *,
+:root[data-effects-animations="false"] *::before,
+:root[data-effects-animations="false"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Enhanced Effects Toggle */
+:root[data-effects-enhanced="false"] .stat-card::after,
+:root[data-effects-enhanced="false"] .chart-card::after,
+:root[data-effects-enhanced="false"] .nv-card::after,
+:root[data-effects-enhanced="false"] .nv-metric::after,
+:root[data-effects-enhanced="false"] .cinematic-metric::after,
+:root[data-effects-enhanced="false"] .cinematic-panel::after {
+  display: none !important;
+  animation: none !important;
+}
+
+:root[data-effects-enhanced="false"] .nv-metric__value,
+:root[data-effects-enhanced="false"] .cinematic-metric__value,
+:root[data-effects-enhanced="false"] .nv-badge,
+:root[data-effects-enhanced="false"] .nv-rail__link {
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+

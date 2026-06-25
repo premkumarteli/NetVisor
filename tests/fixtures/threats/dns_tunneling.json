@@ -1,0 +1,435 @@
+{
+  "name": "dns_tunneling",
+  "flows": [
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "abcdef1234567890xyz.c2.netvisor.test",
+      "last_seen": "2026-03-18 10:10:00"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub1.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:01"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub2.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:02"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub3.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:03"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub4.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:04"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub5.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:05"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub6.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:06"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub7.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:07"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub8.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:08"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub9.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:09"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub10.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:10"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub11.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:11"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub12.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:12"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub13.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:13"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub14.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:14"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub15.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:15"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub16.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:16"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub17.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:17"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub18.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:18"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub19.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:19"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub20.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:20"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub21.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:21"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub22.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:22"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub23.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:23"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub24.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:24"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub25.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:25"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub26.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:26"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub27.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:27"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub28.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:28"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub29.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:29"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub30.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:30"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub31.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:31"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub32.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:32"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub33.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:33"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub34.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:34"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub35.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:35"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub36.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:36"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub37.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:37"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub38.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:38"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub39.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:39"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub40.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:40"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub41.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:41"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub42.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:42"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub43.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:43"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub44.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:44"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub45.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:45"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub46.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:46"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub47.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:47"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub48.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:48"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub49.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:49"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub50.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:50"
+    },
+    {
+      "src_ip": "10.0.0.10",
+      "dst_ip": "8.8.8.8",
+      "dst_port": 53,
+      "protocol": "UDP",
+      "domain": "sub51.parentdomain.com",
+      "last_seen": "2026-03-18 10:10:51"
+    }
+  ],
+  "expected_findings": [
+    {
+      "finding_type": "dns_tunneling",
+      "severity": "CRITICAL",
+      "confidence": 0.90,
+      "evidence": ["DNS Tunneling Detected: High entropy domain abcdef1234567890xyz.c2.netvisor.test"]
+    },
+    {
+      "finding_type": "dns_tunneling",
+      "severity": "CRITICAL",
+      "confidence": 0.90,
+      "evidence": ["DNS Tunneling Detected: 51 unique subdomains queried for parentdomain.com"]
+    }
+  ]
+}

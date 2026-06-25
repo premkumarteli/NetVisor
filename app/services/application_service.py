@@ -3,10 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 import logging
+import threading
 
 from ..core.config import settings
 from ..db.session import require_runtime_schema
 from ..utils.asn_lookup import asn_lookup_service
+from ..engines.application.ja4_signatures import lookup_ja4_signature
 from ..utils.domain_intelligence import get_service_info
 from ..utils.domain_utils import get_base_domain, normalize_host
 from ..utils.network import is_rfc1918_device_ip, normalize_ip
@@ -103,6 +105,7 @@ class ApplicationService:
     def __init__(self) -> None:
         self._schema_ready = False
         self._unknown_debug_cache: set[tuple[str, str | None]] = set()
+        self._lock = threading.RLock()
 
     def _row_value(self, row: Any, key: str) -> Any:
         if isinstance(row, dict):
@@ -180,8 +183,16 @@ class ApplicationService:
             return TRANSPORT_PROTOCOL_LABELS[service_name]
 
         protocol = str(self._row_value(row, "protocol") or "").strip().upper()
-        src_port = int(self._row_value(row, "src_port") or 0)
-        dst_port = int(self._row_value(row, "dst_port") or 0)
+        try:
+            src_port = int(self._row_value(row, "src_port") or 0)
+        except (ValueError, TypeError):
+            src_port = 0
+            
+        try:
+            dst_port = int(self._row_value(row, "dst_port") or 0)
+        except (ValueError, TypeError):
+            dst_port = 0
+            
         port = dst_port or src_port
 
         if protocol == "UDP" and port == 443:
@@ -264,46 +275,76 @@ class ApplicationService:
     def classify_by_asn(self, ip_value: str | None) -> Optional[str]:
         return asn_lookup_service.classify_ip(ip_value)
 
+    def classify_by_tls_fingerprint(self, fingerprint: str | None) -> Optional[dict]:
+        return lookup_ja4_signature(fingerprint)
+
     def classify_app(self, row: Any) -> str:
         """
         Classification priority:
-        1. SNI
-        2. DNS/host domain
-        3. ASN fallback
-        4. Transport/protocol hints
-        5. Unknown/Other separation
+        1. Malicious JA4
+        2. Domain/SNI
+        3. Standard/Suspicious JA4
+        4. ASN Fallback
+        5. Transport/protocol hints
+        6. Unknown/Other separation
         """
+        # Retrieve JA4/TLS client fingerprint if present
+        fingerprint = (
+            self._row_value(row, "ja4")
+            or self._row_value(row, "ja4_fingerprint")
+            or self._row_value(row, "tls_fingerprint")
+        )
+        fp_info = self.classify_by_tls_fingerprint(fingerprint)
+        
+        # 1. Malicious JA4
+        if fp_info and fp_info.get("is_malicious"):
+            return fp_info["application_name"]
+            
+        # 2. Domain / SNI
         host = self._preferred_host(row)
         if host:
             domain_app = self.classify_by_domain(host)
             if domain_app and domain_app != "Other":
                 return domain_app
-
+                
+        # 3. Standard / Suspicious JA4
+        if fp_info:
+            return fp_info["application_name"]
+            
+        # 4. ASN Fallback
         transport_app = self._transport_label(row)
         asn_app = self.classify_by_asn(self._preferred_external_ip(row))
-
+        
         if host:
             if asn_app:
                 return asn_app
             if transport_app:
                 return transport_app
             return "Other"
-
+            
         if transport_app in CONTROL_TRANSPORT_LABELS:
             return transport_app
-
+            
         if asn_app:
             return asn_app
-
+            
         if transport_app:
             return transport_app
-
+            
         debug_key = (
             str(self._row_value(row, "dst_ip") or self._row_value(row, "src_ip") or ""),
             self._row_value(row, "network_scope"),
         )
-        if debug_key not in self._unknown_debug_cache and len(self._unknown_debug_cache) < 512:
-            self._unknown_debug_cache.add(debug_key)
+        with self._lock:
+            in_cache = debug_key in self._unknown_debug_cache
+            cache_len = len(self._unknown_debug_cache)
+            if not in_cache and cache_len < 512:
+                self._unknown_debug_cache.add(debug_key)
+                should_log = True
+            else:
+                should_log = False
+
+        if should_log:
             logger.debug(
                 "Unknown traffic: src=%s dst=%s domain=%s sni=%s",
                 self._row_value(row, "src_ip"),
@@ -317,8 +358,15 @@ class ApplicationService:
         return is_rfc1918_device_ip(value)
 
     def _is_noise_flow(self, row: dict) -> bool:
-        src_port = int(row.get("src_port") or 0)
-        dst_port = int(row.get("dst_port") or 0)
+        try:
+            src_port = int(row.get("src_port") or 0)
+        except (ValueError, TypeError):
+            src_port = 0
+            
+        try:
+            dst_port = int(row.get("dst_port") or 0)
+        except (ValueError, TypeError):
+            dst_port = 0
         if src_port in CONTROL_PORTS or dst_port in CONTROL_PORTS:
             return True
 
@@ -857,3 +905,67 @@ class ApplicationService:
 
 
 application_service = ApplicationService()
+
+
+def application_compatibility_wrapper(row: Any) -> "EngineResult":
+    from shared.engine import EngineResult, Finding, Severity
+    app_label = application_service.classify_app(row)
+    
+    findings = []
+    if app_label and app_label not in {"Unknown", "Other"}:
+        host = application_service._preferred_host(row)
+        
+        # JA4 fingerprint lookup
+        fingerprint = (
+            application_service._row_value(row, "ja4")
+            or application_service._row_value(row, "ja4_fingerprint")
+            or application_service._row_value(row, "tls_fingerprint")
+        )
+        fp_info = application_service.classify_by_tls_fingerprint(fingerprint)
+        
+        # ASN details lookup
+        external_ip = application_service._preferred_external_ip(row)
+        asn_details = asn_lookup_service.lookup_asn_details(external_ip)
+        asn_val = asn_details.get("asn") if asn_details else None
+        asn_org_val = asn_details.get("organization") if asn_details else None
+        
+        # Default properties
+        finding_type = "application_detected"
+        severity = Severity.INFO
+        mitre_attack_id = None
+        
+        if fp_info:
+            if fp_info.get("is_malicious"):
+                finding_type = "malicious_application_detected"
+                severity = Severity.CRITICAL
+                mitre_attack_id = fp_info.get("mitre_id")
+                evidence = [f"Malicious application detected: {app_label} via TLS/JA4 fingerprinting"]
+            elif fp_info.get("is_suspicious"):
+                finding_type = "suspicious_application_detected"
+                severity = Severity.HIGH
+                mitre_attack_id = fp_info.get("mitre_id")
+                evidence = [f"Suspicious application detected: {app_label} via TLS/JA4 fingerprinting"]
+            else:
+                evidence = [f"Classified application: {app_label} via TLS/JA4 fingerprinting"]
+        else:
+            evidence = [f"Classified application: {app_label}"]
+            
+        findings.append(
+            Finding(
+                engine="application",
+                finding_type=finding_type,
+                severity=severity,
+                confidence=1.0 if host or fp_info else 0.8,
+                evidence=evidence,
+                target_ip=str(external_ip or "0.0.0.0"),
+                mitre_attack_id=mitre_attack_id,
+                details={
+                    "application_name": app_label,
+                    "asn": asn_val,
+                    "asn_org": asn_org_val,
+                    "ja4_fingerprint": fingerprint
+                }
+            )
+        )
+    return EngineResult(findings=findings, metadata={"application": app_label})
+

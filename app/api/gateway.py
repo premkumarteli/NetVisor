@@ -18,6 +18,7 @@ from ..services.flow_service import FlowQueueBackpressureError, flow_service
 from ..services.gateway_auth_service import GatewayAuthenticationError, gateway_auth_service
 from ..services.gateway_service import gateway_service
 from ..services.metrics_service import metrics_service
+from ..services.audit_service import audit_service
 from shared.security import REENROLL_REQUEST_HEADER
 
 logger = logging.getLogger("netvisor.api.gateway")
@@ -71,6 +72,21 @@ def _collect_response(
         }
     response.update(payload)
     return response
+
+
+def _resolve_source_ip(request: Request) -> str | None:
+    if request is None:
+        return None
+    headers = getattr(request, "headers", None)
+    if headers:
+        forwarded_for = str(headers.get("X-Forwarded-For") or "").strip()
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip() or None
+        real_ip = str(headers.get("X-Real-IP") or "").strip()
+        if real_ip:
+            return real_ip
+    client = getattr(request, "client", None)
+    return client.host if client else None
 
 
 async def validate_gateway_bootstrap_key(request: Request):
@@ -155,6 +171,7 @@ def _lookup_gateway_organization_id(cursor, gateway_id: str) -> str | None:
 @router.post("/register", response_model=GenericResponse)
 async def register_gateway(
     reg: dict,
+    request: Request = None,
     _rate_limited: bool = Depends(gateway_bootstrap_rate_limit),
     authorized: bool = Depends(validate_gateway_bootstrap_key),
 ):
@@ -192,6 +209,16 @@ async def register_gateway(
             metrics_service.increment("gateway_registration_reregistrations_total")
 
         conn.commit()
+
+        source_ip = _resolve_source_ip(request)
+        audit_service.log_agent_registration(
+            organization_id=str(org_id),
+            username="system",
+            agent_id=gateway_id,
+            action="gateway_enrollment_completed" if credential else "gateway_reregistration",
+            details="first_time" if credential and not force_reenroll else "reenrollment" if credential and force_reenroll else "already_registered",
+            ip_address=source_ip,
+        )
 
         response = _collect_response(
             auth_mode="bootstrap",
@@ -396,6 +423,7 @@ async def ingest_gateway_batch(
 @router.post("/rotate-credential", response_model=GenericResponse)
 async def rotate_gateway_credential(
     authorization: dict = Body(...),
+    request: Request = None,
     _rate_limited: bool = Depends(gateway_control_rate_limit),
     auth_context: dict = Depends(validate_gateway_request),
 ):
@@ -413,6 +441,15 @@ async def rotate_gateway_credential(
 
         credential = gateway_auth_service.rotate_credential(conn, gateway_id=gateway_id)
         conn.commit()
+
+        source_ip = _resolve_source_ip(request)
+        audit_service.log_credential_rotation(
+            organization_id=str(org_id),
+            username="system",
+            agent_id=gateway_id,
+            action="gateway_credential_rotation",
+            ip_address=source_ip,
+        )
 
         return _collect_response(
             auth_context=auth_context,
