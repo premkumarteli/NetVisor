@@ -100,6 +100,7 @@ class SystemService:
         try:
             # Query schema first to get column names safely
             cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+            cursor.fetchall()  # Clear unread result set
             columns = cursor.column_names or ()
             if not columns:
                 return 0
