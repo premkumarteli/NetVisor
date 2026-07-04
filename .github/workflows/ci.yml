@@ -42,11 +42,23 @@ jobs:
       - name: Check repository hygiene
         shell: bash
         run: |
-          forbidden="$(git ls-files | grep -E '(^legacy/|^frontend/node_modules/|^frontend/dist/|^share_agent(/|$)|^share_agent\.zip$|(^|/)__pycache__/|\.pyc$|\.pyo$|^build/|(^|/)(all_project_code\.txt|build_all_code\.py|current_env\.txt|agent_id\.txt|gateway_id\.txt|device_id\.txt|network_id\.txt)$)')"
+          set -euo pipefail
+
+          forbidden_regex='(^legacy/|^frontend/node_modules/|^frontend/dist/|^share_agent(/|$)|^share_agent\.zip$|(^|/)__pycache__/|\.pyc$|\.pyo$|^build/|(^|/)(all_project_code\.txt|build_all_code\.py|current_env\.txt|agent_id\.txt|gateway_id\.txt|device_id\.txt)$)'
+
+          forbidden="$(git ls-files | grep -E "$forbidden_regex" || true)"
+
           if [ -n "$forbidden" ]; then
-            echo "Forbidden tracked files found:"
-            echo "$forbidden"
+            echo "❌ Forbidden tracked files found (must be removed from git tracking):"
+            echo "$forbidden" | sed 's/^/ - /'
+            echo ""
+            echo "Suggested cleanup commands:"
+            echo "  git rm -r --cached legacy frontend/node_modules frontend/dist share_agent build || true"
+            echo "  find . -type d -name '__pycache__' -prune -exec git rm -r --cached {} + || true"
+            echo "  git ls-files | grep -E '\\.pyc$|\\.pyo$' | xargs -r git rm --cached"
             exit 1
+          else
+            echo "✅ Repository hygiene check passed."
           fi
 
       - name: Set up Python
