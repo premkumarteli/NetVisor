@@ -33,7 +33,7 @@ def _connect_with_retry():
         "autocommit": False,
     }
     last_error: Exception | None = None
-    for _ in range(30):
+    for _ in range(60):
         try:
             return mysql.connector.connect(**config)
         except mysql.connector.Error as exc:

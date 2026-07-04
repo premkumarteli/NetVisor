@@ -39,6 +39,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Shutdown pre-installed MySQL
+        run: sudo systemctl stop mysql
+
       - name: Check repository hygiene
         shell: bash
         run: |
