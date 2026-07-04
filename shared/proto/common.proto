@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package netvisor.common;
+
+message Timestamp {
+    int64 seconds = 1;
+    int32 nanos = 2;
+}
+
+message ClientIdentity {
+    string client_id = 1;
+    string organization_id = 2;
+    string hostname = 3;
+    string ip_address = 4;
+    string os_family = 5;
+    string version = 6;
+}
+
+message DiagnosticMetrics {
+    float cpu_usage = 1;
+    float ram_usage = 2;
+    int64 uptime_seconds = 3;
+    int64 queue_depth = 4;
+}

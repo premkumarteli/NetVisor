@@ -69,3 +69,7 @@ keys/
 *.pem
 *.sig
 
+# Rust Target
+**/target/
+app/correlation_engine/rust/target/
+

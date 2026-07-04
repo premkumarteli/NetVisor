@@ -450,7 +450,7 @@ class DeviceService:
                     'high' AS confidence,
                     'managed' AS management_mode
                 FROM managed_devices md
-                LEFT JOIN device_risks r ON md.device_ip = r.device_id
+                LEFT JOIN device_risks r ON md.device_ip = r.device_id AND md.organization_id = r.organization_id
                 LEFT JOIN devices d
                     ON (
                         (NULLIF(d.mac, '') IS NOT NULL AND NULLIF(md.device_mac, '') IS NOT NULL AND d.mac = md.device_mac)
@@ -504,7 +504,7 @@ class DeviceService:
                     'medium' AS confidence,
                     'byod' AS management_mode
                 FROM devices d
-                LEFT JOIN device_risks r ON d.ip = r.device_id
+                LEFT JOIN device_risks r ON d.ip = r.device_id AND d.organization_id = r.organization_id
                 LEFT JOIN managed_devices md
                     ON (
                         (NULLIF(d.mac, '') IS NOT NULL AND NULLIF(md.device_mac, '') IS NOT NULL AND d.mac = md.device_mac)
@@ -534,10 +534,16 @@ class DeviceService:
             d["mac_address"] = d.get("mac", "-")
         return rows
 
-    def get_device_risk(self, db_conn, device_id: str) -> Optional[dict]:
+    def get_device_risk(self, db_conn, device_id: str, organization_id: Optional[str] = None) -> Optional[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT * FROM device_risks WHERE device_id = %s", (device_id,))
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                cursor.execute(
+                    "SELECT * FROM device_risks WHERE device_id = %s AND organization_id = %s",
+                    (device_id, organization_id),
+                )
+            else:
+                cursor.execute("SELECT * FROM device_risks WHERE device_id = %s", (device_id,))
             return cursor.fetchone()
         finally:
             cursor.close()

@@ -4,18 +4,16 @@ from fastapi import APIRouter, Depends
 from ..core.dependencies import get_current_user, require_org_admin
 from ..db.session import get_db_connection
 from ..services.dashboard_service import dashboard_service
+from ..services.live_telemetry_store import live_telemetry_store
 
 router = APIRouter()
 
 
 @router.get("/overview")
 async def get_dashboard_overview(current_user: dict = Depends(require_org_admin)):
-    conn = get_db_connection()
-    try:
-        org_id = current_user.get("organization_id")
-        return dashboard_service.get_overview_stats(conn, organization_id=org_id)
-    finally:
-        conn.close()
+    org_id = current_user.get("organization_id")
+    return live_telemetry_store.get_overview_stats(organization_id=org_id)
+
 
 
 @router.get("/activity")

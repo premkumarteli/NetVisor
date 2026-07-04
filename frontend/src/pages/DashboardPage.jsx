@@ -163,7 +163,6 @@ const DashboardPage = () => {
     fetchTrafficHistory();
   }, [fetchTrafficHistory]);
 
-  useVisibilityPolling(() => fetchDashboard({ background: true }), 15000);
 
   const trafficPollInterval = useMemo(() => {
     return trafficResolution === 'second' ? 2000 : 15000;
@@ -218,7 +217,17 @@ const DashboardPage = () => {
     }
   }, [trafficResolution]);
 
+  const handleDashboardUpdate = useCallback((event) => {
+    if (event.stats) {
+      setStats(event.stats);
+    }
+    if (event.recent_alerts) {
+      setAlerts(event.recent_alerts);
+    }
+  }, []);
+
   const { status: wsStatus } = useWebSocket('packet_event', handlePacketEvent);
+  useWebSocket('dashboard_update', handleDashboardUpdate);
 
   const managedDevices = useMemo(
     () => devices.filter((device) => device.management_mode === 'managed'),

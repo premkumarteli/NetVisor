@@ -25,6 +25,8 @@ from .services.web_inspection_service import web_inspection_service
 from .middleware.csrf_protection import CSRFProtectionMiddleware
 from .middleware.transport_security import TransportSecurityMiddleware
 from .middleware.mtls_middleware import MTLSMiddleware
+from .middleware.prometheus_middleware import PrometheusMiddleware, metrics_endpoint_handler
+from .middleware.chaos_middleware import ChaosMiddleware
 
 def _resolve_log_level() -> int:
     configured = str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO").upper()
@@ -112,19 +114,42 @@ async def lifespan(app: FastAPI):
         if settings.RESET_RUNTIME_ON_STARTUP:
             runtime_result = system_service.prepare_clean_runtime(startup_conn, reason="startup")
             logger.info("Startup runtime reset complete: %s", runtime_result["message"])
+        
+        # Prime LiveTelemetryStore
+        from .services.live_telemetry_store import live_telemetry_store
+        live_telemetry_store.initialize_from_db(startup_conn)
     finally:
         if startup_conn:
             startup_conn.close()
 
+    # Start BroadcastScheduler and EventDispatcher
+    from .services.broadcast_scheduler import broadcast_scheduler
+    from .services.event_dispatcher import event_dispatcher
+    broadcast_scheduler.start()
+    event_dispatcher.start()
+
     flow_writer_task = None
+    correlation_task = None
     if str(settings.FLOW_WORKER_MODE or "embedded").lower() == "embedded":
         flow_writer_task = asyncio.create_task(flow_service.flow_writer_worker())
         logger.info("Embedded flow worker started.")
+        
+        try:
+            from .services.correlation_worker import correlation_worker
+            correlation_task = asyncio.create_task(correlation_worker.start())
+            logger.info("Correlation worker started.")
+        except Exception as e:
+            logger.error("Failed to start correlation worker: %s", e)
     else:
         logger.info("Embedded flow worker disabled (mode=%s).", settings.FLOW_WORKER_MODE)
     yield
     # Shutdown logic
     logger.info("NetVisor Backend Shutting Down...")
+    
+    # Stop BroadcastScheduler and EventDispatcher
+    broadcast_scheduler.stop()
+    event_dispatcher.stop()
+
     shutdown_conn = None
     if settings.BACKUP_AND_RESET_ON_SHUTDOWN:
         try:
@@ -135,9 +160,10 @@ async def lifespan(app: FastAPI):
             if shutdown_conn:
                 shutdown_conn.close()
 
-    for task in (flow_writer_task,):
+    for task in (flow_writer_task, correlation_task):
         if task:
             task.cancel()
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -151,6 +177,8 @@ app.add_middleware(TransportSecurityMiddleware)
 app.add_middleware(MTLSMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(RequestContextMiddleware)
+app.add_middleware(PrometheusMiddleware)
+app.add_middleware(ChaosMiddleware)
 
 # CORS Middleware
 app.add_middleware(
@@ -176,6 +204,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.get("/ping")
 async def ping():
     return {"status": "pong"}
+
+@app.get("/metrics")
+async def metrics(request: Request):
+    return metrics_endpoint_handler(request)
 
 
 @p_sio.event

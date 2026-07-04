@@ -2,6 +2,8 @@ from typing import List, Optional
 import logging
 import json
 
+from ..core.config import settings
+
 logger = logging.getLogger("netvisor.services.alerts")
 
 class AlertService:
@@ -55,11 +57,19 @@ class AlertService:
     def get_risk_ranking(self, db_conn, organization_id: str, limit: int = 10) -> List[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute("""
-                SELECT device_id, device_id AS ip_address, current_score, risk_level, reasons
-                FROM device_risks
-                ORDER BY current_score DESC LIMIT %s
-            """, (limit,))
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                cursor.execute("""
+                    SELECT device_id, device_id AS ip_address, current_score, risk_level, reasons
+                    FROM device_risks
+                    WHERE organization_id = %s
+                    ORDER BY current_score DESC LIMIT %s
+                """, (organization_id, limit))
+            else:
+                cursor.execute("""
+                    SELECT device_id, device_id AS ip_address, current_score, risk_level, reasons
+                    FROM device_risks
+                    ORDER BY current_score DESC LIMIT %s
+                """, (limit,))
             return cursor.fetchall()
         finally:
             cursor.close()

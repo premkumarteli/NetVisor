@@ -37,7 +37,7 @@ async def ingest_flow(
         flow_metrics=flow_service.metrics_snapshot(),
     )
 
-@router.post("/batch", response_model=GenericResponse)
+@router.post("/batch", status_code=status.HTTP_202_ACCEPTED, response_model=GenericResponse)
 async def ingest_batch(
     flows: List[FlowBase],
     _rate_limited: bool = Depends(agent_flow_rate_limit),

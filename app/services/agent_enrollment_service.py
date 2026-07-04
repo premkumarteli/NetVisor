@@ -122,34 +122,38 @@ class AgentEnrollmentService:
             "credential_issued_at": self._format_timestamp(row.get("credential_issued_at")),
         }
 
-    def _fetch_request_by_agent(self, db_conn, *, agent_id: str) -> dict | None:
+    def _fetch_request_by_agent(self, db_conn, *, agent_id: str, organization_id: str | None = None) -> dict | None:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            query = """
                 SELECT *
                 FROM agent_enrollment_requests
                 WHERE agent_id = %s
-                LIMIT 1
-                """,
-                (agent_id,),
-            )
+            """
+            params = [agent_id]
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            query += " LIMIT 1"
+            cursor.execute(query, tuple(params))
             return cursor.fetchone()
         finally:
             cursor.close()
 
-    def _fetch_request_by_id(self, db_conn, *, request_id: str) -> dict | None:
+    def _fetch_request_by_id(self, db_conn, *, request_id: str, organization_id: str | None = None) -> dict | None:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            query = """
                 SELECT *
                 FROM agent_enrollment_requests
                 WHERE request_id = %s
-                LIMIT 1
-                """,
-                (request_id,),
-            )
+            """
+            params = [request_id]
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            query += " LIMIT 1"
+            cursor.execute(query, tuple(params))
             return cursor.fetchone()
         finally:
             cursor.close()
@@ -381,12 +385,12 @@ class AgentEnrollmentService:
         request_id: str,
         reviewed_by: str,
         review_reason: str,
+        organization_id: str | None = None,
     ) -> dict:
         self.ensure_schema(db_conn)
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            query = """
                 UPDATE agent_enrollment_requests
                 SET status = 'approved',
                     reviewed_by = %s,
@@ -394,13 +398,16 @@ class AgentEnrollmentService:
                     review_reason = %s,
                     expires_at = NULL
                 WHERE request_id = %s
-                """,
-                (reviewed_by or "system", review_reason, request_id),
-            )
+            """
+            params = [reviewed_by or "system", review_reason, request_id]
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            cursor.execute(query, tuple(params))
             if not cursor.rowcount:
-                raise LookupError("Enrollment request not found")
+                raise LookupError("Enrollment request not found or not authorized")
             db_conn.commit()
-            return self.get_request_by_id(db_conn, request_id=request_id)
+            return self.get_request_by_id(db_conn, request_id=request_id, organization_id=organization_id)
         finally:
             cursor.close()
 
@@ -411,12 +418,12 @@ class AgentEnrollmentService:
         request_id: str,
         reviewed_by: str,
         review_reason: str,
+        organization_id: str | None = None,
     ) -> dict:
         self.ensure_schema(db_conn)
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            query = """
                 UPDATE agent_enrollment_requests
                 SET status = 'rejected',
                     reviewed_by = %s,
@@ -424,13 +431,16 @@ class AgentEnrollmentService:
                     review_reason = %s,
                     expires_at = NULL
                 WHERE request_id = %s
-                """,
-                (reviewed_by or "system", review_reason, request_id),
-            )
+            """
+            params = [reviewed_by or "system", review_reason, request_id]
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            cursor.execute(query, tuple(params))
             if not cursor.rowcount:
-                raise LookupError("Enrollment request not found")
+                raise LookupError("Enrollment request not found or not authorized")
             db_conn.commit()
-            return self.get_request_by_id(db_conn, request_id=request_id)
+            return self.get_request_by_id(db_conn, request_id=request_id, organization_id=organization_id)
         finally:
             cursor.close()
 
@@ -441,12 +451,12 @@ class AgentEnrollmentService:
         agent_id: str,
         reviewed_by: str,
         review_reason: str,
+        organization_id: str | None = None,
     ) -> dict:
         self.ensure_schema(db_conn)
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            query = """
                 UPDATE agent_enrollment_requests
                 SET status = 'revoked',
                     reviewed_by = %s,
@@ -454,13 +464,16 @@ class AgentEnrollmentService:
                     review_reason = %s,
                     expires_at = NULL
                 WHERE agent_id = %s
-                """,
-                (reviewed_by or "system", review_reason, agent_id),
-            )
+            """
+            params = [reviewed_by or "system", review_reason, agent_id]
+            if organization_id and not settings.SINGLE_ORG_MODE:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            cursor.execute(query, tuple(params))
             if not cursor.rowcount:
-                raise LookupError("Enrollment request not found")
+                raise LookupError("Enrollment request not found or not authorized")
             db_conn.commit()
-            return self.get_request_by_agent_id(db_conn, agent_id=agent_id)
+            return self.get_request_by_agent_id(db_conn, agent_id=agent_id, organization_id=organization_id)
         finally:
             cursor.close()
 
@@ -492,13 +505,13 @@ class AgentEnrollmentService:
         finally:
             cursor.close()
 
-    def get_request_by_id(self, db_conn, *, request_id: str) -> dict | None:
+    def get_request_by_id(self, db_conn, *, request_id: str, organization_id: str | None = None) -> dict | None:
         self.ensure_schema(db_conn)
-        return self._row_to_request(self._fetch_request_by_id(db_conn, request_id=request_id))
+        return self._row_to_request(self._fetch_request_by_id(db_conn, request_id=request_id, organization_id=organization_id))
 
-    def get_request_by_agent_id(self, db_conn, *, agent_id: str) -> dict | None:
+    def get_request_by_agent_id(self, db_conn, *, agent_id: str, organization_id: str | None = None) -> dict | None:
         self.ensure_schema(db_conn)
-        return self._row_to_request(self._fetch_request_by_agent(db_conn, agent_id=agent_id))
+        return self._row_to_request(self._fetch_request_by_agent(db_conn, agent_id=agent_id, organization_id=organization_id))
 
 
 agent_enrollment_service = AgentEnrollmentService()

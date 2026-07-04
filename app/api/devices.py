@@ -34,7 +34,8 @@ async def get_device_risk(
 ):
     conn = get_db_connection()
     try:
-        risk = device_service.get_device_risk(conn, device_id)
+        org_id = current_user.get("organization_id")
+        risk = device_service.get_device_risk(conn, device_id, organization_id=org_id)
         if not risk:
             return {"device_id": device_id, "current_score": 0, "risk_level": "LOW", "reasons": []}
         return risk

@@ -122,7 +122,13 @@ def _resolve_gateway_capture_interface(configured_interface: str | None) -> tupl
             if ipv4_addresses:
                 return iface["capture_name"], "auto-wifi-direct"
 
+    for iface in candidates:
+        ipv4_addresses = _valid_ipv4_addresses(iface["ips"])
+        if ipv4_addresses:
+            return iface["capture_name"], "auto-fallback-ipv4"
+
     return None, "default"
+
 
 
 class GatewayCollector:

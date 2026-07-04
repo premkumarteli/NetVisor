@@ -652,7 +652,81 @@ class FlowService:
                 conn.close()
 
     async def buffer_flows(self, flows: list) -> bool:
-        return await asyncio.to_thread(self._enqueue_batch_sync, list(flows))
+        from .event_dispatcher import flow_ingestion_queue
+        if not flows:
+            return True
+
+        first = flows[0]
+        flows_serialized = []
+        for flow in flows:
+            if hasattr(flow, "model_dump"):
+                flows_serialized.append(flow.model_dump(mode="json"))
+            elif isinstance(flow, dict):
+                flows_serialized.append(dict(flow))
+            else:
+                flows_serialized.append(dict(vars(flow)))
+
+        # Resolve organization, agent, and source_type
+        org_id = None
+        if hasattr(first, "organization_id"):
+            org_id = first.organization_id
+        elif isinstance(first, dict):
+            org_id = first.get("organization_id")
+        
+        agent_id = None
+        if hasattr(first, "agent_id"):
+            agent_id = first.agent_id
+        elif isinstance(first, dict):
+            agent_id = first.get("agent_id")
+
+        source_type = "agent"
+        if hasattr(first, "source_type"):
+            source_type = first.source_type
+        elif isinstance(first, dict):
+            source_type = first.get("source_type") or "agent"
+
+        # Try to publish to Redis Stream (Milestone 2 Ingestion Path)
+        redis_published = False
+        try:
+            from app.db.redis_client import get_redis_connection
+            r = get_redis_connection()
+            payload = {
+                "flows": json.dumps(flows_serialized),
+                "org_id": str(org_id or ""),
+                "agent_id": str(agent_id or ""),
+                "source_type": str(source_type),
+            }
+            # Add to stream in a background thread to prevent blocking event loop
+            await asyncio.to_thread(r.xadd, "netvisor:flow_stream", payload)
+            redis_published = True
+            
+            # Expose metrics
+            try:
+                from app.middleware.prometheus_middleware import FLOWS_INGESTED_TOTAL
+                FLOWS_INGESTED_TOTAL.labels(client_id=str(agent_id or "unknown")).inc(len(flows))
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning("Failed to publish to Redis Stream: %s. Falling back to DB-backed queue.", exc)
+
+        if not redis_published:
+            # Enqueue to DB-backed queue fallback (ensures rollback, backpressure checks, and metrics for tests)
+            success = await asyncio.to_thread(self._enqueue_batch_sync, list(flows))
+            if not success:
+                return False
+
+        try:
+            flow_ingestion_queue.put_nowait({
+                "flows": flows_serialized,
+                "org_id": org_id,
+                "agent_id": agent_id,
+                "source_type": source_type,
+            })
+        except asyncio.QueueFull:
+            logger.warning("Event Bus ingestion queue is full, skipped real-time push.")
+
+        return True
+
 
     async def buffer_flow(self, flow_data):
         return await self.buffer_flows([flow_data])
@@ -932,91 +1006,234 @@ class FlowService:
         self._schema_ready = True
 
     async def flow_writer_worker(self):
-        """Async worker to persist durable flow batches and trigger detection."""
+        """Async worker to persist durable flow batches from Redis Streams or MySQL fallback."""
         self._set_metric("worker_mode", str(settings.FLOW_WORKER_MODE or "embedded"))
         heartbeat_task = asyncio.create_task(self._worker_heartbeat_loop())
 
-        # Configure adaptive polling backoff settings
+        # Redis Stream configuration
+        stream_name = "netvisor:flow_stream"
+        group_name = "flow_workers"
+        
+        # Adaptive polling backoff settings for MySQL queue path
         import os
+        import random
         base_poll_seconds = max(float(settings.FLOW_WORKER_POLL_SECONDS or 1.0), 0.1)
         max_poll_seconds = max(float(os.getenv("NETVISOR_FLOW_WORKER_MAX_POLL_SECONDS", "5.0")), base_poll_seconds)
         current_poll_seconds = base_poll_seconds
-
+        
         # Keep metrics on claim counts
         empty_claims = 0
         total_claims = 0
 
+        use_redis = False
+        redis_group_created = False
+
         try:
             while True:
-                try:
-                    total_claims += 1
-                    claimed_batches = await self._collect_queue_batch()
-                    if not claimed_batches:
-                        empty_claims += 1
-                        self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
-                        self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
-
-                        import random
-                        jitter = random.uniform(0.9, 1.1)
-                        sleep_time = min(current_poll_seconds * jitter, max_poll_seconds)
-                        await asyncio.sleep(sleep_time)
-
-                        current_poll_seconds = min(current_poll_seconds * 1.5, max_poll_seconds)
-                        continue
-
-                    # Reset polling interval on work found
-                    current_poll_seconds = base_poll_seconds
-                    self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
-                    self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
-
-                    for queue_record in claimed_batches:
-                        queue_batch_id = int(queue_record["id"])
+                # Try to establish/verify Redis connection
+                if not use_redis or not redis_group_created:
+                    try:
+                        import redis
+                        from app.db.redis_client import get_redis_connection
+                        r = get_redis_connection()
+                        await asyncio.to_thread(r.ping)
+                        use_redis = True
+                        
+                        # Create consumer group if it doesn't exist
                         try:
-                            self._set_metric("last_batch_size", int(queue_record.get("flow_count") or 0))
-                            persist_started_at = time.perf_counter()
-                            processing_result = await asyncio.to_thread(self._sync_process_claimed_batch, queue_record)
-                            events_to_emit = list(processing_result.get("events_to_emit") or [])
-                            processed_flows = max(int(processing_result.get("flow_count") or 0), 0)
-                            persist_duration_ms = round((time.perf_counter() - persist_started_at) * 1000, 2)
-                            self._set_metric("last_persist_duration_ms", persist_duration_ms)
-                            self._set_metric("last_processed_at", datetime.now(timezone.utc).isoformat())
-                            self._set_metric("last_error", None)
-                            self._increment_metric("processed_batches_total")
-                            self._increment_metric("processed_flows_total", processed_flows)
-                            metrics_service.increment("flow_processed_batches_total")
-                            metrics_service.increment("flow_processed_flows_total", amount=processed_flows)
-                            metrics_service.observe("flow_persist_duration_ms", persist_duration_ms)
-
-                            if events_to_emit:
-                                try:
-                                    await self._emit_realtime_events(events_to_emit)
-                                except Exception:
-                                    self._set_metric("last_error", "flow_emit_failure")
-                                    metrics_service.increment("flow_emit_failures_total")
-                                    logger.exception(
-                                        "Flow worker failed while emitting realtime events for batch %s.",
-                                        queue_batch_id,
-                                    )
-                        except Exception as exc:
-                            self._increment_metric("failed_batches_total")
-                            self._set_metric("last_error", "flow_worker_failure")
-                            metrics_service.increment("flow_failed_batches_total")
-                            logger.exception("Flow worker failed while processing queued batch %s.", queue_batch_id)
-                            deadlettered = await asyncio.to_thread(self._mark_batch_retry_sync, queue_batch_id, str(exc))
-                            if deadlettered:
-                                self._increment_metric("deadletter_batches_total")
-                                metrics_service.increment("flow_deadletter_batches_total")
+                            await asyncio.to_thread(r.xgroup_create, stream_name, group_name, id="0", mkstream=True)
+                            logger.info("Created Redis stream consumer group '%s' for stream '%s'", group_name, stream_name)
+                        except Exception as group_err:
+                            if "BUSYGROUP" in str(group_err):
+                                pass
                             else:
-                                self._increment_metric("requeued_batches_total")
-                                metrics_service.increment("flow_requeued_batches_total")
-                except asyncio.CancelledError:
-                    raise
-                except Exception:
-                    self._increment_metric("failed_batches_total")
-                    self._set_metric("last_error", "flow_worker_claim_failure")
-                    metrics_service.increment("flow_failed_batches_total", reason="claim_failure")
-                    logger.exception("Flow worker failed while claiming queued flow batches.")
-                    await asyncio.sleep(max(float(settings.FLOW_WORKER_POLL_SECONDS or 1.0), 0.1))
+                                raise group_err
+                        redis_group_created = True
+                    except Exception as redis_exc:
+                        if use_redis:
+                            logger.warning("Lost Redis connection, falling back to MySQL queue: %s", redis_exc)
+                        use_redis = False
+                        redis_group_created = False
+
+                if use_redis:
+                    # --- REDIS STREAM CONSUMPTION PATH ---
+                    try:
+                        # 1. Update queue depth metric in Prometheus
+                        try:
+                            from app.middleware.prometheus_middleware import REDIS_STREAM_LENGTH, REDIS_CONSUMER_LAG
+                            stream_info = await asyncio.to_thread(r.xinfo_stream, stream_name)
+                            stream_len = stream_info.get("length", 0)
+                            REDIS_STREAM_LENGTH.set(stream_len)
+                            
+                            # Estimate consumer lag (simple: pending messages count)
+                            groups_info = await asyncio.to_thread(r.xinfo_groups, stream_name)
+                            for g in groups_info:
+                                if g.get("name") == group_name:
+                                    REDIS_CONSUMER_LAG.set(g.get("pending", 0))
+                        except Exception:
+                            pass
+ 
+                        # 2. Reclaim pending messages from crashed workers (XPENDING & XCLAIM)
+                        if random.random() < 0.1:  # 10% chance per iteration to clean up pending
+                            try:
+                                # Get pending messages that have been idle for > 15s (15000ms)
+                                pending_info = await asyncio.to_thread(r.xpending_range, stream_name, group_name, min="-", max="+", count=10)
+                                for p in pending_info:
+                                    msg_id = p["message_id"]
+                                    idle_ms = p["elapsed_milliseconds"]
+                                    delivery_count = p["times_delivered"]
+                                    
+                                    if idle_ms > 15000:
+                                        if delivery_count > 5:
+                                            # Dead-letter routing
+                                            logger.warning("Message %s failed %s times. Routing to dead-letter.", msg_id, delivery_count)
+                                            msgs = await asyncio.to_thread(r.xrange, stream_name, min=msg_id, max=msg_id)
+                                            if msgs:
+                                                await asyncio.to_thread(r.xadd, f"{stream_name}:deadletter", msgs[0][1])
+                                            # ACK to remove from pending PEL
+                                            await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                            await asyncio.to_thread(r.xdel, stream_name, msg_id)
+                                        else:
+                                            # Reclaim / Claim message
+                                            await asyncio.to_thread(r.xclaim, stream_name, group_name, self._worker_id, min_idle_time=15000, message_ids=[msg_id])
+                                            logger.info("Claimed idle pending message %s from crashed worker", msg_id)
+                            except Exception as reclaim_err:
+                                logger.warning("Failed to reclaim pending stream messages: %s", reclaim_err)
+ 
+                        # 3. Read messages (first read pending for this worker, then new)
+                        # Read pending:
+                        messages = await asyncio.to_thread(
+                            r.xreadgroup,
+                            groupname=group_name,
+                            consumername=self._worker_id,
+                            streams={stream_name: "0"},
+                            count=5,
+                            block=100
+                        )
+                        if not messages or not messages[0][1]:
+                            # Read new:
+                            messages = await asyncio.to_thread(
+                                r.xreadgroup,
+                                groupname=group_name,
+                                consumername=self._worker_id,
+                                streams={stream_name: ">"},
+                                count=5,
+                                block=1000
+                            )
+ 
+                        if not messages or not messages[0][1]:
+                            await asyncio.sleep(0.5)
+                            continue
+
+                        # Process messages
+                        for s_name, s_msgs in messages:
+                            for msg_id, payload in s_msgs:
+                                try:
+                                    flows_json = payload.get("flows")
+                                    flows = json.loads(flows_json)
+                                    self._set_metric("last_batch_size", len(flows))
+                                    
+                                    persist_started_at = time.perf_counter()
+                                    
+                                    # Process and persist using _sync_persist_batch (MySQL & ClickHouse)
+                                    events_to_emit = await asyncio.to_thread(self._sync_persist_batch, flows)
+                                    
+                                    persist_duration_ms = round((time.perf_counter() - persist_started_at) * 1000, 2)
+                                    self._set_metric("last_persist_duration_ms", persist_duration_ms)
+                                    self._set_metric("last_processed_at", datetime.now(timezone.utc).isoformat())
+                                    self._set_metric("last_error", None)
+                                    self._increment_metric("processed_batches_total")
+                                    self._increment_metric("processed_flows_total", len(flows))
+                                    metrics_service.increment("flow_processed_batches_total")
+                                    metrics_service.increment("flow_processed_flows_total", amount=len(flows))
+                                    metrics_service.observe("flow_persist_duration_ms", persist_duration_ms)
+
+                                    if events_to_emit:
+                                        await self._emit_realtime_events(events_to_emit)
+                                    
+                                    # Acknowledge the message in Redis Stream
+                                    await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                    await asyncio.to_thread(r.xdel, stream_name, msg_id)
+                                    
+                                except Exception as inner_exc:
+                                    logger.exception("Error processing stream message %s", msg_id)
+                                    self._increment_metric("failed_batches_total")
+                                    metrics_service.increment("flow_failed_batches_total")
+                                    # Don't ACK. It will stay in PEL (Pending Entries List) and be retried or reclaimed.
+                    except Exception as redis_loop_exc:
+                        logger.error("Redis stream worker loop error: %s", redis_loop_exc)
+                        await asyncio.sleep(1.0)
+
+                else:
+                    # --- FALLBACK: MYSQL DATABASE QUEUE PATH ---
+                    try:
+                        total_claims += 1
+                        claimed_batches = await self._collect_queue_batch()
+                        if not claimed_batches:
+                            empty_claims += 1
+                            self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
+                            self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
+
+                            jitter = random.uniform(0.9, 1.1)
+                            sleep_time = min(current_poll_seconds * jitter, max_poll_seconds)
+                            await asyncio.sleep(sleep_time)
+
+                            current_poll_seconds = min(current_poll_seconds * 1.5, max_poll_seconds)
+                            continue
+
+                        # Reset polling interval on work found
+                        current_poll_seconds = base_poll_seconds
+                        self._set_metric("current_poll_seconds", round(current_poll_seconds, 2))
+                        self._set_metric("empty_claim_ratio", round(empty_claims / total_claims, 4))
+
+                        for queue_record in claimed_batches:
+                            queue_batch_id = int(queue_record["id"])
+                            try:
+                                self._set_metric("last_batch_size", int(queue_record.get("flow_count") or 0))
+                                persist_started_at = time.perf_counter()
+                                processing_result = await asyncio.to_thread(self._sync_process_claimed_batch, queue_record)
+                                events_to_emit = list(processing_result.get("events_to_emit") or [])
+                                processed_flows = max(int(processing_result.get("flow_count") or 0), 0)
+                                persist_duration_ms = round((time.perf_counter() - persist_started_at) * 1000, 2)
+                                self._set_metric("last_persist_duration_ms", persist_duration_ms)
+                                self._set_metric("last_processed_at", datetime.now(timezone.utc).isoformat())
+                                self._set_metric("last_error", None)
+                                self._increment_metric("processed_batches_total")
+                                self._increment_metric("processed_flows_total", processed_flows)
+                                metrics_service.increment("flow_processed_batches_total")
+                                metrics_service.increment("flow_processed_flows_total", amount=processed_flows)
+                                metrics_service.observe("flow_persist_duration_ms", persist_duration_ms)
+
+                                if events_to_emit:
+                                    try:
+                                        await self._emit_realtime_events(events_to_emit)
+                                    except Exception:
+                                        self._set_metric("last_error", "flow_emit_failure")
+                                        metrics_service.increment("flow_emit_failures_total")
+                                        logger.exception(
+                                            "Flow worker failed while emitting realtime events for batch %s.",
+                                            queue_batch_id,
+                                        )
+                            except Exception as exc:
+                                self._increment_metric("failed_batches_total")
+                                self._set_metric("last_error", "flow_worker_failure")
+                                metrics_service.increment("flow_failed_batches_total")
+                                logger.exception("Flow worker failed while processing queued batch %s.", queue_batch_id)
+                                deadlettered = await asyncio.to_thread(self._mark_batch_retry_sync, queue_batch_id, str(exc))
+                                if deadlettered:
+                                    self._increment_metric("deadletter_batches_total")
+                                    metrics_service.increment("flow_deadletter_batches_total")
+                                else:
+                                    self._increment_metric("requeued_batches_total")
+                                    metrics_service.increment("flow_requeued_batches_total")
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        self._increment_metric("failed_batches_total")
+                        self._set_metric("last_error", "flow_worker_claim_failure")
+                        metrics_service.increment("flow_failed_batches_total", reason="claim_failure")
+                        logger.exception("Flow worker failed while claiming queued flow batches.")
+                        await asyncio.sleep(max(float(settings.FLOW_WORKER_POLL_SECONDS or 1.0), 0.1))
         finally:
             heartbeat_task.cancel()
             try:
@@ -1025,6 +1242,7 @@ class FlowService:
                 pass
             await asyncio.to_thread(self._clear_worker_heartbeat_sync)
             self._refresh_queue_depth()
+
 
     async def _persist_batch(self, batch):
         """No longer used directly, superseded by _sync_persist_batch + to_thread."""
@@ -1039,6 +1257,8 @@ class FlowService:
         seen_hashes: set[str] = set()
         alert_keys_seen: set[tuple] = set()
         sanitized_batch = []
+        ch_rows = []
+
 
         for flow in batch:
             org_id = self._resolve_organization_id(
@@ -1254,8 +1474,8 @@ class FlowService:
 
                 cursor.execute(
                     """
-                    INSERT INTO device_risks (device_id, current_score, risk_level, reasons)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO device_risks (device_id, organization_id, current_score, risk_level, reasons)
+                    VALUES (%s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         current_score = VALUES(current_score),
                         risk_level = VALUES(risk_level),
@@ -1263,6 +1483,7 @@ class FlowService:
                     """,
                     (
                         sanitized.internal_device_ip,
+                        org_id,
                         report["score"],
                         report["severity"],
                         ",".join(report["reasons"]),
@@ -1290,6 +1511,37 @@ class FlowService:
                         json.dumps(breakdown),
                     ),
                 )
+ 
+            # Collect row details for ClickHouse bulk insertion (Milestone 2 Dual-Write)
+            ch_rows.append((
+                str(org_id or "default-org-id"),
+                str(sanitized.src_ip),
+                str(sanitized.dst_ip),
+                int(sanitized.src_port),
+                int(sanitized.dst_port),
+                str(sanitized.protocol),
+                sanitized.start_time,
+                sanitized.last_seen,
+                int(sanitized.packet_count),
+                int(sanitized.byte_count),
+                float(sanitized.duration),
+                float(sanitized.average_packet_size),
+                str(sanitized.domain or ""),
+                str(sanitized.sni or ""),
+                str(sanitized.src_mac or ""),
+                str(sanitized.dst_mac or ""),
+                str(sanitized.network_scope or ""),
+                str(sanitized.flow_direction or ""),
+                str(sanitized.internal_device_ip or ""),
+                str(sanitized.external_endpoint_ip or ""),
+                str(session_id or ""),
+                str(application or ""),
+                str(sanitized.agent_id or ""),
+                str(sanitized.analysis_source or "transport_fallback"),
+                float(sanitized.analysis_confidence or 0.0),
+                json.dumps(list(sanitized.analysis_signals)),
+                str(sanitized.ingest_hash),
+            ))
 
             events_to_emit.append(
                 (
@@ -1330,6 +1582,33 @@ class FlowService:
                         },
                     )
                 )
+
+        # Bulk insert to ClickHouse (Milestone 2 Dual-Write)
+        if ch_rows:
+            try:
+                from app.db.clickhouse_client import get_clickhouse_client
+                ch_client = get_clickhouse_client()
+                ch_columns = [
+                    "organization_id", "src_ip", "dst_ip", "src_port", "dst_port",
+                    "protocol", "start_time", "last_seen", "packet_count", "byte_count",
+                    "duration", "average_packet_size", "domain", "sni", "src_mac", "dst_mac",
+                    "network_scope", "flow_direction", "internal_device_ip", "external_endpoint_ip",
+                    "session_id", "application", "agent_id", "analysis_source", "analysis_confidence",
+                    "analysis_signals_json", "ingest_hash"
+                ]
+                start_ch = time.perf_counter()
+                ch_client.insert("flow_logs", ch_rows, column_names=ch_columns)
+                ch_duration = time.perf_counter() - start_ch
+                
+                # Expose metrics
+                try:
+                    from app.middleware.prometheus_middleware import CLICKHOUSE_INSERT_LATENCY, CLICKHOUSE_INSERT_ROWS
+                    CLICKHOUSE_INSERT_LATENCY.observe(ch_duration)
+                    CLICKHOUSE_INSERT_ROWS.inc(len(ch_rows))
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning("ClickHouse bulk insert failed: %s", e)
 
         return events_to_emit
 

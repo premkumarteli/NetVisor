@@ -7,7 +7,7 @@ import stat
 from pathlib import Path
 from typing import Any
 
-from .dpapi import DataProtector, WindowsCurrentUserProtector
+from .dpapi import DataProtector, DynamicProtector
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class GatewayStateStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.platform_name = platform_name or os.name
         self.description = description
-        self.protector = protector or (WindowsCurrentUserProtector() if self._is_windows() else None)
+        self.protector = protector or DynamicProtector()
 
     def _is_windows(self) -> bool:
         return self.platform_name == "nt"
@@ -67,24 +67,23 @@ class GatewayStateStore:
 
     def load(self, default: dict | None = None) -> dict:
         default_value = dict(default or {})
-        if self._is_windows():
-            if not self.path.exists():
-                return default_value
-            try:
-                payload = self.protector.unprotect(self.path.read_bytes()) if self.protector else self.path.read_bytes()
-            except Exception as exc:
-                logger.warning("Gateway state at %s could not be decrypted; resetting local state: %s", self.path, exc)
-                try:
-                    self.path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                return default_value
-        else:
+        if not self.path.exists():
+            return default_value
+
+        if not self._is_windows():
             self._ensure_secure_directory()
-            if not self.path.exists():
-                return default_value
             self._ensure_secure_file()
-            payload = self.path.read_bytes()
+
+        try:
+            raw_bytes = self.path.read_bytes()
+            payload = self.protector.unprotect(raw_bytes) if self.protector else raw_bytes
+        except Exception as exc:
+            logger.warning("Gateway state at %s could not be decrypted; resetting local state: %s", self.path, exc)
+            try:
+                self.path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return default_value
 
         try:
             loaded = json.loads(payload.decode("utf-8"))
@@ -98,11 +97,11 @@ class GatewayStateStore:
 
     def save(self, value: dict[str, Any]) -> None:
         serialized = json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        if self._is_windows():
-            payload = self.protector.protect(serialized, description=self.description) if self.protector else serialized
-            self.path.write_bytes(payload)
-            return
+        if not self._is_windows():
+            self._ensure_secure_directory()
 
-        self._ensure_secure_directory()
-        self.path.write_bytes(serialized)
-        self._ensure_secure_file()
+        payload = self.protector.protect(serialized, description=self.description) if self.protector else serialized
+        self.path.write_bytes(payload)
+
+        if not self._is_windows():
+            self._ensure_secure_file()

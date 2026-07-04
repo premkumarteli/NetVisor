@@ -185,6 +185,13 @@ class RiskEngine(BaseEngine):
                 # Record emission and emit finding
                 self.suppression_store.record_emission(target_ip, rule_name, observed_at)
                 emitted_correlation_findings.append(f)
+                
+            if emitted_correlation_findings:
+                try:
+                    from app.middleware.prometheus_middleware import INCIDENTS_CREATED
+                    INCIDENTS_CREATED.inc(len(emitted_correlation_findings))
+                except ImportError:
+                    pass
 
             # 7. Aggregate overall risk score
             # Gather all decayed scores from active findings

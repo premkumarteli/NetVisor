@@ -36,7 +36,7 @@ The current architecture separates visibility into two paths:
 | February 2026 | Restored the project into Git, improved security controls, modularized the application, and added pooled batch collection. |
 | March-April 2026 | Introduced the modern FastAPI, React, agent, gateway, shared-runtime architecture with DPI and gateway privacy boundaries. |
 | May 2026 | Hardened enrollment and ingestion, tested DPI and Windows hotspot gateway collection, and redesigned telemetry pages for readability. |
-| June 2026 | Recovered historical source snapshots and reconstructed this evidence-based academic logbook. |
+| June 2026 | Modularized the security detection engines registry, hardened concurrency safety, and built a decoupled real-time event-driven ingestion pipeline with Socket.IO dashboard broadcasts. |
 
 ---
 
@@ -1190,6 +1190,37 @@ During June, the project transitioned from a traditional service-oriented detect
 
 - Verified live dashboard display of WireGuard and OpenVPN.
 - All remaining **427 tests** in the test suite pass cleanly with zero errors.
+
+---
+
+## 2026-06-25 - Real-time Telemetry, Queue Decoupling & Socket.IO Dashboard Integration
+
+**Work completed**
+
+- Created the thread-safe `LiveTelemetryStore` to maintain rolling 60s bandwidth, active devices, risk levels, and recent alerts, primed from MySQL historical tables on startup.
+- Implemented `EventDispatcher` and `flow_ingestion_queue` (in-process event bus) to decouple HTTP flow ingestion from database persistence and threat processing, handling workers (Metrics, Threat, DB Writer, Audit) concurrently.
+- Integrated `EventDispatcher` and `BroadcastScheduler` into the ASGI lifespan in `app/main.py` to start and stop workers cleanly.
+- Implemented `BroadcastScheduler` to poll metrics from the live telemetry store and broadcast dashboard updates via Socket.IO to room `org:<org_id>` every 500ms.
+- Refactored agent and gateway ingestion API routes to immediately enqueue incoming batches and return HTTP 202 Accepted.
+- Refactored the dashboard `/overview` API endpoint to return cached live store counters (no-SQL hot path).
+- Modified `DashboardPage.jsx` on the React frontend to replace the 15-second interval HTTP polling with real-time Socket.IO event listeners for `dashboard_update`.
+- Updated `shared/collector/flow_manager.py` to support explicit lifecycle event types (`FLOW_NEW`, `FLOW_UPDATE`, and `FLOW_END`).
+- Updated `FlowBase` and `FlowSummary` Pydantic models with `event_type` metadata.
+
+**Problem found**
+
+- Pytest collection errors occurred due to `@pytest.mark.asyncio` decorator mismatch with the anyio plugin configured in the codebase.
+- Shared queue state from other test scenarios polluted the global `flow_ingestion_queue`, causing worker mock assertion failures in `test_event_dispatcher_queuing`.
+
+**Solution or learning**
+
+- Updated the test mark to `@pytest.mark.anyio` and added logic in `test_event_dispatcher_queuing` to drain the global `flow_ingestion_queue` before executing test flows.
+- Mocked `time.time` using monkeypatch to test deterministic `FlowManager` state transitions via `_expire_flows()`.
+
+**Evidence**
+
+- Created and successfully passed unit tests in [tests/test_live_telemetry.py](file:///c:/Users/prem/Network/tests/test_live_telemetry.py) covering the telemetric store, event queue dispatcher routing, and flow manager event transitions.
+- All **438 tests** in the test suite passed cleanly.
 
 ---
 

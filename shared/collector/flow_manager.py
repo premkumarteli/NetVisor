@@ -41,6 +41,7 @@ class FlowState:
     analysis_source: str = "transport_fallback"
     analysis_confidence: float = 0.0
     analysis_signals: tuple[str, ...] = ()
+    is_new: bool = True
 
     @property
     def duration(self) -> float:
@@ -81,6 +82,7 @@ class FlowSummary:
     analysis_signals: tuple[str, ...] = ()
     source_type: str = "agent"
     metadata_only: bool = False
+    event_type: str = "FLOW_UPDATE"
 
 
 class FlowManager:
@@ -234,19 +236,19 @@ class FlowManager:
 
     def _expire_flows(self) -> None:
         now = time.time()
-        expired: Dict[FlowKey, FlowState] = {}
-        flushed: Dict[FlowKey, FlowState] = {}
+        expired: Dict[FlowKey, Tuple[FlowState, str]] = {}
+        flushed: Dict[FlowKey, Tuple[FlowState, str]] = {}
 
         with self._lock:
             for key, state in list(self._flows.items()):
                 _, _, _, _, proto = key
                 timeout = self.tcp_timeout if proto == "TCP" else self.udp_timeout
                 if now - state.last_seen >= timeout:
-                    if state.packet_count > 0:
-                        expired[key] = state
+                    expired[key] = (state, "FLOW_END")
                     del self._flows[key]
                 elif state.packet_count > 0 and now - state.last_flushed >= self.flush_interval:
-                    flushed[key] = FlowState(
+                    event_type = "FLOW_NEW" if state.is_new else "FLOW_UPDATE"
+                    flushed[key] = (FlowState(
                         start_time=state.start_time,
                         last_seen=state.last_seen,
                         last_flushed=state.last_flushed,
@@ -261,21 +263,24 @@ class FlowManager:
                         analysis_source=state.analysis_source,
                         analysis_confidence=state.analysis_confidence,
                         analysis_signals=state.analysis_signals,
-                    )
+                        is_new=state.is_new,
+                    ), event_type)
+                    state.is_new = False
                     state.start_time = state.last_seen
                     state.last_flushed = now
                     state.packet_count = 0
                     state.byte_count = 0
 
         for collection in (flushed, expired):
-            for key, state in collection.items():
-                summary = self._build_summary(key, state)
+            for key, val in collection.items():
+                state, event_type = val
+                summary = self._build_summary(key, state, event_type)
                 try:
                     self.on_flow_expired(summary)
                 except Exception:
                     continue
 
-    def _build_summary(self, key: FlowKey, state: FlowState) -> FlowSummary:
+    def _build_summary(self, key: FlowKey, state: FlowState, event_type: str = "FLOW_UPDATE") -> FlowSummary:
         src_ip, dst_ip, sport, dport, proto = key
         start_dt = datetime.fromtimestamp(state.start_time, tz=timezone.utc)
         last_dt = datetime.fromtimestamp(state.last_seen, tz=timezone.utc)
@@ -305,6 +310,7 @@ class FlowManager:
             organization_id=self.organization_id,
             source_type=self.source_type,
             metadata_only=self.metadata_only,
+            event_type=event_type,
         )
 
     def _evict_oldest_locked(self) -> None:

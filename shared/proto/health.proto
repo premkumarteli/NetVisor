@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package netvisor.health;
+
+import "common.proto";
+
+message HealthPing {
+    netvisor.common.ClientIdentity sender = 1;
+    netvisor.common.Timestamp timestamp = 2;
+    netvisor.common.DiagnosticMetrics metrics = 3;
+    string status = 4; // "OK", "DEGRADED", "ERROR"
+    repeated string active_errors = 5;
+}
+
+message HealthStatusResponse {
+    string status = 1; // "OK", "MAINTENANCE"
+    bool request_metrics = 2;
+    netvisor.common.Timestamp server_time = 3;
+}

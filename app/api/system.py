@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel
 
 from ..core.config import settings
-from ..core.dependencies import require_org_admin, request_rate_limit
+from ..core.dependencies import require_org_admin, require_super_admin, request_rate_limit
 from ..db.session import get_db_connection
 from ..services.alert_service import alert_service
 from ..services.release_service import release_service
@@ -151,19 +151,61 @@ async def trigger_scan(
         conn.close()
 
 
-@router.post("/reset-data")
-async def reset_data(
+class ResetTenantPayload(BaseModel):
+    confirm_org_id: str
+
+
+class ResetPlatformPayload(BaseModel):
+    confirm_platform_reset: str
+
+
+@router.post("/settings/reset-tenant-data")
+async def reset_tenant_data(
+    payload: ResetTenantPayload,
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
 ):
+    org_id = current_user.get("organization_id")
+    if not org_id or payload.confirm_org_id != org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation organization ID does not match your authenticated organization ID."
+        )
+
     conn = get_db_connection()
     try:
         ip = _resolve_source_ip(request)
         return system_service.reset_operational_data(
             conn,
             username=current_user.get("username", "admin"),
-            organization_id=current_user.get("organization_id"),
+            organization_id=org_id,
+            ip_address=ip,
+        )
+    finally:
+        conn.close()
+
+
+@router.post("/settings/reset-platform")
+async def reset_platform_data(
+    payload: ResetPlatformPayload,
+    request: Request,
+    _rate_limited: bool = Depends(admin_mutation_rate_limit),
+    current_user: dict = Depends(require_super_admin),
+):
+    if payload.confirm_platform_reset != "RESET":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation token must be exactly 'RESET' to wipe the platform."
+        )
+
+    conn = get_db_connection()
+    try:
+        ip = _resolve_source_ip(request)
+        return system_service.reset_operational_data(
+            conn,
+            username=current_user.get("username", "admin"),
+            organization_id=None,
             ip_address=ip,
         )
     finally:

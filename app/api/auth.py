@@ -40,12 +40,13 @@ register_rate_limit = request_rate_limit(
 def _build_session_payload(user: dict) -> dict:
     return {
         "authenticated": True,
-        "id": user.get("id"),
+        "id": user.get("id") or user.get("user_id"),
         "username": user.get("username", "User"),
         "email": user.get("email"),
         "role": user.get("role", "viewer"),
         "organization_id": user.get("organization_id"),
     }
+
 
 
 def _set_auth_cookie(response: Response, request: Request, access_token: str, max_age_seconds: int) -> None:

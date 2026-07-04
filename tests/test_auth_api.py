@@ -118,7 +118,7 @@ def test_get_current_user_accepts_session_cookie(monkeypatch):
 
     current_user = dependencies.get_current_user(request=request)
 
-    assert current_user["id"] == "user-1"
+    assert current_user.user_id == "user-1"
     assert conn.closed is True
 
 

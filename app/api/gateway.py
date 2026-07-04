@@ -361,7 +361,7 @@ async def receive_gateway_devices(
         conn.close()
 
 
-@router.post("/flows/batch", response_model=GenericResponse)
+@router.post("/flows/batch", status_code=status.HTTP_202_ACCEPTED, response_model=GenericResponse)
 async def ingest_gateway_batch(
     flows: List[FlowBase],
     _rate_limited: bool = Depends(gateway_flow_rate_limit),

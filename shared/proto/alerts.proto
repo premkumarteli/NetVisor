@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package netvisor.alert;
+
+import "common.proto";
+
+message ThreatFinding {
+    string engine = 1;
+    string finding_type = 2;
+    string severity = 3;
+    float confidence = 4;
+    repeated string evidence = 5;
+    netvisor.common.Timestamp timestamp = 6;
+    string target_ip = 7;
+    map<string, string> details = 8;
+}
+
+message IncidentReport {
+    string incident_id = 1;
+    string organization_id = 2;
+    string primary_ip = 3;
+    string severity = 4;
+    float cumulative_risk_score = 5;
+    repeated ThreatFinding findings = 6;
+    netvisor.common.Timestamp first_seen = 7;
+    netvisor.common.Timestamp last_seen = 8;
+    repeated string mitre_tactics = 9;
+}

@@ -90,12 +90,15 @@ class SystemService:
         self._backup_retention_cache_ts = 0.0
         self._backup_retention_cache_days = None
 
-    def _table_count(self, cursor, table_name: str) -> int:
-        cursor.execute(f"SELECT COUNT(*) AS count FROM {table_name}")
+    def _table_count(self, cursor, table_name: str, organization_id: Optional[str] = None) -> int:
+        if organization_id:
+            cursor.execute(f"SELECT COUNT(*) AS count FROM {table_name} WHERE organization_id = %s", (organization_id,))
+        else:
+            cursor.execute(f"SELECT COUNT(*) AS count FROM {table_name}")
         row = cursor.fetchone() or {}
         return int(row.get("count") or 0)
 
-    def _export_table_to_csv(self, db_conn, table_name: str, backup_dir: Path) -> int:
+    def _export_table_to_csv(self, db_conn, table_name: str, backup_dir: Path, organization_id: Optional[str] = None) -> int:
         cursor = db_conn.cursor(dictionary=True)
         try:
             # Query schema first to get column names safely
@@ -109,7 +112,10 @@ class SystemService:
             order_clause = " ORDER BY id" if "id" in columns else ""
 
             # Stream query with deterministic ordering
-            cursor.execute(f"SELECT * FROM {table_name}{order_clause}")
+            if organization_id:
+                cursor.execute(f"SELECT * FROM {table_name} WHERE organization_id = %s{order_clause}", (organization_id,))
+            else:
+                cursor.execute(f"SELECT * FROM {table_name}{order_clause}")
             
             csv_path = backup_dir / f"{table_name}.csv"
             total_exported = 0
@@ -133,7 +139,7 @@ class SystemService:
         finally:
             cursor.close()
 
-    def backup_runtime_data(self, db_conn, reason: str = "manual") -> dict:
+    def backup_runtime_data(self, db_conn, reason: str = "manual", organization_id: Optional[str] = None) -> dict:
         summary_cursor = db_conn.cursor(dictionary=True)
         try:
             table_counts = {}
@@ -141,7 +147,7 @@ class SystemService:
             for table_name in self.OPERATIONAL_TABLES:
                 if not self._table_exists(summary_cursor, table_name):
                     continue
-                row_count = self._table_count(summary_cursor, table_name)
+                row_count = self._table_count(summary_cursor, table_name, organization_id)
                 if row_count > 0:
                     table_counts[table_name] = row_count
                     total_rows += row_count
@@ -164,7 +170,7 @@ class SystemService:
 
         exported_tables = {}
         for table_name in table_counts:
-            exported_rows = self._export_table_to_csv(db_conn, table_name, backup_dir)
+            exported_rows = self._export_table_to_csv(db_conn, table_name, backup_dir, organization_id)
             if exported_rows:
                 exported_tables[table_name] = exported_rows
 
@@ -390,7 +396,7 @@ class SystemService:
             "errors": errors,
         }
 
-    def clear_runtime_data(self, db_conn) -> dict:
+    def clear_runtime_data(self, db_conn, organization_id: Optional[str] = None) -> dict:
         cursor = db_conn.cursor(dictionary=True)
         auto_increment_tables = {"flow_logs", "alerts", "devices", "device_ip_history", "device_aliases", "web_events", "audit_logs"}
         try:
@@ -398,15 +404,19 @@ class SystemService:
             for table_name in self.OPERATIONAL_TABLES:
                 if not self._table_exists(cursor, table_name):
                     continue
-                row_count = self._table_count(cursor, table_name)
+                row_count = self._table_count(cursor, table_name, organization_id)
                 if row_count == 0:
                     continue
-                cursor.execute(f"DELETE FROM {table_name}")
+                if organization_id:
+                    cursor.execute(f"DELETE FROM {table_name} WHERE organization_id = %s", (organization_id,))
+                else:
+                    cursor.execute(f"DELETE FROM {table_name}")
                 cleared_counts[table_name] = row_count
-                if table_name in auto_increment_tables:
+                if not organization_id and table_name in auto_increment_tables:
                     cursor.execute(f"ALTER TABLE {table_name} AUTO_INCREMENT = 1")
             db_conn.commit()
-            self._clear_runtime_files()
+            if not organization_id:
+                self._clear_runtime_files()
             return cleared_counts
         except Exception:
             db_conn.rollback()
@@ -422,9 +432,9 @@ class SystemService:
             except OSError:
                 continue
 
-    def backup_and_reset_runtime_data(self, db_conn, reason: str = "manual") -> dict:
-        backup = self.backup_runtime_data(db_conn, reason=reason)
-        cleared = self.clear_runtime_data(db_conn)
+    def backup_and_reset_runtime_data(self, db_conn, reason: str = "manual", organization_id: Optional[str] = None) -> dict:
+        backup = self.backup_runtime_data(db_conn, reason=reason, organization_id=organization_id)
+        cleared = self.clear_runtime_data(db_conn, organization_id=organization_id)
         self._invalidate_backup_cache()
         return {
             "backup": backup,
@@ -630,13 +640,13 @@ class SystemService:
         organization_id: Optional[str] = None,
         ip_address: Optional[str] = None,
     ) -> dict:
-        result = self.backup_and_reset_runtime_data(db_conn, reason="manual_reset")
+        result = self.backup_and_reset_runtime_data(db_conn, reason="manual_reset", organization_id=organization_id)
         # Post-reset audit trail log entry
         self.log_action(
             db_conn,
             username=username,
             action="reset_operational_data",
-            details=f"Cleared runtime row(s). Backup saved to {result['backup']['backup_dir'] or 'backup dir'}.",
+            details=f"Cleared runtime row(s) for organization '{organization_id or 'global'}'. Backup saved to {result['backup']['backup_dir'] or 'backup dir'}.",
             organization_id=organization_id,
             ip_address=ip_address,
             resource="database",

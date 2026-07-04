@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .dpapi import DataProtector, WindowsCurrentUserProtector
+from .dpapi import DataProtector, DynamicProtector
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class ProtectedStateStore:
     ) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.protector = protector or WindowsCurrentUserProtector()
+        self.protector = protector or DynamicProtector()
         self.description = description
 
     def load(self, default: dict | None = None) -> dict:

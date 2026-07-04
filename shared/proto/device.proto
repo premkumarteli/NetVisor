@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package netvisor.device;
+
+import "common.proto";
+
+message DiscoveredDevice {
+    string ip = 1;
+    string mac = 2;
+    string hostname = 3;
+    string vendor = 4;
+    string device_type = 5;
+    string os_family = 6;
+    bool is_online = 7;
+    netvisor.common.Timestamp first_seen = 8;
+    netvisor.common.Timestamp last_seen = 9;
+}
+
+message DeviceBatch {
+    netvisor.common.ClientIdentity sender = 1;
+    repeated DiscoveredDevice devices = 2;
+    netvisor.common.Timestamp batch_timestamp = 3;
+}

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package netvisor.handshake;
+
+import "common.proto";
+
+message HandshakeRequest {
+    string agent_id = 1;
+    string protocol_version = 2;
+    repeated string supported_capabilities = 3;
+    netvisor.common.Timestamp timestamp = 4;
+    string machine_fingerprint = 5;
+}
+
+message HandshakeResponse {
+    string status = 1; // "SUCCESS", "REJECTED", "UPGRADE_REQUIRED"
+    string session_jwt = 2;
+    string negotiated_protocol_version = 3;
+    repeated string enabled_capabilities = 4;
+    map<string, string> feature_flags = 5;
+    string error_message = 6;
+    netvisor.common.Timestamp expires_at = 7;
+}

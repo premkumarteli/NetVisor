@@ -79,7 +79,18 @@ class EngineRegistry:
                 curr_context["_findings"] = all_findings
                 curr_context["_engine_results"] = engine_results_meta
 
+            import time
+            start_engine_time = time.perf_counter()
             result = engine.analyze(curr_context)
+            engine_duration = time.perf_counter() - start_engine_time
+            
+            try:
+                from app.middleware.prometheus_middleware import ENGINE_RUNTIME, DETECTIONS_PER_ENGINE
+                ENGINE_RUNTIME.labels(engine=name).observe(engine_duration)
+                if result.findings:
+                    DETECTIONS_PER_ENGINE.labels(engine=name).inc(len(result.findings))
+            except ImportError:
+                pass
 
             # Accumulate findings
             all_findings.extend(result.findings)
@@ -102,6 +113,52 @@ class EngineRegistry:
     def metrics(self) -> Dict[str, dict]:
         """Return aggregated runtime metrics across all registered engines."""
         return {name: engine.metrics() for name, engine in self._engines.items()}
+
+    def analyze(self, sanitized_flow, timestamp) -> dict:
+        """Backward compatibility helper for single-flow threat & risk analysis."""
+        # Convert flow object to dict context
+        context = {
+            "src_ip": getattr(sanitized_flow, "src_ip", None),
+            "dst_ip": getattr(sanitized_flow, "dst_ip", None),
+            "src_port": getattr(sanitized_flow, "src_port", None),
+            "dst_port": getattr(sanitized_flow, "dst_port", None),
+            "protocol": getattr(sanitized_flow, "protocol", None),
+            "domain": getattr(sanitized_flow, "domain", None),
+            "sni": getattr(sanitized_flow, "sni", None),
+            "src_mac": getattr(sanitized_flow, "src_mac", None),
+            "dst_mac": getattr(sanitized_flow, "dst_mac", None),
+            "packet_count": getattr(sanitized_flow, "packet_count", 0),
+            "byte_count": getattr(sanitized_flow, "byte_count", 0),
+            "duration": getattr(sanitized_flow, "duration", 0.0),
+            "last_seen": timestamp,
+            "internal_device_ip": getattr(sanitized_flow, "internal_device_ip", None),
+            "external_ip": getattr(sanitized_flow, "external_ip", None),
+        }
+        
+        # Run all registered engines
+        result = self.analyze_selective(context)
+        
+        # Extract risk_summary details to build the legacy report
+        score = 0
+        severity = "INFO"
+        reasons = []
+        
+        for finding in result.findings:
+            if finding.engine == "risk" and finding.finding_type == "risk_summary":
+                score = finding.details.get("risk_score", 0)
+                severity = finding.severity.name if hasattr(finding.severity, "name") else str(finding.severity)
+                # Parse reasons from evidence list
+                reasons = [finding.evidence[0]] if finding.evidence else ["Risk evaluated"]
+                break
+                
+        return {
+            "score": score,
+            "severity": severity,
+            "reasons": reasons,
+            "breakdown": {
+                "findings": [self._serialize_finding(f) for f in result.findings if f.finding_type != "risk_summary"]
+            }
+        }
 
     def _serialize_finding(self, finding: Finding) -> dict:
         """Convert a Finding contract into a standard dictionary representation."""

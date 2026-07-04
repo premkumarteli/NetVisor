@@ -218,8 +218,45 @@ services:
     networks:
       - netvisor
 
+  # Redis cache/message stream
+  redis:
+    image: redis:7-alpine
+    container_name: netvisor-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netvisor
+
+  # ClickHouse analytical database
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    container_name: netvisor-clickhouse
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - netvisor
+
 volumes:
   db_data:
+  redis_data:
+  clickhouse_data:
 
 networks:
   netvisor:

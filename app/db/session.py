@@ -141,6 +141,7 @@ REQUIRED_RUNTIME_TABLES = (
     "sessions",
     "system_settings",
     "audit_logs",
+    "device_risks",
 )
 
 REQUIRED_RUNTIME_COLUMNS = {
@@ -234,6 +235,13 @@ REQUIRED_RUNTIME_COLUMNS = {
         "threat_msg",
         "confidence_score",
     },
+    "device_risks": {
+        "device_id",
+        "organization_id",
+        "current_score",
+        "risk_level",
+        "reasons",
+    },
 }
 
 REQUIRED_RUNTIME_INDEXES = {
@@ -308,6 +316,10 @@ REQUIRED_RUNTIME_INDEXES = {
         "idx_audit_logs_org",
         "idx_audit_logs_created_at",
     },
+    "device_risks": {
+        "PRIMARY",
+        "idx_org_risk_severity",
+    },
 }
 
 
@@ -366,6 +378,22 @@ def get_db():
 
 def get_db_connection():
     """Return a healthy MySQL connection, preferring the pool when available."""
+    # Check request-scoped chaos variables thread-safely
+    import time
+    try:
+        from app.middleware.chaos_context import active_chaos_db_down, active_chaos_db_latency
+        if active_chaos_db_down.get():
+            logger.warning("Chaos: Simulating Database Connection Failure (DB Down) via ContextVar")
+            raise mysql.connector.errors.OperationalError(
+                2002, "Chaos: MySQL server down (simulated)"
+            )
+        latency = active_chaos_db_latency.get()
+        if latency > 0:
+            logger.warning(f"Chaos: Injecting {latency}s Database Latency via ContextVar")
+            time.sleep(latency)
+    except ImportError:
+        pass
+
     pool = _initialize_pool()
 
     if pool is not None:

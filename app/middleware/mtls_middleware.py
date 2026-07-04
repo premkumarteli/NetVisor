@@ -40,18 +40,44 @@ class MTLSMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         mode = str(getattr(settings, "MTLS_MODE", "disabled")).strip().lower()
-        if mode == "disabled":
-            return await call_next(request)
-
         path = request.url.path
 
         # Only apply to agent/gateway API routes
         is_protected = any(path.startswith(prefix) for prefix in _MTLS_PROTECTED_PREFIXES)
+        is_exempt = any(path.endswith(suffix) for suffix in _MTLS_EXEMPT_SUFFIXES)
+
+        # Validate API Version / Protocol Version compatibility (Milestone 0)
+        if is_protected and not is_exempt:
+            protocol_version = request.headers.get("X-Protocol-Version", "").strip()
+            if not protocol_version:
+                logger.warning("Protocol version missing on protected path: %s", path)
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "X-Protocol-Version header is required."},
+                )
+            
+            # SemVer compatibility check (Major version mismatch check)
+            try:
+                major_version = int(protocol_version.split(".")[0])
+                if major_version != 1:
+                    logger.warning("Protocol version mismatch: client=%s server=1.x", protocol_version)
+                    return JSONResponse(
+                        status_code=460, # 460 is our custom capability mismatch status code
+                        content={"detail": f"Protocol version {protocol_version} is incompatible. Server requires version 1.x."},
+                    )
+            except (ValueError, IndexError):
+                logger.warning("Invalid protocol version format: %s", protocol_version)
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Invalid X-Protocol-Version format. Expected SemVer (e.g., 1.0.0)."},
+                )
+
+        if mode == "disabled":
+            return await call_next(request)
+
         if not is_protected:
             return await call_next(request)
 
-        # Exempt bootstrap and certificate enrollment endpoints
-        is_exempt = any(path.endswith(suffix) for suffix in _MTLS_EXEMPT_SUFFIXES)
         if is_exempt:
             return await call_next(request)
 

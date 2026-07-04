@@ -59,6 +59,7 @@ async def approve_enrollment_request(
                 request_id=request_id,
                 reviewed_by=str(current_user.get("username") or "system"),
                 review_reason=payload.review_reason,
+                organization_id=org_id,
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -93,6 +94,7 @@ async def reject_enrollment_request(
                 request_id=request_id,
                 reviewed_by=str(current_user.get("username") or "system"),
                 review_reason=payload.review_reason,
+                organization_id=org_id,
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -121,7 +123,7 @@ async def revoke_agent_enrollment(
     conn = get_db_connection()
     try:
         org_id = current_user.get("organization_id")
-        request_row = agent_enrollment_service.get_request_by_agent_id(conn, agent_id=agent_id)
+        request_row = agent_enrollment_service.get_request_by_agent_id(conn, agent_id=agent_id, organization_id=org_id)
         if not request_row:
             raise HTTPException(status_code=404, detail="Enrollment request not found")
 
@@ -132,6 +134,7 @@ async def revoke_agent_enrollment(
                 agent_id=agent_id,
                 reviewed_by=str(current_user.get("username") or "system"),
                 review_reason=payload.review_reason,
+                organization_id=org_id,
             )
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc

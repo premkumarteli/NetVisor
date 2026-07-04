@@ -71,6 +71,18 @@ class Settings(BaseSettings):
     DB_USER: str = Field(default="root", validation_alias="NETVISOR_DB_USER")
     DB_PASSWORD: str = Field(default="", validation_alias="NETVISOR_DB_PASSWORD")
     DB_NAME: str = Field(default="network_security", validation_alias="NETVISOR_DB_NAME")
+    
+    # Redis Configurations
+    REDIS_HOST: str = Field(default="localhost", validation_alias="NETVISOR_REDIS_HOST")
+    REDIS_PORT: int = Field(default=6379, validation_alias="NETVISOR_REDIS_PORT")
+    
+    # ClickHouse Configurations
+    CLICKHOUSE_HOST: str = Field(default="localhost", validation_alias="NETVISOR_CLICKHOUSE_HOST")
+    CLICKHOUSE_PORT: int = Field(default=8123, validation_alias="NETVISOR_CLICKHOUSE_PORT")
+    CLICKHOUSE_USER: str = Field(default="default", validation_alias="NETVISOR_CLICKHOUSE_USER")
+    CLICKHOUSE_PASSWORD: str = Field(default="", validation_alias="NETVISOR_CLICKHOUSE_PASSWORD")
+    CLICKHOUSE_DB: str = Field(default="default", validation_alias="NETVISOR_CLICKHOUSE_DB")
+    
     SINGLE_ORG_MODE: bool = Field(default=True, validation_alias="NETVISOR_SINGLE_ORG_MODE")
     DEFAULT_ORGANIZATION_ID: Optional[str] = Field(default=None, validation_alias="NETVISOR_DEFAULT_ORGANIZATION_ID")
 

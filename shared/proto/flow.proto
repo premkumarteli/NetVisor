@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package netvisor.flow;
+
+import "common.proto";
+
+message FlowObservation {
+    string src_ip = 1;
+    string dst_ip = 2;
+    int32 src_port = 3;
+    int32 dst_port = 4;
+    string protocol = 5;
+    int64 packet_count = 6;
+    int64 byte_count = 7;
+    double duration = 8;
+    string domain = 9;
+    string sni = 10;
+    string src_mac = 11;
+    string dst_mac = 12;
+    netvisor.common.Timestamp start_time = 13;
+    netvisor.common.Timestamp last_seen = 14;
+    repeated string analysis_signals = 15;
+}
+
+message FlowBatch {
+    netvisor.common.ClientIdentity sender = 1;
+    repeated FlowObservation flows = 2;
+    netvisor.common.Timestamp batch_timestamp = 3;
+    string batch_id = 4;
+}

@@ -1,0 +1,32 @@
+CREATE TABLE IF NOT EXISTS flow_logs (
+    organization_id String,
+    src_ip String,
+    dst_ip String,
+    src_port UInt32,
+    dst_port UInt32,
+    protocol String,
+    start_time DateTime,
+    last_seen DateTime,
+    packet_count UInt32,
+    byte_count UInt64,
+    duration Float32,
+    average_packet_size Float32,
+    domain String,
+    sni String,
+    src_mac String,
+    dst_mac String,
+    network_scope String,
+    flow_direction String,
+    internal_device_ip String,
+    external_endpoint_ip String,
+    session_id String,
+    application String,
+    agent_id String,
+    analysis_source String,
+    analysis_confidence Float32,
+    analysis_signals_json String,
+    ingest_hash String,
+    created_at DateTime DEFAULT now()
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(last_seen)
+ORDER BY (organization_id, last_seen, src_ip);

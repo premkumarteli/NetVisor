@@ -26,6 +26,33 @@ def _resolve_request_token(request: Request) -> str:
     )
 
 
+class SecurityContext(dict):
+    def __init__(self, user_id: str, organization_id: str, role: str, permissions: list[str] | None = None, **kwargs):
+        super().__init__(
+            user_id=user_id,
+            organization_id=organization_id,
+            role=role,
+            permissions=permissions or [],
+            **kwargs
+        )
+
+    @property
+    def user_id(self) -> str:
+        return self["user_id"]
+
+    @property
+    def organization_id(self) -> str:
+        return self["organization_id"]
+
+    @property
+    def role(self) -> str:
+        return self["role"]
+
+    @property
+    def permissions(self) -> list[str]:
+        return self["permissions"]
+
+
 def get_current_user(
     request: Request,
 ):
@@ -68,7 +95,13 @@ def get_current_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is locked",
             )
-        return user
+        return SecurityContext(
+            user_id=str(user.get("id")),
+            organization_id=str(user.get("organization_id")),
+            role=str(user.get("role")),
+            username=str(user.get("username")),
+            email=str(user.get("email")),
+        )
     except (JWTError, ValidationError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

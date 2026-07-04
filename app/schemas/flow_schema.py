@@ -29,6 +29,7 @@ class FlowBase(BaseModel):
     average_packet_size: float
     source_type: Literal["agent", "gateway"] = "agent"
     metadata_only: bool = False
+    event_type: Optional[str] = "FLOW_UPDATE"
 
     @field_validator("protocol")
     @classmethod

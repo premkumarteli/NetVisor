@@ -14,6 +14,7 @@ from ..services.device_service import device_service
 from ..services.managed_device_service import managed_device_service
 from ..services.metrics_service import metrics_service
 from ..services.web_inspection_service import web_inspection_service
+from ..schemas.user_schema import GenericResponse
 from .dpi import dpi_event_emitter
 from shared.security import REENROLL_REQUEST_HEADER
 
@@ -802,4 +803,63 @@ async def renew_certificate(request: Request):
         raise HTTPException(status_code=500, detail="Certificate renewal failed")
     finally:
         conn.close()
+
+
+@router.post("/batch", status_code=status.HTTP_202_ACCEPTED, response_model=GenericResponse)
+async def ingest_collect_batch(
+    payload: dict = Body(...),
+    _rate_limited: bool = Depends(agent_control_rate_limit),
+    auth_context: dict = Depends(validate_agent_key),
+):
+    """
+    Consolidated ingestion endpoint. Accepts telemetry batch, authenticates,
+    and forwards to Event Bus asynchronously.
+    """
+    from ..schemas.flow_schema import FlowBase
+    from ..schemas.user_schema import GenericResponse
+    from ..services.event_dispatcher import flow_ingestion_queue
+
+    authenticated_agent_id = str(auth_context.get("agent_id") or "").strip()
+    if not authenticated_agent_id:
+        raise HTTPException(status_code=400, detail="agent_id is required in authentication")
+
+    # Extract organization ID
+    conn = get_db_connection()
+    cursor = None
+    try:
+        cursor = conn.cursor(dictionary=True)
+        org_id = _resolve_org_id(cursor, payload.get("organization_id"))
+    finally:
+        if cursor:
+            cursor.close()
+        conn.close()
+
+    # Basic schema check (validate flows)
+    flows_raw = payload.get("flows", [])
+    flows_validated = []
+    for flow in flows_raw:
+        try:
+            flow_validated = FlowBase(**flow)
+            flows_validated.append(flow_validated.model_dump(mode="json"))
+        except Exception as e:
+            logger.warning("Invalid flow payload in consolidated batch: %s", e)
+            raise HTTPException(status_code=400, detail=f"Flow validation failed: {e}")
+
+    # Enqueue the validated flows
+    if flows_validated:
+        try:
+            await flow_ingestion_queue.put({
+                "flows": flows_validated,
+                "org_id": org_id,
+                "agent_id": authenticated_agent_id,
+                "source_type": "agent",
+            })
+        except Exception:
+            raise HTTPException(status_code=503, detail="Ingestion queue is full")
+
+    return _collect_response(
+        auth_context=auth_context,
+        message=f"Queued {len(flows_validated)} flows",
+        count=len(flows_validated),
+    )
 

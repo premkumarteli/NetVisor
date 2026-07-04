@@ -272,7 +272,7 @@ class AgentApiClient:
         timeout: float = 10.0,
     ) -> requests.Response:
         body_bytes = b""
-        headers: dict[str, str] = {}
+        headers: dict[str, str] = {"X-Protocol-Version": "1.0.0"}
         if json_body is not None:
             body_bytes = json.dumps(json_body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"

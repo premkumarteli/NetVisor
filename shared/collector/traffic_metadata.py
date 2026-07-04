@@ -218,7 +218,23 @@ def _extract_tls_sni(payload: bytes) -> str | None:
 
 
 def _extract_http_host(payload: bytes) -> str | None:
-    if not payload:
+    if not payload or len(payload) < 4:
+        return None
+
+    # Performance optimization: Quick check if this payload starts with an HTTP method
+    # to avoid expensive decode() and splitlines() on encrypted TLS stream payloads.
+    prefix = payload[:8]
+    if not (
+        prefix.startswith(b"GET ")
+        or prefix.startswith(b"POST ")
+        or prefix.startswith(b"PUT ")
+        or prefix.startswith(b"PATCH ")
+        or prefix.startswith(b"DELETE ")
+        or prefix.startswith(b"HEAD ")
+        or prefix.startswith(b"OPTIONS ")
+        or prefix.startswith(b"CONNECT ")
+        or prefix.startswith(b"HTTP/")
+    ):
         return None
 
     try:
@@ -247,6 +263,7 @@ def _extract_http_host(payload: bytes) -> str | None:
             return _normalize_domain(header_value)
 
     return None
+
 
 
 def extract_flow_hints(packet, domain_cache: DomainHintCache | None = None) -> dict[str, str | None]:
