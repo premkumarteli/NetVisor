@@ -834,27 +834,25 @@ async def ingest_collect_batch(
             cursor.close()
         conn.close()
 
-    # Basic schema check (validate flows)
+    # Basic schema check (validate flows) and enforce tenant constraints
     flows_raw = payload.get("flows", [])
     flows_validated = []
     for flow in flows_raw:
         try:
-            flow_validated = FlowBase(**flow)
-            flows_validated.append(flow_validated.model_dump(mode="json"))
+            flow_data = dict(flow)
+            flow_data["agent_id"] = authenticated_agent_id
+            flow_data["organization_id"] = org_id
+            flow_validated = FlowBase(**flow_data)
+            flows_validated.append(flow_validated)
         except Exception as e:
             logger.warning("Invalid flow payload in consolidated batch: %s", e)
             raise HTTPException(status_code=400, detail=f"Flow validation failed: {e}")
 
-    # Enqueue the validated flows
+    # Buffer the validated flows through the main pipeline
     if flows_validated:
-        try:
-            await flow_ingestion_queue.put({
-                "flows": flows_validated,
-                "org_id": org_id,
-                "agent_id": authenticated_agent_id,
-                "source_type": "agent",
-            })
-        except Exception:
+        from ..services.flow_service import flow_service
+        success = await flow_service.buffer_flows(flows_validated)
+        if not success:
             raise HTTPException(status_code=503, detail="Ingestion queue is full")
 
     return _collect_response(

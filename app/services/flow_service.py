@@ -1130,7 +1130,7 @@ class FlowService:
                             for msg_id, payload in s_msgs:
                                 try:
                                     flows_json = payload.get("flows")
-                                    flows = json.loads(flows_json)
+                                    flows = list(FLOW_BATCH_ADAPTER.validate_python(json.loads(flows_json or "[]")))
                                     self._set_metric("last_batch_size", len(flows))
                                     
                                     persist_started_at = time.perf_counter()
@@ -1511,6 +1511,28 @@ class FlowService:
                         json.dumps(breakdown),
                     ),
                 )
+                alert_id = getattr(cursor, "lastrowid", None)
+                
+                # Update in-memory live telemetry store
+                try:
+                    from app.services.live_telemetry_store import live_telemetry_store
+                    alert_data = {
+                        "id": alert_id or f"alert-{int(time.time() * 1000)}",
+                        "severity": report["severity"],
+                        "score": report["score"],
+                        "src_ip": sanitized.internal_device_ip,
+                        "time": sanitized.last_seen.isoformat() if hasattr(sanitized.last_seen, "isoformat") else str(sanitized.last_seen),
+                        "message": breakdown.get("message") or ", ".join(report["reasons"]) or "Suspicious activity detected"
+                    }
+                    live_telemetry_store.record_alert(org_id, alert_data)
+                except Exception as e:
+                    logger.warning("Could not record alert in live_telemetry_store: %s", e)
+
+                try:
+                    from app.middleware.prometheus_middleware import ALERTS_GENERATED
+                    ALERTS_GENERATED.labels(severity=report["severity"]).inc()
+                except Exception:
+                    pass
  
             # Collect row details for ClickHouse bulk insertion (Milestone 2 Dual-Write)
             ch_rows.append((

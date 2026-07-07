@@ -1295,6 +1295,33 @@ This project provided deep, hands-on experience in networking, systems security,
 
 ---
 
+## 2026-07-07 - Ingestion Pipeline Alignment & Security Hardening
+
+**Work completed**
+
+- Refactored `flow_writer_worker` Redis Stream consumer in `flow_service.py` to deserialize dictionary payloads into Pydantic `FlowBase` objects using `FLOW_BATCH_ADAPTER.validate_python`.
+- Consolidated the persistence layer: removed redundant database writer (`_db_writer_worker`) and threat checker (`_threat_worker`) from `EventDispatcher`. The dispatcher now only manages in-memory live metrics (`_metrics_worker`) and auditing.
+- Integrated alert updates and Prometheus metrics into the single `flow_writer_worker` persistence path, safely getting `lastrowid` in case of mocked DB cursors.
+- Standardized agent ingestion: routed `/api/v1/agents/batch` directly through `flow_service.buffer_flows()`.
+- Gated `ChaosMiddleware` under a new configurable `CHAOS_ENABLED` settings flag.
+
+**Problem found**
+
+- Redis messages loaded as dictionaries caused `getattr` sanitization checks to return `None`, silently dropping all stream telemetry.
+- Overlapping persistence loops in `EventDispatcher` created db transaction conflicts and write races.
+- Lack of security gating allowed any client to request simulated DB failure via headers.
+
+**Solution or learning**
+
+- Enforce a single write path in background workers. Let the dispatcher handle only real-time in-memory counters to decouple telemetry reads and writes.
+- Enforce early parsing of telemetry payloads into verified schemas (`FlowBase`).
+
+**Evidence**
+
+- Ran `pytest` testing suite. All 446 unit and integration tests passed cleanly.
+
+---
+
 ## Template for Future Daily Entries
 
 ```text

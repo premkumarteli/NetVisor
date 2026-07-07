@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "NetVisor"
     VERSION: str = "2.0.0"
     API_V1_STR: str = "/api/v1"
+    CHAOS_ENABLED: bool = Field(default=False, validation_alias="NETVISOR_CHAOS_ENABLED")
 
     SECRET_KEY: str = Field(default="", validation_alias="NETVISOR_SECRET_KEY")
     AGENT_API_KEY: str = Field(default="", validation_alias="AGENT_API_KEY")

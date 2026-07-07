@@ -17,7 +17,7 @@ def get_redis_pool() -> redis.ConnectionPool:
             decode_responses=True,  # Decode bytes to strings automatically
             max_connections=50,
             socket_connect_timeout=0.5,
-            socket_timeout=0.5,
+            socket_timeout=5.0,
         )
     return _redis_pool
 

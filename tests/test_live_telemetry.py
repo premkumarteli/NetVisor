@@ -72,13 +72,9 @@ async def test_event_dispatcher_queuing(monkeypatch):
     
     # Mock downstream workers to verify they are called
     metrics_mock = AsyncMock()
-    threat_mock = AsyncMock()
-    db_writer_mock = AsyncMock()
     audit_mock = AsyncMock()
     
     monkeypatch.setattr(dispatcher, "_metrics_worker", metrics_mock)
-    monkeypatch.setattr(dispatcher, "_threat_worker", threat_mock)
-    monkeypatch.setattr(dispatcher, "_db_writer_worker", db_writer_mock)
     monkeypatch.setattr(dispatcher, "_audit_worker", audit_mock)
     
     # Start dispatcher loop
@@ -115,8 +111,6 @@ async def test_event_dispatcher_queuing(monkeypatch):
     
     # Verify workers were called with the batch
     metrics_mock.assert_called_once_with(batch)
-    threat_mock.assert_called_once_with(batch)
-    db_writer_mock.assert_called_once_with(batch)
     audit_mock.assert_called_once_with(batch)
     
     dispatcher.stop()

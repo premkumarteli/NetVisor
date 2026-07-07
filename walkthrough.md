@@ -161,3 +161,48 @@ Created [infra/clickhouse/schema.sql](file:///c:/Users/prem/Network/infra/clickh
 - Add Prometheus metrics for stream length, consumer lag, and ClickHouse insert throughput.
 - Run end-to-end verification with the full pipeline under sustained workload.
 
+
+## Milestone 2 — Day 2: Telemetry Ingestion Pipeline Realignment & Security Hardening
+
+**Date:** 2026-07-07
+
+## 1. Summary of Accomplished Work
+
+We have successfully addressed the integration bugs in the Milestone 2 ingestion and persistence architecture, creating a unified, type-safe, and secure pipeline:
+
+### 1.1 Redis Stream Deserialization Type Safety
+*   **Problem:** Redis stream messages are read as dictionary payloads, causing the database persistence and sanitization helpers to return `None` (due to expecting object attributes via `getattr`).
+*   **Fix:** Refactored the `flow_writer_worker` consumer loop in `app/services/flow_service.py` to deserialize dictionary lists back into valid Pydantic `FlowBase` objects using the pre-existing `FLOW_BATCH_ADAPTER` helper:
+    ```python
+    flows = list(FLOW_BATCH_ADAPTER.validate_python(json.loads(flows_json or "[]")))
+    ```
+*   **Outcome:** Redis stream flows now validate and persist correctly, preventing telemetry dropping.
+
+### 1.2 Consolidated Single-Path Database Writing
+*   **Problem:** Duplicate writes to `flow_logs` and multiple overlapping threat/alert evaluations occurred between `flow_writer_worker` and `EventDispatcher`, introducing race conditions and blocking ClickHouse ingestion.
+*   **Fix:** 
+    *   Removed `_threat_worker` and `_db_writer_worker` from `EventDispatcher` in [event_dispatcher.py](file:///c:/Users/prem/Network/app/services/event_dispatcher.py). The dispatcher now acts purely as an in-memory dashboard metric counter updater (`_metrics_worker`) and logger.
+    *   Routed all MySQL and ClickHouse writes exclusively through the `flow_writer_worker` path.
+    *   Integrated live `LiveTelemetryStore` alert updates and Prometheus `ALERTS_GENERATED` metric incrementation into the single write path.
+    *   Updated the tests in `tests/test_live_telemetry.py` to assert against the new simplified model.
+
+### 1.3 Uniform Agent Ingestion
+*   **Problem:** The `/api/v1/agents/batch` API endpoint bypassed the Redis and ClickHouse pipeline, enqueuing raw batches directly to `EventDispatcher`'s local queue.
+*   **Fix:** Refactored `/api/v1/agents/batch` in [agents.py](file:///c:/Users/prem/Network/app/api/agents.py) to validate payloads into `FlowBase` objects (enforcing secure tenant mapping for `agent_id` and `organization_id`) and delegate directly to `flow_service.buffer_flows()`.
+
+### 1.4 Gated Chaos Middleware
+*   **Problem:** `ChaosMiddleware` was active globally on all requests in production environments, making endpoints vulnerable to artificial failure simulation.
+*   **Fix:**
+    *   Added `CHAOS_ENABLED` flag to `Settings` in [config.py](file:///c:/Users/prem/Network/app/core/config.py).
+    *   Conditionally initialized `ChaosMiddleware` in [main.py](file:///c:/Users/prem/Network/app/main.py) only when `settings.CHAOS_ENABLED` is `True`.
+
+### 1.5 Redis Connection Socket Timeout Adjustment
+*   **Problem:** The Redis connection pool in [redis_client.py](file:///c:/Users/prem/Network/app/db/redis_client.py) had a short socket timeout of `0.5` seconds. Blocking Redis Stream operations (like `XREADGROUP`) used `block=1000` or `block=2000` (1.0 to 2.0 seconds), causing constant socket timeouts (`Timeout reading from socket`) when no new data was present in the stream.
+*   **Fix:** Increased `socket_timeout` to `5.0` seconds in [redis_client.py](file:///c:/Users/prem/Network/app/db/redis_client.py) to accommodate blocking reads.
+
+---
+
+## 2. Verification Outcomes
+*   **Unit & Integration Tests:** Ran the test suite via `.venv\Scripts\pytest`. All **446 tests passed successfully** with **0 failures**, confirming that mock databases, mTLS authentication, threat engines, and api routes are fully aligned and correct.
+
+

@@ -178,7 +178,8 @@ app.add_middleware(MTLSMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(PrometheusMiddleware)
-app.add_middleware(ChaosMiddleware)
+if settings.CHAOS_ENABLED:
+    app.add_middleware(ChaosMiddleware)
 
 # CORS Middleware
 app.add_middleware(
