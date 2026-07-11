@@ -195,6 +195,60 @@ def redact_url_secrets(url: str) -> str:
         return url
 
 
+def sanitize_string_value(val: str) -> str:
+    if not val:
+        return ""
+    # Regex for Fernet tokens
+    fernet_pattern = r"\bgAAAAA[A-Za-z0-9_-]{30,}\b"
+    # Regex for JWT tokens
+    jwt_pattern = r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"
+    
+    val = re.sub(fernet_pattern, "[REDACTED_FERNET_TOKEN]", val)
+    val = re.sub(jwt_pattern, "[REDACTED_JWT_TOKEN]", val)
+    
+    # Generic credential patterns in key-value format (e.g. token=xyz)
+    sensitive_kv_pattern = r"(?i)\b(token|auth|key|password|secret|access_token|api_key|sid|ticket)\s*[:=]\s*\"?[A-Za-z0-9_-]{6,}\b"
+    val = re.sub(sensitive_kv_pattern, r"\1=[REDACTED]", val)
+    
+    return val
+
+
+def sanitize_snippet(text: str) -> str:
+    if not text:
+        return ""
+        
+    sensitive_keys = {
+        "token", "auth", "key", "signature", "code", "state", "session",
+        "password", "secret", "access_token", "api_key", "sid", "ticket",
+        "id_token", "client_secret", "jwt", "authorization", "cookie"
+    }
+
+    try:
+        data = json.loads(text)
+        
+        def sanitize_node(node):
+            if isinstance(node, dict):
+                sanitized = {}
+                for k, v in node.items():
+                    k_lower = k.lower()
+                    if any(s in k_lower for s in sensitive_keys):
+                        sanitized[k] = "[REDACTED]"
+                    else:
+                        sanitized[k] = sanitize_node(v)
+                return sanitized
+            elif isinstance(node, list):
+                return [sanitize_node(item) for item in node]
+            elif isinstance(node, str):
+                return sanitize_string_value(node)
+            else:
+                return node
+                
+        sanitized_data = sanitize_node(data)
+        return json.dumps(sanitized_data, ensure_ascii=False)
+    except Exception:
+        return sanitize_string_value(text)
+
+
 def build_event(flow) -> dict | None:
     request = getattr(flow, "request", None)
     response = getattr(flow, "response", None)
@@ -226,7 +280,8 @@ def build_event(flow) -> dict | None:
     page_title = None
     if is_textual:
         body = raw_content[:SNIPPET_MAX_BYTES]
-        snippet = body.decode("utf-8", errors="replace")
+        decoded = body.decode("utf-8", errors="replace")
+        snippet = sanitize_snippet(decoded)
         page_title = extract_page_title(raw_content[:32768])
 
     raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""

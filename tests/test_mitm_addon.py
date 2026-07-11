@@ -105,3 +105,21 @@ def test_extract_site_details_builds_github_issue_identifier():
     assert content_id == "openai/openai-python#123"
     assert search_query is None
     assert service_name == "GitHub"
+
+
+def test_sanitize_snippet():
+    # Test JSON redaction of sensitive keys
+    payload_json = '{"persona": "chatgpt-noauth", "token": "gAAAAABqUg1J_dvkZltKS6vLXc-_gWIHGjjKf8tpnujDIdiLZTzBOpPCUCBysP8RxsWfWlS3Irci20AyJkT_Zl-2FgRzogfJohM8o83jcanwgyBdpSdHwg7KE3NVzLLkGHTrBdf_UczNE7ftIAdXfOdIh9vjdYx5FA8Ue8uKcoU496a2BovipnoxVImKXy4B-CuH_eL90DneSEfn7n2GPRvncc0"}'
+    sanitized = mitm_addon.sanitize_snippet(payload_json)
+    import json
+    parsed = json.loads(sanitized)
+    assert parsed["persona"] == "chatgpt-noauth"
+    assert parsed["token"] == "[REDACTED]"
+
+    # Test raw string Fernet token redaction
+    raw_fernet = "token is gAAAAABqUg1J_dvkZltKS6vLXc-_gWIHGjjKf8tpnujDIdiLZTzBOpPCUCBysP8RxsWfWlS3Irci20AyJkT_Zl-2FgRzogfJohM8o83jcanwgyBdpSdHwg7KE3NVzLLkGHTrBdf"
+    assert "[REDACTED_FERNET_TOKEN]" in mitm_addon.sanitize_snippet(raw_fernet)
+
+    # Test raw string JWT token redaction
+    raw_jwt = "bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    assert "[REDACTED_JWT_TOKEN]" in mitm_addon.sanitize_snippet(raw_jwt)
