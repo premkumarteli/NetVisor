@@ -62,7 +62,13 @@ def authenticate_socket_connection(environ: Mapping[str, object]) -> dict:
         raise SocketAuthenticationError("Authentication required.")
 
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[ALGORITHM],
+            issuer="netvisor-backend",
+            audience="netvisor-clients",
+        )
     except JWTError as exc:
         metrics_service.increment("socket_auth_failures_total", reason="invalid_token")
         raise SocketAuthenticationError("Invalid authentication token.") from exc

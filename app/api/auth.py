@@ -16,14 +16,8 @@ router = APIRouter()
 
 
 def _resolve_source_ip(request: Request) -> str:
-    forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip() if hasattr(request, "headers") else ""
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or "unknown"
-    real_ip = str(request.headers.get("X-Real-IP") or "").strip() if hasattr(request, "headers") else ""
-    if real_ip:
-        return real_ip
-    client = getattr(request, "client", None)
-    return client.host if client else "unknown"
+    from ..utils.network import resolve_source_ip
+    return resolve_source_ip(request)
 
 login_rate_limit = request_rate_limit(
     limit=settings.AUTH_LOGIN_RATE_LIMIT_PER_MINUTE,
@@ -263,7 +257,13 @@ async def logout(request: Request, response: Response):
         ip = _resolve_source_ip(request)
         if token:
             from jose import jwt
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            payload = jwt.decode(
+                token,
+                settings.SECRET_KEY,
+                algorithms=["HS256"],
+                issuer="netvisor-backend",
+                audience="netvisor-clients",
+            )
             user_id = payload.get("sub")
             username = payload.get("username") or "unknown"
             org_id = payload.get("organization_id")

@@ -77,16 +77,9 @@ def _collect_response(
 def _resolve_source_ip(request: Request) -> str | None:
     if request is None:
         return None
-    headers = getattr(request, "headers", None)
-    if headers:
-        forwarded_for = str(headers.get("X-Forwarded-For") or "").strip()
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip() or None
-        real_ip = str(headers.get("X-Real-IP") or "").strip()
-        if real_ip:
-            return real_ip
-    client = getattr(request, "client", None)
-    return client.host if client else None
+    from ..utils.network import resolve_source_ip
+    ip = resolve_source_ip(request)
+    return None if ip == "unknown" else ip
 
 
 async def validate_gateway_bootstrap_key(request: Request):

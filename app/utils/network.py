@@ -183,3 +183,30 @@ def is_unicast_mac(value: object) -> bool:
 
     first_octet = int(normalized.split(":")[0], 16)
     return (first_octet & 1) == 0
+
+
+def resolve_source_ip(request: Request) -> str:
+    """
+    Resolves the client IP address securely.
+    Only trusts X-Forwarded-For or X-Real-IP if the direct connection
+    is from a configured trusted proxy (NETVISOR_TRUSTED_PROXIES).
+    """
+    from fastapi import Request
+    from app.core.config import settings
+
+    client = getattr(request, "client", None)
+    socket_ip = str(client.host).strip() if client else "unknown"
+
+    trusted_proxies = {p.strip() for p in (settings.TRUSTED_PROXIES or "").split(",") if p.strip()}
+    if socket_ip in trusted_proxies:
+        forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
+        if forwarded_for:
+            # First IP in X-Forwarded-For is the original client
+            parts = [p.strip() for p in forwarded_for.split(",")]
+            if parts and parts[0]:
+                return parts[0]
+        real_ip = str(request.headers.get("X-Real-IP") or "").strip()
+        if real_ip:
+            return real_ip
+
+    return socket_ip

@@ -18,13 +18,9 @@ admin_mutation_rate_limit = request_rate_limit(
 
 
 def _resolve_source_ip(request: Request) -> str | None:
-    forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or None
-    real_ip = str(request.headers.get("X-Real-IP") or "").strip()
-    if real_ip:
-        return real_ip
-    return request.client.host if request.client else None
+    from ..utils.network import resolve_source_ip
+    ip = resolve_source_ip(request)
+    return None if ip == "unknown" else ip
 
 
 

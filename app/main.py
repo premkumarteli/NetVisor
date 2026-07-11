@@ -27,6 +27,7 @@ from .middleware.transport_security import TransportSecurityMiddleware
 from .middleware.mtls_middleware import MTLSMiddleware
 from .middleware.prometheus_middleware import PrometheusMiddleware, metrics_endpoint_handler
 from .middleware.chaos_middleware import ChaosMiddleware
+from .middleware.security_headers import SecurityHeadersMiddleware
 
 def _resolve_log_level() -> int:
     configured = str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO").upper()
@@ -49,6 +50,13 @@ def _allowed_origins() -> list[str]:
 
 def _validate_runtime_config() -> None:
     """Validate critical configuration settings on startup (Issue #11)."""
+    if settings.ENVIRONMENT == "production" and not settings.ALLOW_LAN_HTTP:
+        if not settings.AUTH_COOKIE_SECURE:
+            raise RuntimeError(
+                "NETVISOR_AUTH_COOKIE_SECURE must be enabled (True) in a production environment. "
+                "Set NETVISOR_ENVIRONMENT=development or enable NETVISOR_ALLOW_LAN_HTTP=true for lab testing."
+            )
+
     normalized_same_site = str(settings.AUTH_COOKIE_SAMESITE or "lax").lower()
     if normalized_same_site not in {"lax", "strict", "none"}:
         raise RuntimeError("NETVISOR_AUTH_COOKIE_SAMESITE must be one of: lax, strict, none.")
@@ -178,6 +186,7 @@ app.add_middleware(MTLSMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(RequestContextMiddleware)
 app.add_middleware(PrometheusMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 if settings.CHAOS_ENABLED:
     app.add_middleware(ChaosMiddleware)
 
@@ -193,10 +202,39 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+def redact_secrets_from_string(text: str) -> str:
+    if not text:
+        return ""
+    import re
+    # Fernet tokens: gAAAAA...
+    fernet_pattern = r"\bgAAAAA[A-Za-z0-9_-]{30,}\b"
+    # JWT tokens: eyJ...
+    jwt_pattern = r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"
+    # Basic auth / Bearer tokens or authorization headers: authorization: bearer ...
+    auth_header_pattern = r"(?i)\b(authorization|session|cookie|token|password|secret|key|pwd)\b\s*[:=]\s*\"?[A-Za-z0-9_-]{6,}\b"
+    
+    text = re.sub(fernet_pattern, "[REDACTED_FERNET_TOKEN]", text)
+    text = re.sub(jwt_pattern, "[REDACTED_JWT_TOKEN]", text)
+    text = re.sub(auth_header_pattern, r"\1=[REDACTED]", text)
+    
+    # Redact common database password patterns, e.g. mysql://user:password@host
+    db_conn_pattern = r"\b([a-zA-Z0-9+.-]+://[^:]+:)([^@]+)(@[^\s]+)\b"
+    text = re.sub(db_conn_pattern, r"\1[REDACTED]\3", text)
+    
+    return text
+
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled Exception: {exc}", exc_info=True)
+    import traceback
+    exc_msg = f"Unhandled Exception: {exc}"
+    tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    
+    redacted_msg = redact_secrets_from_string(exc_msg)
+    redacted_tb = redact_secrets_from_string(tb_str)
+    
+    logger.error("%s\n%s", redacted_msg, redacted_tb)
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal Server Error"}

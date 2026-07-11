@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     CHAOS_ENABLED: bool = Field(default=False, validation_alias="NETVISOR_CHAOS_ENABLED")
 
     SECRET_KEY: str = Field(default="", validation_alias="NETVISOR_SECRET_KEY")
+    ENVIRONMENT: str = Field(default="production", validation_alias="NETVISOR_ENVIRONMENT")
+    TRUSTED_PROXIES: str = Field(default="127.0.0.1,::1", validation_alias="NETVISOR_TRUSTED_PROXIES")
     AGENT_API_KEY: str = Field(default="", validation_alias="AGENT_API_KEY")
     GATEWAY_API_KEY: str = Field(default="", validation_alias="GATEWAY_API_KEY")
     AGENT_MASTER_KEY: str = Field(default="", validation_alias="NETVISOR_AGENT_MASTER_KEY")
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_MINUTES: int = Field(default=30, validation_alias="NETVISOR_ACCESS_TOKEN_MINUTES")
     AUTH_COOKIE_NAME: str = Field(default="netvisor_session", validation_alias="NETVISOR_AUTH_COOKIE_NAME")
     AUTH_COOKIE_SAMESITE: str = Field(default="lax", validation_alias="NETVISOR_AUTH_COOKIE_SAMESITE")
-    AUTH_COOKIE_SECURE: bool = Field(default=False, validation_alias="NETVISOR_AUTH_COOKIE_SECURE")
+    AUTH_COOKIE_SECURE: bool = Field(default=True, validation_alias="NETVISOR_AUTH_COOKIE_SECURE")
     AUTH_COOKIE_DOMAIN: Optional[str] = Field(default=None, validation_alias="NETVISOR_AUTH_COOKIE_DOMAIN")
     AUTH_COOKIE_PATH: str = Field(default="/", validation_alias="NETVISOR_AUTH_COOKIE_PATH")
     REFRESH_TOKEN_DAYS: int = Field(default=7, validation_alias="NETVISOR_REFRESH_TOKEN_DAYS")

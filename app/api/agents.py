@@ -133,13 +133,9 @@ def _resolve_org_id(cursor, requested_org_id: str | None) -> str | None:
 
 
 def _resolve_source_ip(request: Request) -> str | None:
-    forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip() or None
-    real_ip = str(request.headers.get("X-Real-IP") or "").strip()
-    if real_ip:
-        return real_ip
-    return request.client.host if request.client else None
+    from ..utils.network import resolve_source_ip
+    ip = resolve_source_ip(request)
+    return None if ip == "unknown" else ip
 
 
 def _lookup_agent_organization_id(cursor, agent_id: str) -> str | None:

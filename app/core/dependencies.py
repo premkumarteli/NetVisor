@@ -60,7 +60,11 @@ def get_current_user(
     try:
         resolved_token = _resolve_request_token(request)
         payload = jwt.decode(
-            resolved_token, settings.SECRET_KEY, algorithms=[ALGORITHM]
+            resolved_token,
+            settings.SECRET_KEY,
+            algorithms=[ALGORITHM],
+            issuer="netvisor-backend",
+            audience="netvisor-clients",
         )
         user_id = payload.get("sub")
         if not user_id:
@@ -139,8 +143,9 @@ _rate_limit_lock = threading.Lock()
 
 
 def _default_rate_limit_identity(request: Request) -> str:
-    client_host = request.client.host if request.client else "unknown"
-    return f"{client_host}:{request.url.path}"
+    from app.utils.network import resolve_source_ip
+    client_ip = resolve_source_ip(request)
+    return f"{client_ip}:{request.url.path}"
 
 
 def request_rate_limit(
@@ -154,18 +159,28 @@ def request_rate_limit(
     window = max(float(window_seconds or 1.0), 1.0)
 
     def dependency(request: Request):
+        from app.db.redis_client import get_redis_connection
+        import redis
+
         identity_builder = key_builder or _default_rate_limit_identity
         identity = str(identity_builder(request) or "anonymous")
-        storage_key = f"{bucket}:{identity}"
-        now = time.monotonic()
-        cutoff = now - window
+        storage_key = f"ratelimit:{bucket}:{identity}"
 
-        with _rate_limit_lock:
-            request_times = _rate_limit_buckets.setdefault(storage_key, deque())
-            while request_times and request_times[0] <= cutoff:
-                request_times.popleft()
+        # Try Redis first (Distributed Rate Limiting)
+        try:
+            r = get_redis_connection()
+            now = time.time()
+            cutoff = now - window
 
-            if len(request_times) >= max_requests:
+            # Atomic sliding window using Redis transaction pipeline
+            pipe = r.pipeline()
+            pipe.zremrangebyscore(storage_key, 0, cutoff)
+            pipe.zcard(storage_key)
+            pipe.zadd(storage_key, {str(now): now})
+            pipe.expire(storage_key, int(window) + 1)
+            _, current_count, _, _ = pipe.execute()
+
+            if current_count >= max_requests:
                 metrics_service.increment(
                     "rate_limit_rejections_total",
                     bucket=bucket,
@@ -173,19 +188,40 @@ def request_rate_limit(
                 )
                 raise HTTPException(status_code=429, detail="Too many requests")
 
-            request_times.append(now)
+            return True
 
-            if len(_rate_limit_buckets) > 10000:
-                stale_keys = [
-                    key
-                    for key, timestamps in _rate_limit_buckets.items()
-                    if not timestamps or timestamps[-1] <= cutoff
-                ]
-                for key in stale_keys:
-                    _rate_limit_buckets.pop(key, None)
+        except (redis.exceptions.RedisError, redis.exceptions.ConnectionError, OSError) as e:
+            # Fall back to thread-safe in-memory rate limiting if Redis fails
+            logger.warning("Redis rate limiter failed, falling back to in-memory: %s", e)
+            now = time.monotonic()
+            cutoff = now - window
 
-        metrics_service.set_gauge("rate_limit_active_buckets", len(_rate_limit_buckets))
-        return True
+            with _rate_limit_lock:
+                request_times = _rate_limit_buckets.setdefault(storage_key, deque())
+                while request_times and request_times[0] <= cutoff:
+                    request_times.popleft()
+
+                if len(request_times) >= max_requests:
+                    metrics_service.increment(
+                        "rate_limit_rejections_total",
+                        bucket=bucket,
+                        path=request.url.path,
+                    )
+                    raise HTTPException(status_code=429, detail="Too many requests")
+
+                request_times.append(now)
+
+                if len(_rate_limit_buckets) > 10000:
+                    stale_keys = [
+                        key
+                        for key, timestamps in _rate_limit_buckets.items()
+                        if not timestamps or timestamps[-1] <= cutoff
+                    ]
+                    for key in stale_keys:
+                        _rate_limit_buckets.pop(key, None)
+
+            metrics_service.set_gauge("rate_limit_active_buckets", len(_rate_limit_buckets))
+            return True
 
     return dependency
 

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 from jose import jwt
 import bcrypt
+import uuid
 from .config import settings
 
 ALGORITHM = "HS256"
@@ -11,7 +12,16 @@ def create_access_token(subject: Union[str, Any], expires_delta: timedelta = Non
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=max(int(settings.ACCESS_TOKEN_MINUTES or 30), 1))
-    to_encode = {"exp": expire, "sub": str(subject)}
+    
+    now = datetime.now(timezone.utc)
+    to_encode = {
+        "exp": expire,
+        "sub": str(subject),
+        "iss": "netvisor-backend",
+        "aud": "netvisor-clients",
+        "iat": now,
+        "jti": str(uuid.uuid4())
+    }
     if extra_claims:
         to_encode.update(extra_claims)
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
