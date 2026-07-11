@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
@@ -26,6 +27,7 @@ class ProxyManager:
         addon_path: Path,
         port: int,
         on_event: Callable[[dict], None],
+        mode: str = "regular",
     ) -> None:
         self.runtime_dir = Path(runtime_dir)
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -42,6 +44,16 @@ class ProxyManager:
         self._last_event_at: Optional[str] = None
         self._last_stderr_at: Optional[str] = None
         self._captured_event_count = 0
+
+        self.mode = os.getenv("NETVISOR_DPI_CAPTURE_MODE", mode)
+        timeout_env = os.getenv("NETVISOR_DPI_STARTUP_TIMEOUT")
+        try:
+            self.startup_timeout = float(timeout_env) if timeout_env else 10.0
+        except ValueError:
+            self.startup_timeout = 10.0
+
+        self.ready_event = threading.Event()
+        self._startup_error: Optional[str] = None
 
     def _utc_now(self) -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -91,17 +103,36 @@ class ProxyManager:
             self.last_error = f"Failed to prepare MITM certificate bundle: {exc}"
             return False, self.last_error
 
-        cmd = [
-            mitmdump,
-            "--set", f"confdir={self.runtime_dir}",
-            "--listen-host",
-            "127.0.0.1",
-            "--listen-port",
-            str(self.port),
-            "-q",
-            "-s",
-            str(self.addon_path),
-        ]
+        if self.mode == "local":
+            cmd = [
+                mitmdump,
+                "--set", f"confdir={self.runtime_dir}",
+                "--mode", "local",
+                "-q",
+                "-s", str(self.addon_path),
+            ]
+        elif self.mode == "local_browsers":
+            cmd = [
+                mitmdump,
+                "--set", f"confdir={self.runtime_dir}",
+                "--mode", "local:chrome.exe,msedge.exe,firefox.exe",
+                "-q",
+                "-s", str(self.addon_path),
+            ]
+        else:
+            cmd = [
+                mitmdump,
+                "--set", f"confdir={self.runtime_dir}",
+                "--listen-host", "127.0.0.1",
+                "--listen-port", str(self.port),
+                "-q",
+                "-s", str(self.addon_path),
+            ]
+
+        self.ready_event.clear()
+        self._startup_error = None
+        self.last_error = None
+
         try:
             self.process = subprocess.Popen(
                 cmd,
@@ -121,16 +152,38 @@ class ProxyManager:
             self.process = None
             return False, self.last_error
 
-        self.last_error = None
         with self._metrics_lock:
             self._started_at = self._utc_now()
             self._last_event_at = None
             self._last_stderr_at = None
             self._captured_event_count = 0
+
         self._stdout_thread = threading.Thread(target=self._stdout_worker, daemon=True)
         self._stdout_thread.start()
         self._stderr_thread = threading.Thread(target=self._stderr_worker, daemon=True)
         self._stderr_thread.start()
+
+        self.ready_event.wait(timeout=self.startup_timeout)
+
+        if self.process.poll() is not None:
+            self.last_error = self._startup_error or f"mitmdump exited with code {self.process.returncode}"
+            self.stop()
+            return False, self.last_error
+
+        if self._startup_error:
+            self.last_error = self._startup_error
+            self.stop()
+            return False, self.last_error
+
+        if self.ready_event.is_set():
+            time.sleep(0.5)
+            if self.process.poll() is not None:
+                self.last_error = "mitmdump crashed shortly after starting"
+                self.stop()
+                return False, self.last_error
+            return True, None
+
+        logger.warning("Startup readiness timeout elapsed; assuming mitmdump is running.")
         return True, None
 
     def stop(self) -> None:
@@ -152,6 +205,11 @@ class ProxyManager:
         for line in self.process.stdout:
             if not line:
                 continue
+
+            line_str = line.strip()
+            if any(p in line_str for p in ("Proxy server listening", "Local redirector started", "Windows proxy successfully initialized")):
+                self.ready_event.set()
+
             if not line.startswith(EVENT_PREFIX):
                 continue
             payload = line[len(EVENT_PREFIX) :].strip()
@@ -171,10 +229,18 @@ class ProxyManager:
             message = (line or "").strip()
             if not message:
                 continue
+
+            if any(p in message for p in ("Proxy server listening", "Local redirector started", "Windows proxy successfully initialized")):
+                self.ready_event.set()
+
+            if any(p in message for p in ("Error logged during startup", "Failed to start", "Address already in use", "Permission denied")):
+                self._startup_error = message
+                self.ready_event.set()
+
             self.last_error = message
             with self._metrics_lock:
                 self._last_stderr_at = self._utc_now()
-            logger.debug("mitmdump: %s", message)
+            logger.info("mitmdump: %s", message)
 
     def status(self) -> dict:
         with self._metrics_lock:
@@ -186,6 +252,7 @@ class ProxyManager:
             "proxy_running": self.is_running(),
             "proxy_port": self.port,
             "proxy_pid": self.process.pid if self.is_running() and self.process else None,
+            "proxy_mode": self.mode,
             "started_at": started_at,
             "last_event_at": last_event_at,
             "last_stderr_at": last_stderr_at,

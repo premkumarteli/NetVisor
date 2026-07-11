@@ -35,6 +35,8 @@ APP_RULES: dict[str, list[str]] = {
     "Perplexity": ["perplexity.ai", "perplexity.com"],
     "Zoom": ["zoom.us"],
     "Google Meet": ["meet.google.com"],
+    "Gemini": ["gemini.google.com"],
+    "Antigravity": ["antigravity-unleash.goog"],
     "Microsoft": [
         "bing.com",
         "bingapis.com",

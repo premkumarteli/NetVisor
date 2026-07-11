@@ -205,4 +205,38 @@ We have successfully addressed the integration bugs in the Milestone 2 ingestion
 ## 2. Verification Outcomes
 *   **Unit & Integration Tests:** Ran the test suite via `.venv\Scripts\pytest`. All **446 tests passed successfully** with **0 failures**, confirming that mock databases, mTLS authentication, threat engines, and api routes are fully aligned and correct.
 
+---
+
+## Milestone 2 — Day 3: DPI Integration, Windows Service Registry Hardening, and Self-Healing CA
+
+**Date:** 2026-07-11
+
+### 1. Summary of Accomplished Work
+
+We have successfully integrated, hardened, and verified the deep packet inspection (DPI) proxy pipeline under the Windows Service context.
+
+#### 1.1 UI & Schema Alignment
+- **Backend Schema & Service**: Updated [web_schema.py](file:///c:/Users/prem/Network/app/schemas/web_schema.py) and [web_inspection_service.py](file:///c:/Users/prem/Network/app/services/web_inspection_service.py) to map and expose the new status parameters (`browser_launcher_deprecated`, `trust_scope`, `trust_store_match`, `key_protection`) to the frontend.
+- **Frontend UI Setup**: Updated [DpiSetupGuide.jsx](file:///c:/Users/prem/Network/frontend/src/components/DPI/DpiSetupGuide.jsx) to display a **"Local Capture Mode Active"** banner when browser traffic is intercepted transparently, advising the user that wrapped launcher shortcuts are deprecated and manual browser configurations are not needed.
+
+#### 1.2 Windows Service Registry Hardening
+- **Problem**: When `netvisor_manager.exe` registered the background service, it wrote `PYTHONPATH` to the service registry's `Environment` block. This completely overwrote the service's environment, stripping critical variables like `SystemRoot` and system `PATH`. As a result, the service could not locate system tools (`certutil.exe`, `powershell.exe`) or load Python's DLL dependencies (`python313.dll`, `pywintypes313.dll`), causing SCM start timeouts (`%%1053`).
+- **Fix**: Updated the C# service manager [service_controller.cs](file:///c:/Users/prem/Network/service_controller.cs) to dynamically parse the global Python home directory from `pyvenv.cfg` and inject `SystemRoot`, `PATH` (including global Python and `pywin32_system32` directories), `PYTHONPATH`, and custom variables into the registry.
+
+#### 1.3 Self-Healing Context-Aware Certificates
+- **Problem**: DPAPI-encrypted private keys are bound to the specific user account that created them. When manual agents ran as user `prem` and the service ran as `LocalSystem`, they conflicted over the same shared private key file, throwing `[WinError 3] / FileNotFoundError` from DPAPI.
+- **Fix**: Implemented context-aware self-healing logic in `ensure_ca_files()` in [cert_manager.py](file:///c:/Users/prem/Network/agent/dpi/cert_manager.py). If the key file exists but cannot be decrypted in the current context (e.g. account transition or recursion issues), the agent automatically unlinks the corrupted files and generates a new, healthy pair specifically for the active user context.
+- **Trust Scope Config**: Configured the service to use `NETVISOR_DPI_TRUST_SCOPE=LocalMachine` via the registry. This allows the `LocalSystem` account to successfully install and trust the generated CA globally on the machine using `certutil`.
+
+#### 1.4 Transparent Local Browser Interception
+- **Config**: Configured `NETVISOR_DPI_CAPTURE_MODE=local_browsers` in the service environment registry. This launches the mitmproxy sniffer in transparent interception mode for `chrome.exe`, `msedge.exe`, and `firefox.exe`, intercepting system browser traffic directly at the OS level without proxy configurations.
+
+---
+
+### 2. Empirical Verification
+- **Service Status**: Stably **Running** under the `LocalSystem` context without timeouts.
+- **Proxy Status**: Stably **Running** in `local_browsers` mode.
+- **Database Status**: Agent status reads as `active`, `inspection_proxy_running: 1`, `inspection_ca_installed: 1`, `inspection_last_error: None`.
+- **Telemetry Verification**: Successfully intercepted and persisted **over 700+ raw events** in real-time directly from normal browser activity (e.g., ChatGPT and YouTube API traffic) to the MySQL `web_events` table.
+
 

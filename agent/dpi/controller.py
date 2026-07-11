@@ -75,6 +75,7 @@ class WebInspectionController:
             "last_drop_reason": None,
             "drop_reasons": {},
             "launcher_paths": {},
+            "browser_launcher_deprecated": False,
         }
         self._running = False
 
@@ -114,11 +115,18 @@ class WebInspectionController:
         if self._running:
             return
         self._running = True
-        self._status["launcher_paths"] = self.browser_launcher.create_wrappers()
-        logger.info("[DPI] Web inspection launchers created in: %s", self.runtime_dir)
-        for name, path in self._status["launcher_paths"].items():
-             logger.info("[DPI]   -> %s: %s", name, path)
+        capture_mode = self.proxy_manager.mode
+        if capture_mode == "regular":
+            self._status["launcher_paths"] = self.browser_launcher.create_wrappers()
+            logger.info("[DPI] Web inspection launchers created in: %s", self.runtime_dir)
+            for name, path in self._status["launcher_paths"].items():
+                 logger.info("[DPI]   -> %s: %s", name, path)
+        else:
+            self._status["launcher_paths"] = {}
+            self._status["browser_launcher_deprecated"] = True
+            logger.info("[DPI] Local Capture mode active. Legacy browser wrappers skipped.")
         self.event_buffer.start()
+
         self.refresh_policy()
         self._policy_thread.start()
 
@@ -197,19 +205,33 @@ class WebInspectionController:
         last_error = None
         proxy_running = False
         status = "disabled"
+        capture_mode = self.proxy_manager.mode
 
         if self.current_policy.inspection_enabled:
-            if not ca_installed:
-                ca_installed, install_error = self.cert_manager.install_if_needed()
-                if install_error:
-                    last_error = install_error
+            # Check privilege requirements for Local Capture modes
+            is_admin = False
+            if capture_mode != "regular":
+                import ctypes
+                try:
+                    is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
+                except Exception:
+                    pass
+                if not is_admin:
+                    last_error = "Local Capture mode requires Administrator privileges."
+                    logger.error(last_error)
 
-            proxy_running, proxy_error = self.proxy_manager.start(
-                allowed_domains=self.current_policy.allowed_domains,
-                snippet_max_bytes=self.current_policy.snippet_max_bytes,
-            )
-            if proxy_error:
-                last_error = proxy_error
+            if capture_mode == "regular" or is_admin:
+                if not ca_installed:
+                    ca_installed, install_error = self.cert_manager.install_if_needed()
+                    if install_error:
+                        last_error = install_error
+
+                proxy_running, proxy_error = self.proxy_manager.start(
+                    allowed_domains=self.current_policy.allowed_domains,
+                    snippet_max_bytes=self.current_policy.snippet_max_bytes,
+                )
+                if proxy_error:
+                    last_error = proxy_error
 
             if proxy_running and ca_installed:
                 status = "running"
@@ -220,8 +242,17 @@ class WebInspectionController:
         else:
             self.proxy_manager.stop()
 
+        # Update launcher paths dynamically based on mode
+        if capture_mode == "regular" and self.current_policy.inspection_enabled:
+            launcher_paths = self.browser_launcher.create_wrappers()
+            browser_launcher_deprecated = False
+        else:
+            launcher_paths = {}
+            browser_launcher_deprecated = capture_mode != "regular"
+
         live_metrics = self._live_metrics()
         self._set_status(
+            browser_launcher_deprecated=browser_launcher_deprecated,
             inspection_enabled=self.current_policy.inspection_enabled,
             privacy_guard_enabled=self.current_policy.privacy_guard_enabled,
             sensitive_destination_bypass_enabled=self.current_policy.sensitive_destination_bypass_enabled,
@@ -253,6 +284,7 @@ class WebInspectionController:
             upload_failures=live_metrics.get("upload_failures"),
             last_drop_reason=live_metrics.get("last_drop_reason"),
             drop_reasons=live_metrics.get("drop_reasons"),
+            launcher_paths=launcher_paths,
         )
 
     def _set_status(self, **updates) -> None:
@@ -264,7 +296,7 @@ class WebInspectionController:
             try:
                 self.refresh_policy()
             except Exception as exc:
-                logger.debug("Web inspection policy worker error: %s", exc)
+                logger.error("Web inspection policy worker error: %s", exc, exc_info=True)
             time.sleep(self.policy_refresh_seconds)
 
     def status_snapshot(self) -> dict:
@@ -329,5 +361,6 @@ class WebInspectionController:
             "drop_reasons": snapshot.get("drop_reasons") or {},
             "privacy_guard_enabled": snapshot.get("privacy_guard_enabled"),
             "sensitive_destination_bypass_enabled": snapshot.get("sensitive_destination_bypass_enabled"),
+            "browser_launcher_deprecated": bool(snapshot.get("browser_launcher_deprecated")),
         }
         return snapshot

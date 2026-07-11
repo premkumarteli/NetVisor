@@ -77,6 +77,24 @@ class Settings(BaseSettings):
     REDIS_HOST: str = Field(default="localhost", validation_alias="NETVISOR_REDIS_HOST")
     REDIS_PORT: int = Field(default=6379, validation_alias="NETVISOR_REDIS_PORT")
     
+    # Correlation & Bounds Configurations
+    NETVISOR_MAX_EDGES_PER_ORG: int = Field(default=100000, validation_alias="NETVISOR_MAX_EDGES_PER_ORG")
+    NETVISOR_MAX_PREDECESSORS_PER_NODE: int = Field(default=1000, validation_alias="NETVISOR_MAX_PREDECESSORS_PER_NODE")
+    NETVISOR_MAX_EVIDENCE_ENTRIES_PER_ORG: int = Field(default=50000, validation_alias="NETVISOR_MAX_EVIDENCE_ENTRIES_PER_ORG")
+    NETVISOR_MAX_SUPPRESSION_ENTRIES_PER_ORG: int = Field(default=50000, validation_alias="NETVISOR_MAX_SUPPRESSION_ENTRIES_PER_ORG")
+    NETVISOR_CORRELATION_WINDOW_SECONDS: int = Field(default=30, validation_alias="NETVISOR_CORRELATION_WINDOW_SECONDS")
+    NETVISOR_EVIDENCE_TTL_SECONDS: int = Field(default=300, validation_alias="NETVISOR_EVIDENCE_TTL_SECONDS")
+    
+    # Organization Network Topology (JSON maps/lists)
+    NETVISOR_ORGANIZATION_CIDRS: str = Field(
+        default='{"default-org-id": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]}',
+        validation_alias="NETVISOR_ORGANIZATION_CIDRS"
+    )
+    NETVISOR_INFRASTRUCTURE_ASSETS: str = Field(
+        default='[{"org_id": "default-org-id", "cidr_or_ip": "10.147.172.96", "role": "server", "criticality": "high"}]',
+        validation_alias="NETVISOR_INFRASTRUCTURE_ASSETS"
+    )
+    
     # ClickHouse Configurations
     CLICKHOUSE_HOST: str = Field(default="localhost", validation_alias="NETVISOR_CLICKHOUSE_HOST")
     CLICKHOUSE_PORT: int = Field(default=8123, validation_alias="NETVISOR_CLICKHOUSE_PORT")

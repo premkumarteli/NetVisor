@@ -1012,6 +1012,7 @@ class WebInspectionService:
             "trust_store_match": bool(metrics.get("trust_store_match")),
             "trust_scope": metrics.get("trust_scope"),
             "key_protection": metrics.get("key_protection"),
+            "browser_launcher_deprecated": bool(metrics.get("browser_launcher_deprecated")),
             "status": status,
             "last_error": agent_row.get("inspection_last_error"),
             "last_event_at": metrics.get("last_event_at") or self._format_timestamp(events_row.get("last_event_at")),

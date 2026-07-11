@@ -26,13 +26,19 @@ class CertificateManager:
         "mitmproxy-ca-privkey.pem",
     )
 
-    def __init__(self, runtime_dir: Path, *, protector: DataProtector | None = None):
+    def __init__(self, runtime_dir: Path, *, protector: DataProtector | None = None, trust_scope: str = "CurrentUser"):
         self.runtime_dir = Path(runtime_dir)
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.protector = protector or WindowsCurrentUserProtector()
         self.key_path = self.runtime_dir / "netvisor-agent-root.key.dpapi"
         self.cert_path = self.runtime_dir / "netvisor-agent-root.pem"
         self.metadata_path = self.runtime_dir / "netvisor-agent-root.meta.json"
+        
+        scope_env = os.getenv("NETVISOR_DPI_TRUST_SCOPE")
+        if scope_env in ("CurrentUser", "LocalMachine"):
+            self.trust_scope = scope_env
+        else:
+            self.trust_scope = trust_scope
 
     def _utc_now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -109,10 +115,25 @@ class CertificateManager:
 
     def ensure_ca_files(self) -> None:
         if self.key_path.exists() and self.cert_path.exists():
-            certificate = self._load_certificate()
-            if certificate and not self.metadata_path.exists():
-                self._write_metadata(self._certificate_metadata(certificate))
-            return
+            try:
+                # Validate that the private key can be successfully decrypted in the current user context
+                # Read directly to avoid infinite recursion
+                _ = self.protector.unprotect(self.key_path.read_bytes())
+                certificate = self._load_certificate()
+                if certificate and not self.metadata_path.exists():
+                    self._write_metadata(self._certificate_metadata(certificate))
+                return
+            except Exception as exc:
+                logger.warning(
+                    "Existing CA private key cannot be decrypted in the current context (%s). Regenerating CA files.",
+                    exc
+                )
+                try:
+                    self.key_path.unlink(missing_ok=True)
+                    self.cert_path.unlink(missing_ok=True)
+                    self.metadata_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         subject = issuer = x509.Name(
@@ -155,7 +176,7 @@ class CertificateManager:
         self.ensure_ca_files()
         return self.protector.unprotect(self.key_path.read_bytes())
 
-    def _is_currentuser_root_match(self, thumbprint_sha256: str) -> bool:
+    def _is_store_match(self, thumbprint_sha256: str, store_name: str) -> bool:
         powershell = self._find_powershell()
         if not powershell:
             return False
@@ -163,14 +184,14 @@ class CertificateManager:
             "$expected='{thumb}'; "
             "$now=Get-Date; "
             "$match=$false; "
-            "Get-ChildItem 'Cert:\\CurrentUser\\Root' -ErrorAction SilentlyContinue | ForEach-Object {{ "
+            "Get-ChildItem 'Cert:\\{store}\\Root' -ErrorAction SilentlyContinue | ForEach-Object {{ "
             "  try {{ "
             "    $sha=[System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($_.RawData)).Replace('-', ''); "
             "    if ($sha -eq $expected -and $_.NotBefore -le $now -and $_.NotAfter -ge $now) {{ $match=$true }} "
             "  }} catch {{}} "
             "}}; "
             "if ($match) {{ Write-Output 'FOUND' }} else {{ Write-Output 'MISSING' }}"
-        ).format(thumb=thumbprint_sha256)
+        ).format(thumb=thumbprint_sha256, store=store_name)
         try:
             result = subprocess.run(
                 [powershell, "-NoProfile", "-Command", script],
@@ -183,11 +204,14 @@ class CertificateManager:
             return False
         return "FOUND" in (result.stdout or "")
 
+    def _is_currentuser_root_match(self, thumbprint_sha256: str) -> bool:
+        return self._is_store_match(thumbprint_sha256, "CurrentUser")
+
     def is_installed(self) -> bool:
         thumbprint = self.certificate_thumbprint_sha256()
         if not thumbprint:
             return False
-        return self._is_currentuser_root_match(thumbprint)
+        return self._is_store_match(thumbprint, self.trust_scope)
 
     def install_if_needed(self) -> tuple[bool, str | None]:
         self.ensure_ca_files()
@@ -199,9 +223,15 @@ class CertificateManager:
                 metadata["status"] = "installed"
                 self._write_metadata(metadata)
             return True, None
+        
+        if self.trust_scope == "LocalMachine":
+            cmd = ["certutil", "-addstore", "Root", str(self.cert_path)]
+        else:
+            cmd = ["certutil", "-user", "-addstore", "Root", str(self.cert_path)]
+
         try:
             result = subprocess.run(
-                ["certutil", "-user", "-addstore", "Root", str(self.cert_path)],
+                cmd,
                 capture_output=True,
                 text=True,
                 check=False,
@@ -253,19 +283,35 @@ class CertificateManager:
             logger.debug("Failed to tighten ACLs on %s", path)
 
     def prepare_runtime_bundle(self, target_dir: Path) -> None:
-        self.ensure_ca_files()
-        self.cleanup_runtime_bundle(target_dir)
-        target_dir = Path(target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("[Diagnostic] prepare_runtime_bundle started. target_dir: %s", target_dir)
+        try:
+            self.ensure_ca_files()
+            logger.info("[Diagnostic] ensure_ca_files completed")
+            self.cleanup_runtime_bundle(target_dir)
+            logger.info("[Diagnostic] cleanup_runtime_bundle completed")
+            target_dir = Path(target_dir)
+            target_dir.mkdir(parents=True, exist_ok=True)
+            logger.info("[Diagnostic] mkdir completed")
 
-        combined_path = target_dir / "mitmproxy-ca.pem"
-        cert_only_path = target_dir / "mitmproxy-ca-cert.pem"
-        key_data = self.load_private_key_bytes().strip()
-        cert_data = self.cert_path.read_bytes().strip()
-        combined_path.write_bytes(key_data + b"\n" + cert_data + b"\n")
-        cert_only_path.write_bytes(cert_data + b"\n")
-        self._apply_user_only_acl(combined_path)
-        self._apply_user_only_acl(cert_only_path)
+            combined_path = target_dir / "mitmproxy-ca.pem"
+            cert_only_path = target_dir / "mitmproxy-ca-cert.pem"
+            
+            logger.info("[Diagnostic] loading private key bytes...")
+            key_data = self.load_private_key_bytes().strip()
+            logger.info("[Diagnostic] key_data loaded")
+            cert_data = self.cert_path.read_bytes().strip()
+            logger.info("[Diagnostic] cert_data loaded")
+            combined_path.write_bytes(key_data + b"\n" + cert_data + b"\n")
+            logger.info("[Diagnostic] combined_path written")
+            cert_only_path.write_bytes(cert_data + b"\n")
+            logger.info("[Diagnostic] cert_only_path written")
+            self._apply_user_only_acl(combined_path)
+            logger.info("[Diagnostic] acl applied to combined_path")
+            self._apply_user_only_acl(cert_only_path)
+            logger.info("[Diagnostic] acl applied to cert_only_path")
+        except Exception as e:
+            logger.exception("Failed to prepare MITM certificate bundle")
+            raise
 
     def cleanup_runtime_bundle(self, target_dir: Path) -> None:
         for name in self.RUNTIME_BUNDLE_FILES:
@@ -312,7 +358,7 @@ class CertificateManager:
                 "days_until_rotation_due": days_until_rotation_due,
                 "expires_soon": days_until_expiry <= 30,
                 "rotation_due_soon": days_until_rotation_due <= 7,
-                "trust_scope": "CurrentUserRoot",
+                "trust_scope": f"{self.trust_scope}Root",
                 "trust_store_match": trust_store_match,
                 "key_protection": "dpapi_user",
                 "status": status,

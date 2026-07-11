@@ -164,6 +164,37 @@ def extract_site_metadata(url: str, page_title: str | None) -> tuple[str, str | 
     return category, content_id
 
 
+def redact_url_secrets(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        split = urlsplit(url)
+        if not split.query:
+            return url
+        
+        query = parse_qs(split.query, keep_blank_values=True)
+        sensitive_keys = {
+            "token", "auth", "key", "signature", "code", "state", "session",
+            "password", "secret", "access_token", "api_key", "sid", "ticket",
+            "id_token", "client_secret", "jwt", "authorization"
+        }
+        
+        redacted_params = []
+        for k, vals in query.items():
+            k_lower = k.lower()
+            if any(s in k_lower for s in sensitive_keys):
+                redacted_params.append(f"{k}=[REDACTED]")
+            else:
+                for val in vals:
+                    redacted_params.append(f"{k}={val}")
+                    
+        new_query = "&".join(redacted_params)
+        scheme = f"{split.scheme}://" if split.scheme else ""
+        return f"{scheme}{split.netloc}{split.path}?{new_query}"
+    except Exception:
+        return url
+
+
 def build_event(flow) -> dict | None:
     request = getattr(flow, "request", None)
     response = getattr(flow, "response", None)
@@ -198,7 +229,8 @@ def build_event(flow) -> dict | None:
         snippet = body.decode("utf-8", errors="replace")
         page_title = extract_page_title(raw_content[:32768])
 
-    url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
+    raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
+    url = redact_url_secrets(raw_url)
     content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
     
     # Use Service Name for better visibility

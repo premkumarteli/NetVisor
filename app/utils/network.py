@@ -59,6 +59,97 @@ def classify_ip_scope(value: object) -> str:
     return "external"
 
 
+def normalize_ip_v2(value: object) -> Optional[str]:
+    """
+    Normalizes an IP address, converting IPv4-mapped IPv6 addresses to standard IPv4.
+    """
+    if value is None:
+        return None
+    try:
+        ip_obj = ipaddress.ip_address(str(value).strip())
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped is not None:
+            ip_obj = ip_obj.ipv4_mapped
+        return str(ip_obj)
+    except ValueError:
+        return None
+
+
+def classify_ip_scope_v2(
+    ip_value: str,
+    organization_cidrs: list[ipaddress.IPv4Network | ipaddress.IPv6Network] | list[str],
+    infrastructure_ips: set[str] | list[str],
+    infrastructure_nets: list[ipaddress.IPv4Network | ipaddress.IPv6Network] | list[str] = None,
+) -> str:
+    """
+    Classifies an IP address scope dynamically using organization CIDRs and infrastructure registries.
+    Supports subnet-aware broadcast checks and CIDR-range infrastructure membership checks.
+    """
+    if not ip_value:
+        return "UNSPECIFIED"
+    
+    try:
+        ip_obj = ipaddress.ip_address(ip_value.strip())
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped is not None:
+            ip_obj = ip_obj.ipv4_mapped
+    except ValueError:
+        return "UNSPECIFIED"
+
+    normalized_ip_str = str(ip_obj)
+
+    if ip_obj.is_multicast:
+        return "MULTICAST"
+    if ip_obj.is_loopback:
+        return "LOOPBACK"
+    if ip_obj.is_unspecified:
+        return "UNSPECIFIED"
+    if ip_obj.is_link_local:
+        return "LINK_LOCAL"
+
+    # Broadcast check
+    if normalized_ip_str == "255.255.255.255":
+        return "BROADCAST"
+        
+    # Subnet-aware broadcast checks
+    for network in organization_cidrs:
+        try:
+            net_obj = ipaddress.ip_network(network) if isinstance(network, str) else network
+            if (
+                isinstance(net_obj, ipaddress.IPv4Network)
+                and ip_obj == net_obj.broadcast_address
+            ):
+                return "BROADCAST"
+        except Exception:
+            continue
+
+    # Infrastructure checks
+    if normalized_ip_str in infrastructure_ips:
+        return "INFRASTRUCTURE"
+
+    if infrastructure_nets:
+        for net in infrastructure_nets:
+            try:
+                net_obj = ipaddress.ip_network(net) if isinstance(net, str) else net
+                if ip_obj in net_obj:
+                    return "INFRASTRUCTURE"
+            except Exception:
+                continue
+
+    # Internal checks
+    for net in organization_cidrs:
+        try:
+            net_obj = ipaddress.ip_network(net) if isinstance(net, str) else net
+            if ip_obj in net_obj:
+                return "INTERNAL"
+        except Exception:
+            continue
+
+    # Fallback to standard is_private if organization networks are not configured
+    if not organization_cidrs and ip_obj.is_private:
+        return "INTERNAL"
+
+    return "EXTERNAL"
+
+
 def normalize_mac(value: object) -> Optional[str]:
     if value is None:
         return None

@@ -5,8 +5,8 @@ import { authService } from '../services/api';
 import AuthSurface from '../components/V2/AuthSurface';
 
 const LoginPage = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('admin');
+  const [password, setPassword] = useState('NetVisor!DemoAccess99');
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
@@ -23,8 +23,36 @@ const LoginPage = () => {
     }
   };
 
+  const autoFillDemo = (user, pass) => {
+    setUsername(user);
+    setPassword(pass);
+  };
+
   const aside = (
     <div className="nv-auth__points">
+      <div className="nv-auth__point">
+        <i className="ri-key-2-line"></i>
+        <div>
+          <strong>Demo Access Credentials</strong>
+          <p className="mb-2">Sign in using these pre-configured credentials:</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => autoFillDemo('admin', 'NetVisor!DemoAccess99')}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/20 transition-all"
+            >
+              Admin (admin / NetVisor!DemoAccess99)
+            </button>
+            <button
+              type="button"
+              onClick={() => autoFillDemo('operator', 'NetVisor!OperatorAccess99')}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 transition-all"
+            >
+              Operator (operator / NetVisor!OperatorAccess99)
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="nv-auth__point">
         <i className="ri-shield-keyhole-line"></i>
         <div>
@@ -39,13 +67,6 @@ const LoginPage = () => {
           <p>Agents and gateways use signed transport so the control plane can trust the source.</p>
         </div>
       </div>
-      <div className="nv-auth__point">
-        <i className="ri-navigation-line"></i>
-        <div>
-          <strong>DPI stays managed</strong>
-          <p>Inspection remains explicit opt-in on managed devices only.</p>
-        </div>
-      </div>
     </div>
   );
 
@@ -53,9 +74,9 @@ const LoginPage = () => {
     <AuthSurface
       eyebrow="Secure access"
       title="NetVisor Login"
-      description="Sign in to the operational workspace. The UI now uses one visual system for forms, cards, and tables, so the login screen matches the rest of the product."
+      description="Sign in to the operational workspace. Default demo credentials have been automatically pre-filled below for seamless instant access."
       badge="Protected session"
-      asideTitle="Why this workspace is different"
+      asideTitle="Quick Workspace Access"
       asideCaption="Control plane"
       aside={aside}
       footer={(
@@ -97,6 +118,14 @@ const LoginPage = () => {
           />
         </label>
 
+        <div className="p-3.5 mb-2 rounded-xl bg-cyan-500/5 border border-cyan-500/10 text-xs text-cyan-300 flex items-center gap-3">
+          <i className="ri-information-line text-lg text-cyan-400"></i>
+          <div>
+            <span className="font-semibold block">Credentials Pre-filled</span>
+            <span>Use the buttons on the right to quickly switch between accounts.</span>
+          </div>
+        </div>
+
         <div className="nv-auth__footer">
           <button type="submit" className="nv-button nv-button--primary">
             <i className="ri-login-box-line"></i>
@@ -106,7 +135,7 @@ const LoginPage = () => {
         </div>
       </form>
     </AuthSurface>
-    );
+  );
 };
 
 export default LoginPage;

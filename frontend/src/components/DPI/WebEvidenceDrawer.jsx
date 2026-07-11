@@ -36,6 +36,32 @@ const WebEvidenceDrawer = ({ open, item, onClose, footer }) => {
   const riskLevel = normalizeWebRiskLevel(item?.risk_level);
   const title = item?.group_label || getWebEvidencePrimaryLabel(item);
 
+  // YouTube detection
+  const isYouTube =
+    String(item?.domain || item?.base_domain || '').toLowerCase().includes('youtube.com') ||
+    urls.some((u) => String(u).toLowerCase().includes('youtube.com') || String(u).toLowerCase().includes('youtu.be'));
+
+  const youtubeVideos = [];
+  if (isYouTube) {
+    urls.forEach((url, index) => {
+      const isYt = String(url).toLowerCase().includes('youtube.com') || String(url).toLowerCase().includes('youtu.be');
+      if (isYt) {
+        let videoTitle = titles[index] || titles[0] || item?.page_title || item?.group_label || 'YouTube Inspected Video';
+        if (videoTitle.toLowerCase() === 'youtube' || videoTitle.toLowerCase() === 'youtube.com') {
+          videoTitle = 'YouTube Inspected Video';
+        }
+        youtubeVideos.push({ url, title: videoTitle });
+      }
+    });
+
+    if (youtubeVideos.length === 0) {
+      youtubeVideos.push({
+        url: item?.page_url || item?.url || 'https://youtube.com',
+        title: item?.page_title || item?.group_label || 'YouTube Streaming Session',
+      });
+    }
+  }
+
   return (
     <SidePanel
       open={open}
@@ -72,11 +98,101 @@ const WebEvidenceDrawer = ({ open, item, onClose, footer }) => {
           </div>
         </div>
 
+        {isYouTube && youtubeVideos.length > 0 && (
+          <SectionCard title="YouTube Inspected Stream" caption="DPI Media Decoder" className="nv-section--clarity">
+            <div className="nv-stack" style={{ gap: '0.75rem' }}>
+              {youtubeVideos.map((vid, idx) => (
+                <div key={idx} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '1rem',
+                  padding: '0.85rem 1rem',
+                  backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  borderRadius: '12px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                      color: '#ef4444',
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '1.25rem',
+                      flexShrink: 0,
+                    }}>
+                      <i className="ri-youtube-fill"></i>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 600, textTransform: 'uppercase' }}>
+                        Viewing on YouTube
+                      </div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={vid.title}>
+                        {vid.title}
+                      </div>
+                      <a
+                        href={vid.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mono"
+                        style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.15rem', wordBreak: 'break-all', color: '#ef4444' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {vid.url}
+                        <i className="ri-external-link-line" style={{ fontSize: '10px' }}></i>
+                      </a>
+                    </div>
+                  </div>
+                  <a
+                    href={vid.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="nv-button"
+                    style={{
+                      backgroundColor: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      padding: '0.45rem 0.85rem',
+                      fontSize: '0.78rem',
+                      fontWeight: 500,
+                      gap: '0.25rem',
+                      borderRadius: '8px',
+                      flexShrink: 0,
+                      cursor: 'pointer',
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <i className="ri-play-fill"></i> Watch
+                  </a>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        )}
+
         <SectionCard title="Observed URLs" caption="Correlated Tabs">
           {urls.length > 0 ? (
             <div className="nv-stack" style={{ gap: '0.6rem' }}>
               {urls.map((url) => (
-                <code key={url} className="nv-code-block" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{url}</code>
+                <div key={url} className="flex items-center justify-between gap-2" style={{ width: '100%' }}>
+                  <code className="nv-code-block" style={{ whiteSpace: 'normal', wordBreak: 'break-word', flex: 1 }}>{url}</code>
+                  {url.startsWith('http') && (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="nv-button nv-button--secondary"
+                      style={{ padding: '0.25rem 0.5rem', fontSize: '11px', minHeight: 'auto', flexShrink: 0 }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <i className="ri-external-link-line"></i> Open
+                    </a>
+                  )}
+                </div>
               ))}
             </div>
           ) : (

@@ -8,6 +8,7 @@ import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
 import WebEvidenceDrawer from '../components/DPI/WebEvidenceDrawer';
+import DpiSetupGuide from '../components/DPI/DpiSetupGuide';
 import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, getRiskTone } from '../utils/presentation';
@@ -25,6 +26,7 @@ const DpiDashboard = () => {
   const [filters, setFilters] = useState({ query: '', domain: '', risk: 'all' });
   const [hideNoise, setHideNoise] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const fetchData = useCallback(async ({ background = false } = {}) => {
     if (!background) {
@@ -177,6 +179,10 @@ const DpiDashboard = () => {
             <StatusBadge tone={wsStatus === 'connected' ? 'success' : 'warning'} icon="ri-broadcast-line">
               {wsStatus === 'connected' ? 'Live Feed' : 'Reconnecting'}
             </StatusBadge>
+            <button type="button" className="nv-button nv-button--secondary" onClick={() => setShowGuide((prev) => !prev)}>
+              <i className={showGuide ? 'ri-book-open-fill' : 'ri-book-open-line'}></i>
+              {showGuide ? 'Hide Guide' : 'Browser Setup Guide'}
+            </button>
             <button type="button" className="nv-button nv-button--secondary" onClick={() => fetchData()}>
               <i className="ri-refresh-line"></i>
               Refresh
@@ -188,6 +194,12 @@ const DpiDashboard = () => {
           </>
         )}
       />
+
+      {showGuide && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <DpiSetupGuide inspectionStatus={status} />
+        </div>
+      )}
 
       <div className="nv-metric-grid">
         <MetricCard icon="ri-navigation-line" label="Inspection State" value={status.state} meta="Global inspection posture" accent="#54c8e8" />

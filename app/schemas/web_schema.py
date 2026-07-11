@@ -93,6 +93,10 @@ class DeviceInspectionStatus(InspectionPolicyResponse):
     days_until_rotation_due: Optional[int] = None
     expires_soon: Optional[bool] = None
     rotation_due_soon: Optional[bool] = None
+    trust_scope: Optional[str] = "CurrentUser"
+    trust_store_match: bool = False
+    key_protection: Optional[str] = None
+    browser_launcher_deprecated: bool = False
     status: str = "disabled"
     last_error: Optional[str] = None
     last_event_at: Optional[str] = None
