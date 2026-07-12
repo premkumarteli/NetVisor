@@ -140,6 +140,12 @@ const APP_VISUALS = {
     background: "rgba(34, 197, 94, 0.14)",
     label: "PX",
   },
+  Antigravity: {
+    icon: "ri-shield-flash-line",
+    accent: "#10b981",
+    background: "rgba(16, 185, 129, 0.14)",
+    label: "AG",
+  },
   Other: {
     icon: "ri-global-line",
     accent: "#00f5ff",
