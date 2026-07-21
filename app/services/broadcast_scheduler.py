@@ -36,7 +36,7 @@ class BroadcastScheduler:
     async def broadcast_all(self) -> None:
         # Get active organization IDs from the live store
         # Protect dictionary mutation during iteration
-        with live_telemetry_store._lock:
+        with live_telemetry_store._global_lock:
             org_ids = list(live_telemetry_store._states.keys())
 
         for org_id in org_ids:

@@ -8,8 +8,31 @@ logger = logging.getLogger("netvisor.services.live_telemetry")
 
 class LiveTelemetryStore:
     def __init__(self):
-        self._lock = threading.Lock()
+        self._global_lock = threading.Lock()
+        self._locks = defaultdict(threading.Lock)
         self._states = defaultdict(self._create_empty_org_state)
+        
+        # Start background pruning daemon thread
+        self._stop_pruning = threading.Event()
+        self._prune_thread = threading.Thread(target=self._prune_loop, daemon=True)
+        self._prune_thread.start()
+
+    def _get_org_lock(self, org_id: str) -> threading.Lock:
+        with self._global_lock:
+            return self._locks[org_id]
+
+    def _prune_loop(self) -> None:
+        while not self._stop_pruning.is_set():
+            try:
+                time.sleep(5)
+                now = time.time()
+                with self._global_lock:
+                    orgs = list(self._states.keys())
+                for org_id in orgs:
+                    with self._get_org_lock(org_id):
+                        self.prune_old_samples(org_id, now)
+            except Exception:
+                logger.exception("Error in live telemetry background prune loop")
 
     def _create_empty_org_state(self):
         return {
@@ -104,8 +127,9 @@ class LiveTelemetryStore:
             cursor.close()
 
     def record_flow(self, organization_id: str, flow_key: tuple, bytes_count: int, packets_count: int, app: str, proto: str, is_new: bool, is_end: bool) -> None:
-        with self._lock:
-            state = self._states[organization_id or "default"]
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            state = self._states[org_id]
             now = time.time()
             state["bandwidth_samples"].append((now, bytes_count))
             state["bytes_in_window"] += bytes_count
@@ -128,18 +152,21 @@ class LiveTelemetryStore:
                 state["top_protocols"][proto] += bytes_count
 
     def record_device_seen(self, organization_id: str, ip: str) -> None:
-        with self._lock:
-            state = self._states[organization_id or "default"]
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            state = self._states[org_id]
             state["active_devices"][ip] = time.time()
 
     def increment_device_count(self, organization_id: str) -> None:
-        with self._lock:
-            state = self._states[organization_id or "default"]
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            state = self._states[org_id]
             state["total_devices_count"] += 1
 
     def record_alert(self, organization_id: str, alert_data: dict) -> None:
-        with self._lock:
-            state = self._states[organization_id or "default"]
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            state = self._states[org_id]
             state["recent_alerts"].appendleft(alert_data)
             severity = str(alert_data.get("severity") or "LOW").upper()
             state["risk_distribution"][severity] += 1
@@ -169,9 +196,7 @@ class LiveTelemetryStore:
 
     def get_overview_stats(self, organization_id: Optional[str]) -> dict:
         org_id = organization_id or "default"
-        now = time.time()
-        with self._lock:
-            self.prune_old_samples(org_id, now)
+        with self._get_org_lock(org_id):
             state = self._states[org_id]
             bandwidth_bytes = state["bytes_in_window"]
             bandwidth_mbps = round((bandwidth_bytes * 8) / (60 * 1000 * 1000), 4)
@@ -197,7 +222,7 @@ class LiveTelemetryStore:
 
     def get_recent_alerts(self, organization_id: Optional[str], limit: int = 12) -> list[dict]:
         org_id = organization_id or "default"
-        with self._lock:
+        with self._get_org_lock(org_id):
             alerts = list(self._states[org_id]["recent_alerts"])
             return alerts[:limit]
 

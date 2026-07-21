@@ -75,6 +75,19 @@ class FlowService:
         self._queue_status_cache: dict | None = None
         self._queue_status_cache_ts = 0.0
 
+        from concurrent.futures import ThreadPoolExecutor
+        self._db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="netvisor-db-worker")
+
+    async def _run_in_executor(self, func, *args, **kwargs):
+        import asyncio
+        import sys
+        loop = asyncio.get_running_loop()
+        executor = None if "pytest" in sys.modules else self._db_executor
+        if kwargs:
+            from functools import partial
+            return await loop.run_in_executor(executor, partial(func, *args, **kwargs))
+        return await loop.run_in_executor(executor, func, *args)
+
     @property
     def registry(self):
         if not hasattr(self, "_registry"):
@@ -697,7 +710,7 @@ class FlowService:
                 "source_type": str(source_type),
             }
             # Add to stream in a background thread to prevent blocking event loop
-            await asyncio.to_thread(r.xadd, "netvisor:flow_stream", payload)
+            await self._run_in_executor(r.xadd, "netvisor:flow_stream", payload)
             redis_published = True
             
             # Expose metrics
@@ -711,7 +724,7 @@ class FlowService:
 
         if not redis_published:
             # Enqueue to DB-backed queue fallback (ensures rollback, backpressure checks, and metrics for tests)
-            success = await asyncio.to_thread(self._enqueue_batch_sync, list(flows))
+            success = await self._run_in_executor(self._enqueue_batch_sync, list(flows))
             if not success:
                 return False
 
@@ -965,7 +978,7 @@ class FlowService:
         interval = max(float(settings.FLOW_WORKER_HEARTBEAT_SECONDS or 5.0), 1.0)
         while True:
             try:
-                await asyncio.to_thread(self._touch_worker_heartbeat_sync)
+                await self._run_in_executor(self._touch_worker_heartbeat_sync)
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -982,7 +995,7 @@ class FlowService:
 
     async def _collect_queue_batch(self) -> list[dict]:
         claim_limit = max(int(settings.FLOW_WORKER_CLAIM_LIMIT or 10), 1)
-        claimed = await asyncio.to_thread(self._claim_pending_batches_sync, claim_limit)
+        claimed = await self._run_in_executor(self._claim_pending_batches_sync, claim_limit)
         if claimed:
             last_batch_id = int(claimed[-1]["id"])
             self._set_metric("last_claimed_batch_id", last_batch_id)
@@ -1036,12 +1049,12 @@ class FlowService:
                         import redis
                         from app.db.redis_client import get_redis_connection
                         r = get_redis_connection()
-                        await asyncio.to_thread(r.ping)
+                        await self._run_in_executor(r.ping)
                         use_redis = True
                         
                         # Create consumer group if it doesn't exist
                         try:
-                            await asyncio.to_thread(r.xgroup_create, stream_name, group_name, id="0", mkstream=True)
+                            await self._run_in_executor(r.xgroup_create, stream_name, group_name, id="0", mkstream=True)
                             logger.info("Created Redis stream consumer group '%s' for stream '%s'", group_name, stream_name)
                         except Exception as group_err:
                             if "BUSYGROUP" in str(group_err):
@@ -1061,12 +1074,12 @@ class FlowService:
                         # 1. Update queue depth metric in Prometheus
                         try:
                             from app.middleware.prometheus_middleware import REDIS_STREAM_LENGTH, REDIS_CONSUMER_LAG
-                            stream_info = await asyncio.to_thread(r.xinfo_stream, stream_name)
+                            stream_info = await self._run_in_executor(r.xinfo_stream, stream_name)
                             stream_len = stream_info.get("length", 0)
                             REDIS_STREAM_LENGTH.set(stream_len)
                             
                             # Estimate consumer lag (simple: pending messages count)
-                            groups_info = await asyncio.to_thread(r.xinfo_groups, stream_name)
+                            groups_info = await self._run_in_executor(r.xinfo_groups, stream_name)
                             for g in groups_info:
                                 if g.get("name") == group_name:
                                     REDIS_CONSUMER_LAG.set(g.get("pending", 0))
@@ -1077,7 +1090,7 @@ class FlowService:
                         if random.random() < 0.1:  # 10% chance per iteration to clean up pending
                             try:
                                 # Get pending messages that have been idle for > 15s (15000ms)
-                                pending_info = await asyncio.to_thread(r.xpending_range, stream_name, group_name, min="-", max="+", count=10)
+                                pending_info = await self._run_in_executor(r.xpending_range, stream_name, group_name, min="-", max="+", count=10)
                                 for p in pending_info:
                                     msg_id = p["message_id"]
                                     idle_ms = p["elapsed_milliseconds"]
@@ -1087,22 +1100,22 @@ class FlowService:
                                         if delivery_count > 5:
                                             # Dead-letter routing
                                             logger.warning("Message %s failed %s times. Routing to dead-letter.", msg_id, delivery_count)
-                                            msgs = await asyncio.to_thread(r.xrange, stream_name, min=msg_id, max=msg_id)
+                                            msgs = await self._run_in_executor(r.xrange, stream_name, min=msg_id, max=msg_id)
                                             if msgs:
-                                                await asyncio.to_thread(r.xadd, f"{stream_name}:deadletter", msgs[0][1])
+                                                await self._run_in_executor(r.xadd, f"{stream_name}:deadletter", msgs[0][1])
                                             # ACK to remove from pending PEL
-                                            await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
-                                            await asyncio.to_thread(r.xdel, stream_name, msg_id)
+                                            await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                            await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         else:
                                             # Reclaim / Claim message
-                                            await asyncio.to_thread(r.xclaim, stream_name, group_name, self._worker_id, min_idle_time=15000, message_ids=[msg_id])
+                                            await self._run_in_executor(r.xclaim, stream_name, group_name, self._worker_id, min_idle_time=15000, message_ids=[msg_id])
                                             logger.info("Claimed idle pending message %s from crashed worker", msg_id)
                             except Exception as reclaim_err:
                                 logger.warning("Failed to reclaim pending stream messages: %s", reclaim_err)
  
                         # 3. Read messages (first read pending for this worker, then new)
                         # Read pending:
-                        messages = await asyncio.to_thread(
+                        messages = await self._run_in_executor(
                             r.xreadgroup,
                             groupname=group_name,
                             consumername=self._worker_id,
@@ -1112,7 +1125,7 @@ class FlowService:
                         )
                         if not messages or not messages[0][1]:
                             # Read new:
-                            messages = await asyncio.to_thread(
+                            messages = await self._run_in_executor(
                                 r.xreadgroup,
                                 groupname=group_name,
                                 consumername=self._worker_id,
@@ -1136,7 +1149,7 @@ class FlowService:
                                     persist_started_at = time.perf_counter()
                                     
                                     # Process and persist using _sync_persist_batch (MySQL & ClickHouse)
-                                    events_to_emit = await asyncio.to_thread(self._sync_persist_batch, flows)
+                                    events_to_emit = await self._run_in_executor(self._sync_persist_batch, flows)
                                     
                                     persist_duration_ms = round((time.perf_counter() - persist_started_at) * 1000, 2)
                                     self._set_metric("last_persist_duration_ms", persist_duration_ms)
@@ -1152,8 +1165,8 @@ class FlowService:
                                         await self._emit_realtime_events(events_to_emit)
                                     
                                     # Acknowledge the message in Redis Stream
-                                    await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
-                                    await asyncio.to_thread(r.xdel, stream_name, msg_id)
+                                    await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                    await self._run_in_executor(r.xdel, stream_name, msg_id)
                                     
                                 except Exception as inner_exc:
                                     logger.exception("Error processing stream message %s", msg_id)
@@ -1219,7 +1232,7 @@ class FlowService:
                                 self._set_metric("last_error", "flow_worker_failure")
                                 metrics_service.increment("flow_failed_batches_total")
                                 logger.exception("Flow worker failed while processing queued batch %s.", queue_batch_id)
-                                deadlettered = await asyncio.to_thread(self._mark_batch_retry_sync, queue_batch_id, str(exc))
+                                deadlettered = await self._run_in_executor(self._mark_batch_retry_sync, queue_batch_id, str(exc))
                                 if deadlettered:
                                     self._increment_metric("deadletter_batches_total")
                                     metrics_service.increment("flow_deadletter_batches_total")
@@ -1240,13 +1253,13 @@ class FlowService:
                 await heartbeat_task
             except asyncio.CancelledError:
                 pass
-            await asyncio.to_thread(self._clear_worker_heartbeat_sync)
+            await self._run_in_executor(self._clear_worker_heartbeat_sync)
             self._refresh_queue_depth()
 
 
     async def _persist_batch(self, batch):
         """No longer used directly, superseded by _sync_persist_batch + to_thread."""
-        events_to_emit = await asyncio.to_thread(self._sync_persist_batch, batch)
+        events_to_emit = await self._run_in_executor(self._sync_persist_batch, batch)
         for event_name, payload in events_to_emit:
             await emit_event(event_name, payload)
 
@@ -1258,6 +1271,7 @@ class FlowService:
         alert_keys_seen: set[tuple] = set()
         sanitized_batch = []
         ch_rows = []
+        flow_logs_insert_values = []
 
 
         for flow in batch:
@@ -1274,8 +1288,19 @@ class FlowService:
             seen_hashes.add(sanitized.ingest_hash)
             sanitized_batch.append((org_id, sanitized))
 
+        # Bulk query existing hashes to minimize DB round trips (Issue #18)
+        existing_hashes = set()
+        hashes = [sanitized.ingest_hash for _, sanitized in sanitized_batch if sanitized.ingest_hash]
+        if hashes:
+            format_strings = ",".join(["%s"] * len(hashes))
+            cursor.execute(
+                f"SELECT ingest_hash FROM flow_logs WHERE ingest_hash IN ({format_strings})",
+                tuple(hashes)
+            )
+            existing_hashes = {row["ingest_hash"] for row in cursor.fetchall() or []}
+
         for org_id, sanitized in sanitized_batch:
-            if self._flow_log_exists_by_hash(cursor, sanitized.ingest_hash):
+            if sanitized.ingest_hash in existing_hashes:
                 self._increment_metric("deduplicated_flows_total")
                 metrics_service.increment("flow_deduplicated_flows_total", amount=1)
                 continue
@@ -1419,47 +1444,36 @@ class FlowService:
                 byte_count=sanitized.byte_count,
             )
 
-            cursor.execute(
-                """
-                INSERT INTO flow_logs (
-                    organization_id, src_ip, dst_ip, src_port, dst_port,
-                    protocol, start_time, last_seen, packet_count, byte_count,
-                    duration, average_packet_size, domain, sni, src_mac, dst_mac,
-                    network_scope, flow_direction, internal_device_ip, external_endpoint_ip, session_id,
-                    application, agent_id, analysis_source, analysis_confidence, analysis_signals_json,
-                    ingest_hash
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    org_id,
-                    sanitized.src_ip,
-                    sanitized.dst_ip,
-                    sanitized.src_port,
-                    sanitized.dst_port,
-                    sanitized.protocol,
-                    self._mysql_timestamp(sanitized.start_time),
-                    self._mysql_timestamp(sanitized.last_seen),
-                    sanitized.packet_count,
-                    sanitized.byte_count,
-                    sanitized.duration,
-                    sanitized.average_packet_size,
-                    sanitized.domain,
-                    sanitized.sni,
-                    sanitized.src_mac,
-                    sanitized.dst_mac,
-                    sanitized.network_scope,
-                    sanitized.flow_direction,
-                    sanitized.internal_device_ip,
-                    sanitized.external_endpoint_ip,
-                    session_id,
-                    application,
-                    sanitized.agent_id,
-                    sanitized.analysis_source,
-                    sanitized.analysis_confidence,
-                    json.dumps(list(sanitized.analysis_signals)),
-                    sanitized.ingest_hash,
-                ),
-            )
+            # Accumulate values for bulk insert (Issue #18)
+            flow_logs_insert_values.append((
+                org_id,
+                sanitized.src_ip,
+                sanitized.dst_ip,
+                sanitized.src_port,
+                sanitized.dst_port,
+                sanitized.protocol,
+                self._mysql_timestamp(sanitized.start_time),
+                self._mysql_timestamp(sanitized.last_seen),
+                sanitized.packet_count,
+                sanitized.byte_count,
+                sanitized.duration,
+                sanitized.average_packet_size,
+                sanitized.domain,
+                sanitized.sni,
+                sanitized.src_mac,
+                sanitized.dst_mac,
+                sanitized.network_scope,
+                sanitized.flow_direction,
+                sanitized.internal_device_ip,
+                sanitized.external_endpoint_ip,
+                session_id,
+                application,
+                sanitized.agent_id,
+                sanitized.analysis_source,
+                sanitized.analysis_confidence,
+                json.dumps(list(sanitized.analysis_signals)),
+                sanitized.ingest_hash,
+            ))
 
             if sanitized.internal_device_ip:
                 device_service.touch_device_seen(
@@ -1605,6 +1619,24 @@ class FlowService:
                     )
                 )
 
+        # Bulk insert to MySQL flow_logs (Issue #18)
+        if flow_logs_insert_values:
+            insert_sql = """
+                INSERT INTO flow_logs (
+                    organization_id, src_ip, dst_ip, src_port, dst_port,
+                    protocol, start_time, last_seen, packet_count, byte_count,
+                    duration, average_packet_size, domain, sni, src_mac, dst_mac,
+                    network_scope, flow_direction, internal_device_ip, external_endpoint_ip, session_id,
+                    application, agent_id, analysis_source, analysis_confidence, analysis_signals_json,
+                    ingest_hash
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            if hasattr(cursor, "executemany"):
+                cursor.executemany(insert_sql, flow_logs_insert_values)
+            else:
+                for row_val in flow_logs_insert_values:
+                    cursor.execute(insert_sql, row_val)
+
         # Bulk insert to ClickHouse (Milestone 2 Dual-Write)
         if ch_rows:
             try:
@@ -1636,29 +1668,62 @@ class FlowService:
 
     def _sync_persist_batch(self, batch) -> list[tuple[str, dict]]:
         """Synchronous version of persist_batch to be run in a thread."""
-        conn = get_db_connection()
-        if not conn:
-            self._set_metric("last_error", "db_connection_unavailable")
-            metrics_service.increment("flow_db_connection_failures_total")
-            return []
-        cursor = None
-        try:
-            self._ensure_processing_ready(conn)
-            
-            if not system_service.is_monitoring_enabled(conn):
-                logger.debug("Monitoring disabled, dropping %s buffered flow(s)", len(batch))
-                metrics_service.increment("flow_batches_skipped_total", reason="monitoring_disabled")
+        import mysql.connector
+        import random
+        
+        max_retries = 3
+        for attempt in range(max_retries):
+            conn = get_db_connection()
+            if not conn:
+                self._set_metric("last_error", "db_connection_unavailable")
+                metrics_service.increment("flow_db_connection_failures_total")
                 return []
+            cursor = None
+            try:
+                self._ensure_processing_ready(conn)
+                
+                if not system_service.is_monitoring_enabled(conn):
+                    logger.debug("Monitoring disabled, dropping %s buffered flow(s)", len(batch))
+                    metrics_service.increment("flow_batches_skipped_total", reason="monitoring_disabled")
+                    return []
 
-            cursor = conn.cursor(dictionary=True)
-            events_to_emit = self._persist_batch_on_connection(conn, cursor, batch)
-            conn.commit()
-            return events_to_emit
-        finally:
-            if cursor:
-                cursor.close()
-            conn.close()
-            self._refresh_queue_depth()
+                cursor = conn.cursor(dictionary=True)
+                events_to_emit = self._persist_batch_on_connection(conn, cursor, batch)
+                conn.commit()
+                return events_to_emit
+            except mysql.connector.Error as err:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                # 1213 is the MySQL deadlock error code
+                if err.errno == 1213 and attempt < max_retries - 1:
+                    sleep_time = 0.05 + random.random() * 0.05
+                    logger.warning("Database deadlock detected in _sync_persist_batch. Retrying attempt %s/%s after %ss", attempt + 1, max_retries, round(sleep_time, 3))
+                    time.sleep(sleep_time)
+                    continue
+                logger.exception("Database error during flow batch persistence")
+                self._set_metric("last_error", "db_persist_error")
+                metrics_service.increment("flow_persist_failures_total")
+                return []
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                logger.exception("Unexpected error during flow batch persistence: %s", e)
+                self._set_metric("last_error", "unexpected_persist_error")
+                metrics_service.increment("flow_persist_failures_total")
+                return []
+            finally:
+                if cursor:
+                    cursor.close()
+                if conn:
+                    conn.close()
+                self._refresh_queue_depth()
+        return []
 
     def _sync_process_claimed_batch(self, queue_record: dict) -> dict:
         conn = get_db_connection()

@@ -195,10 +195,22 @@ def resolve_source_ip(request: Request) -> str:
     from app.core.config import settings
 
     client = getattr(request, "client", None)
-    socket_ip = str(client.host).strip() if client else "unknown"
+    if client is None:
+        if hasattr(request, "headers"):
+            forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
+            if forwarded_for:
+                parts = [p.strip() for p in forwarded_for.split(",")]
+                if parts and parts[0]:
+                    return parts[0]
+            real_ip = str(request.headers.get("X-Real-IP") or "").strip()
+            if real_ip:
+                return real_ip
+        return "unknown"
+
+    socket_ip = str(client.host).strip()
 
     trusted_proxies = {p.strip() for p in (settings.TRUSTED_PROXIES or "").split(",") if p.strip()}
-    if socket_ip in trusted_proxies:
+    if socket_ip in trusted_proxies and hasattr(request, "headers"):
         forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
         if forwarded_for:
             # First IP in X-Forwarded-For is the original client
