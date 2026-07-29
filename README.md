@@ -2,15 +2,15 @@
 
 # NetVisor
 
-### Intelligent Network Visibility & Security Monitoring Platform
+### Enterprise-grade Network Visibility, Endpoint Telemetry & Security Monitoring Platform
 
-A self-hosted security workspace for managed endpoints and metadata-only BYOD visibility.
+A modular, self-hosted platform for monitoring managed endpoints and providing metadata-only visibility for BYOD environments.
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
-![React](https://img.shields.io/badge/React-Frontend-61DAFB)
-![MySQL](https://img.shields.io/badge/MySQL-Database-blue)
-![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
 </div>
@@ -19,147 +19,152 @@ A self-hosted security workspace for managed endpoints and metadata-only BYOD vi
 
 # Overview
 
-NetVisor is a modular, self-hosted network visibility and security monitoring platform designed to provide centralized monitoring of managed endpoints while maintaining metadata-only visibility for BYOD (Bring Your Own Device) environments.
+Traditional network monitoring solutions are often expensive, difficult to customize, or require organizations to send telemetry to third-party services.
 
-The platform combines endpoint telemetry, gateway-based network metadata collection, and a web-based analyst dashboard to help administrators monitor devices, investigate security events, and analyze network activity from a single interface.
+**NetVisor** is a modular, self-hosted network visibility platform that enables centralized monitoring of managed endpoints while maintaining metadata-only visibility for BYOD (Bring Your Own Device) environments.
+
+The platform integrates endpoint telemetry, gateway-based metadata collection, and a web-based analyst dashboard to provide administrators with actionable insights into network activity, endpoint health, and system operations from a single interface.
 
 ---
 
 # Key Features
 
-- Real-time endpoint telemetry
+## Endpoint Monitoring
+
+- Endpoint telemetry collection
+- Device health monitoring
+- Managed endpoint inventory
+- Agent-based data collection
+
+## Network Visibility
+
 - Metadata-only BYOD monitoring
-- Centralized analyst dashboard
-- Network traffic monitoring
-- Endpoint agent management
-- Gateway-based network collection
-- Device inventory management
-- Health monitoring
+- Gateway-based traffic collection
+- Device discovery
+- Network activity visibility
+
+## Security Operations
+
 - Security event logging
-- REST API
-- Docker deployment support
+- Centralized analyst dashboard
+- Health checks
+- Audit-friendly architecture
+
+## Platform
+
+- RESTful API
+- Docker deployment
 - Modular architecture
+- Cross-platform support
+- Automated testing
+- CI/CD pipeline
 
 ---
 
 # System Architecture
 
 ```text
-                +----------------+
-                |   Endpoints    |
-                | (Managed PCs)  |
-                +-------+--------+
-                        |
-                        | Agent
-                        |
-                +-------v--------+
-                |   NetVisor     |
-                |     API        |
-                +-------+--------+
-                        |
-       +----------------+----------------+
-       |                                 |
-+------v------+                 +--------v-------+
-|   Gateway   |                 |    MySQL DB    |
-| BYOD Traffic|                 | Configuration  |
-+------+------+\                +--------+-------+
-       |                                 |
-       +---------------+-----------------+
-                       |
-                +------v------+
-                | React UI    |
-                | Dashboard   |
-                +-------------+
+                    +----------------------+
+                    |  Managed Endpoints   |
+                    +----------+-----------+
+                               |
+                               | Agent
+                               |
+                    +----------v-----------+
+                    |     NetVisor API     |
+                    +----------+-----------+
+                               |
+            +------------------+------------------+
+            |                                     |
++-----------v-----------+             +-----------v-----------+
+|      Gateway          |             |       MySQL           |
+| Metadata Collection   |             | Configuration & Data  |
++-----------+-----------+             +-----------+-----------+
+            |                                     |
+            +------------------+------------------+
+                               |
+                    +----------v-----------+
+                    |   React Dashboard    |
+                    |  Analyst Workspace   |
+                    +----------------------+
 ```
 
 ---
 
 # Repository Structure
 
-```
+```text
 NetVisor
 │
-├── app/               Backend API & Services
-├── agent/             Endpoint Agent
-├── gateway/           BYOD Gateway
-├── frontend/          React Dashboard
-├── shared/            Shared Libraries
-├── infra/             Infrastructure & Deployment
-├── docs/              Documentation
-├── scripts/           Utility Scripts
-├── tests/             Automated Tests
-└── benchmarks/        Performance Benchmarks
+├── app/                  Backend API & Business Logic
+├── agent/                Endpoint Monitoring Agent
+├── gateway/              BYOD Gateway Service
+├── frontend/             React Dashboard
+├── shared/               Shared Libraries
+├── infra/                Infrastructure & Deployment
+├── docs/                 Project Documentation
+├── scripts/              Utility Scripts
+├── tests/                Automated Tests
+├── benchmarks/           Performance Benchmarks
+└── .github/              GitHub Actions
 ```
 
 ---
 
 # Technology Stack
 
-### Backend
-
-- Python
-- FastAPI
-- SQLAlchemy
-- Redis
-- MySQL
-
-### Frontend
-
-- React
-- JavaScript
-- Tailwind CSS
-
-### Infrastructure
-
-- Docker
-- GitHub Actions
-- Linux
-- Windows
+| Layer | Technologies |
+|-------|--------------|
+| Backend | Python, FastAPI |
+| Frontend | React, JavaScript, Tailwind CSS |
+| Database | MySQL, Redis |
+| Infrastructure | Docker, GitHub Actions |
+| Deployment | Linux, Windows |
 
 ---
 
-# Quick Start
+# Getting Started
 
-Clone the repository
+## Clone the Repository
 
 ```bash
 git clone https://github.com/premkumarteli/NetVisor.git
 cd NetVisor
 ```
 
-Initialize the environment
+## Initialize Environment
 
 ```bash
 python scripts/init_env.py
 ```
 
-Configure your `.env`
+Update your `.env` configuration with your local settings.
 
-Initialize the database
+## Initialize Database
 
 ```bash
 mysql -u root -p < infra/database/init.sql
 ```
 
-Run the backend
+## Start Backend
 
 ```bash
 python run_server.py
 ```
 
-Run the endpoint agent
+## Start Endpoint Agent
 
 ```bash
 python run_agent.py
 ```
 
-Run the gateway
+## Start Gateway
 
 ```bash
 python run_gateway.py
 ```
 
-Start the frontend
+## Start Frontend
 
 ```bash
 cd frontend
@@ -169,68 +174,72 @@ npm run dev
 
 ---
 
-# Documentation
+# Project Documentation
 
-- Quick Start
+Documentation is available in the `docs/` directory.
+
+- Quick Start Guide
+- Environment Setup
 - Architecture Specification
 - Deployment Guide
 - Security Operations
 - Runbook
-- API Documentation
-
-Documentation is available inside the `docs/` directory.
 
 ---
 
 # Screenshots
 
-> Add screenshots here.
+> Replace these placeholders with actual screenshots.
 
-Dashboard
+| Dashboard | Devices |
+|-----------|---------|
+| *(Screenshot)* | *(Screenshot)* |
 
-Device Monitoring
-
-Alerts
-
-Network Overview
-
-Traffic Analysis
+| Alerts | Network Overview |
+|--------|------------------|
+| *(Screenshot)* | *(Screenshot)* |
 
 ---
 
-# Project Status
+# Roadmap
 
-Current Status
-
-- Active Development
-
-Upcoming Features
-
-- Threat Intelligence Integration
-- Advanced Detection Engine
-- SIEM Integration
-- Improved Analytics
-- Cloud Deployment
+- [x] Backend API
+- [x] Endpoint Agent
+- [x] Gateway Service
+- [x] React Dashboard
+- [x] Docker Support
+- [x] CI/CD Pipeline
+- [ ] Threat Intelligence Integration
+- [ ] Advanced Detection Engine
+- [ ] SIEM Integration
+- [ ] Cloud Deployment
+- [ ] Multi-tenant Support
 
 ---
 
-# Development Workflow
+# Development
+
+### Backend
 
 ```bash
-# Backend
-
 python run_server.py
+```
 
-# Agent
+### Agent
 
+```bash
 python run_agent.py
+```
 
-# Gateway
+### Gateway
 
+```bash
 python run_gateway.py
+```
 
-# Frontend
+### Frontend
 
+```bash
 cd frontend
 npm run dev
 ```
@@ -239,13 +248,13 @@ npm run dev
 
 # Testing
 
-Run all tests
+Run backend tests:
 
 ```bash
 pytest
 ```
 
-Run frontend checks
+Run frontend checks:
 
 ```bash
 npm run lint
@@ -258,13 +267,22 @@ npm run build
 
 Contributions, bug reports, and feature requests are welcome.
 
-Please open an issue before submitting major changes.
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Open a Pull Request
+
+---
+
+# Disclaimer
+
+NetVisor is intended for educational, research, and authorized administrative environments. Ensure you have appropriate authorization before monitoring any network or endpoint.
 
 ---
 
 # License
 
-This project is licensed under the MIT License.
+This project is licensed under the **MIT License**.
 
 ---
 
@@ -272,16 +290,16 @@ This project is licensed under the MIT License.
 
 **Premkumar Teli**
 
-Information Science Engineering Student
-
+Information Science & Engineering Student  
 Backend Development • AI • Cybersecurity
 
-LinkedIn:
-https://www.linkedin.com/in/premkumar-teli-s9
-
-GitHub:
-https://github.com/premkumarteli
+- GitHub: https://github.com/premkumarteli
+- LinkedIn: https://www.linkedin.com/in/premkumar-teli-s9
 
 ---
 
-## If you find this project useful, consider giving it a ⭐.
+<div align="center">
+
+### ⭐ If you find this project useful, consider giving it a star!
+
+</div>
