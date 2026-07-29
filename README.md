@@ -11,7 +11,7 @@ A modular, self-hosted platform for monitoring managed endpoints and providing m
 ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black)
 ![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
+![Copyright](https://img.shields.io/badge/Copyright-All%20Rights%20Reserved-red)
 
 </div>
 
@@ -47,7 +47,7 @@ The platform integrates endpoint telemetry, gateway-based metadata collection, a
 
 - Security event logging
 - Centralized analyst dashboard
-- Health checks
+- Health monitoring
 - Audit-friendly architecture
 
 ## Platform
@@ -57,7 +57,7 @@ The platform integrates endpoint telemetry, gateway-based metadata collection, a
 - Modular architecture
 - Cross-platform support
 - Automated testing
-- CI/CD pipeline
+- GitHub Actions CI/CD
 
 ---
 
@@ -68,7 +68,7 @@ The platform integrates endpoint telemetry, gateway-based metadata collection, a
                     |  Managed Endpoints   |
                     +----------+-----------+
                                |
-                               | Agent
+                               | Endpoint Agent
                                |
                     +----------v-----------+
                     |     NetVisor API     |
@@ -96,13 +96,13 @@ The platform integrates endpoint telemetry, gateway-based metadata collection, a
 ```text
 NetVisor
 │
-├── app/                  Backend API & Business Logic
-├── agent/                Endpoint Monitoring Agent
-├── gateway/              BYOD Gateway Service
+├── app/                  Backend API & Services
+├── agent/                Endpoint Agent
+├── gateway/              BYOD Gateway
 ├── frontend/             React Dashboard
 ├── shared/               Shared Libraries
-├── infra/                Infrastructure & Deployment
-├── docs/                 Project Documentation
+├── infra/                Infrastructure
+├── docs/                 Documentation
 ├── scripts/              Utility Scripts
 ├── tests/                Automated Tests
 ├── benchmarks/           Performance Benchmarks
@@ -125,7 +125,7 @@ NetVisor
 
 # Getting Started
 
-## Clone the Repository
+## Clone Repository
 
 ```bash
 git clone https://github.com/premkumarteli/NetVisor.git
@@ -138,7 +138,7 @@ cd NetVisor
 python scripts/init_env.py
 ```
 
-Update your `.env` configuration with your local settings.
+Configure your `.env` file.
 
 ## Initialize Database
 
@@ -174,16 +174,16 @@ npm run dev
 
 ---
 
-# Project Documentation
+# Documentation
 
-Documentation is available in the `docs/` directory.
+Project documentation is available inside the **docs/** directory.
 
 - Quick Start Guide
-- Environment Setup
+- Installation Guide
 - Architecture Specification
 - Deployment Guide
-- Security Operations
-- Runbook
+- Security Operations Guide
+- API Documentation
 
 ---
 
@@ -191,13 +191,21 @@ Documentation is available in the `docs/` directory.
 
 > Replace these placeholders with actual screenshots.
 
-| Dashboard | Devices |
-|-----------|---------|
-| *(Screenshot)* | *(Screenshot)* |
+## Dashboard
 
-| Alerts | Network Overview |
-|--------|------------------|
-| *(Screenshot)* | *(Screenshot)* |
+![Dashboard](docs/images/dashboard.png)
+
+## Devices
+
+![Devices](docs/images/devices.png)
+
+## Alerts
+
+![Alerts](docs/images/alerts.png)
+
+## Network Overview
+
+![Network Overview](docs/images/network-overview.png)
 
 ---
 
@@ -205,15 +213,15 @@ Documentation is available in the `docs/` directory.
 
 - [x] Backend API
 - [x] Endpoint Agent
-- [x] Gateway Service
+- [x] Gateway Monitoring
 - [x] React Dashboard
 - [x] Docker Support
-- [x] CI/CD Pipeline
+- [x] Automated Testing
 - [ ] Threat Intelligence Integration
 - [ ] Advanced Detection Engine
 - [ ] SIEM Integration
 - [ ] Cloud Deployment
-- [ ] Multi-tenant Support
+- [ ] Multi-Tenant Support
 
 ---
 
@@ -248,13 +256,13 @@ npm run dev
 
 # Testing
 
-Run backend tests:
+Run backend tests
 
 ```bash
 pytest
 ```
 
-Run frontend checks:
+Run frontend checks
 
 ```bash
 npm run lint
@@ -267,39 +275,37 @@ npm run build
 
 Contributions, bug reports, and feature requests are welcome.
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Open a Pull Request
+Please open an issue before submitting major changes.
 
 ---
 
-# Disclaimer
+# Copyright
 
-NetVisor is intended for educational, research, and authorized administrative environments. Ensure you have appropriate authorization before monitoring any network or endpoint.
+**© 2026 Premkumar Teli. All Rights Reserved.**
 
----
+This repository is provided for **viewing and evaluation purposes only**.
 
-# License
+No part of this project may be copied, modified, redistributed, republished, reverse engineered, or used in any commercial or non-commercial project without prior written permission from the author.
 
-This project is licensed under the **MIT License**.
+If you wish to use any portion of this project, please contact the author to obtain written permission.
 
 ---
 
 # Author
 
-**Premkumar Teli**
+## Premkumar Teli
 
-Information Science & Engineering Student  
+**Information Science & Engineering Student**
+
 Backend Development • AI • Cybersecurity
 
-- GitHub: https://github.com/premkumarteli
-- LinkedIn: https://www.linkedin.com/in/premkumar-teli-s9
+- **GitHub:** https://github.com/premkumarteli
+- **LinkedIn:** https://www.linkedin.com/in/premkumar-teli-s9
 
 ---
 
 <div align="center">
 
-### ⭐ If you find this project useful, consider giving it a star!
+### ⭐ Thank you for visiting NetVisor!
 
 </div>
