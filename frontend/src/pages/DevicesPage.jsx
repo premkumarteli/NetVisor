@@ -16,7 +16,7 @@ import { getApplicationVisual } from '../utils/apps';
 
 const UNKNOWN_NAMES = new Set(['Unknown', 'Unknown-Device', 'Unnamed Device', '', null, undefined]);
 
-const isNamedDevice = (device) => !UNKNOWN_NAMES.has(device?.hostname);
+const isNamedDevice = (device) => Boolean(device?.hostname) && !UNKNOWN_NAMES.has(device.hostname);
 
 const deviceDisplayName = (device) => (isNamedDevice(device) ? device.hostname : 'Unnamed Device');
 
@@ -26,11 +26,13 @@ const cleanPart = (part) => {
 };
 
 const deviceTypeLabel = (device) => {
+  if (!device) return 'Identity still being learned';
   const parts = [device.vendor, device.device_type, device.os_family].map(cleanPart).filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Identity still being learned';
 };
 
 const normalizeConfidenceScore = (device) => {
+  if (!device) return 0.5;
   const explicit = Number(device.identity_confidence);
   if (Number.isFinite(explicit)) return Math.max(0, Math.min(explicit, 1));
   const label = String(device.confidence || '').toLowerCase();
@@ -48,6 +50,7 @@ const confidenceLabel = (device) => {
 };
 
 const identityExplanation = (device) => {
+  if (!device) return 'Gateway can see this IP, but needs more traffic to improve identity.';
   const sources = Array.isArray(device.evidence_sources) ? device.evidence_sources : [];
   if (device.management_mode === 'managed') {
     return 'Installed agent confirms this endpoint and keeps identity stable.';
@@ -62,6 +65,7 @@ const identityExplanation = (device) => {
 };
 
 const activitySummary = (device) => {
+  if (!device) return 'No recent activity';
   if (device.top_application) {
     return `${device.top_application}${device.top_domain ? ` via ${device.top_domain}` : ''}`;
   }
@@ -72,6 +76,7 @@ const activitySummary = (device) => {
 };
 
 const riskExplanation = (device) => {
+  if (!device) return '0% risk. No urgent action from current evidence.';
   const level = String(device.risk_level || 'LOW').toUpperCase();
   const score = Math.round(Number(device.risk_score) || 0);
   if (level === 'CRITICAL' || level === 'HIGH') {
@@ -84,6 +89,7 @@ const riskExplanation = (device) => {
 };
 
 const deviceIcon = (device) => {
+  if (!device) return 'ri-radar-line';
   const text = `${device.device_type || ''} ${device.vendor || ''} ${device.hostname || ''}`.toLowerCase();
   if (text.includes('phone') || text.includes('android') || text.includes('oppo') || text.includes('iphone')) return 'ri-smartphone-line';
   if (text.includes('printer')) return 'ri-printer-line';

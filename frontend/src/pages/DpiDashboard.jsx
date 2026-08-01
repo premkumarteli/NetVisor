@@ -7,6 +7,7 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
+import Tabs from '../components/V2/Tabs';
 import WebEvidenceDrawer from '../components/DPI/WebEvidenceDrawer';
 import DpiSetupGuide from '../components/DPI/DpiSetupGuide';
 import { TableSkeleton } from '../components/UI/Skeletons';
@@ -27,6 +28,12 @@ const DpiDashboard = () => {
   const [hideNoise, setHideNoise] = useState(true);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
+  const [activeTab, setActiveTab] = useState('groups');
+
+  const tabItems = [
+    { value: 'groups', label: 'Evidence Groups', icon: 'ri-folder-shield-2-line' },
+    { value: 'raw', label: 'Raw Activities', icon: 'ri-list-check-2' },
+  ];
 
   const fetchData = useCallback(async ({ background = false } = {}) => {
     if (!background) {
@@ -201,81 +208,83 @@ const DpiDashboard = () => {
         </div>
       )}
 
-      <div className="nv-metric-grid">
+      <div className="nv-metric-grid" style={{ marginBottom: '1.5rem' }}>
         <MetricCard icon="ri-navigation-line" label="Inspection State" value={status.state} meta="Global inspection posture" accent="#54c8e8" />
         <MetricCard icon="ri-route-line" label="Proxy" value={status.proxy} meta="Agent-side explicit proxy" accent="#60a5fa" />
         <MetricCard icon="ri-award-line" label="Certificate" value={status.certificate} meta="Root CA trust state" accent="#2dd4bf" />
         <MetricCard icon="ri-flashlight-line" label="Events / Sec" value={(Number(status.eps) || 0).toFixed(1)} meta={status.lastActivity ? `Last activity ${formatUtcTimestampToLocal(status.lastActivity)}` : 'No recent activity'} accent="#fbbf24" />
       </div>
 
-      <SectionCard title="Evidence Groups" caption="Correlated Browser Sessions" className="nv-section--balanced">
-        <div className="nv-filterbar">
-          <div className="nv-filterbar__group">
-            <label className="nv-field nv-field--grow">
-              <i className="ri-search-line"></i>
-              <input
-                type="search"
-                placeholder="Search title, URL, browser, query..."
-                value={filters.query}
-                onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Tabs value={activeTab} onChange={setActiveTab} items={tabItems} />
+      </div>
+
+      <div className="nv-filterbar" style={{ marginBottom: '1.5rem' }}>
+        <div className="nv-filterbar__group">
+          <label className="nv-field nv-field--grow">
+            <i className="ri-search-line"></i>
+            <input
+              type="search"
+              placeholder="Search title, URL, browser, query..."
+              value={filters.query}
+              onChange={(event) => setFilters((current) => ({ ...current, query: event.target.value }))}
+            />
+          </label>
+          <label className="nv-field">
+            <input
+              type="text"
+              placeholder="Domain..."
+              value={filters.domain}
+              onChange={(event) => setFilters((current) => ({ ...current, domain: event.target.value }))}
+            />
+          </label>
+          <label className="nv-field">
+            <select value={filters.risk} onChange={(event) => setFilters((current) => ({ ...current, risk: event.target.value }))}>
+              <option value="all">All Risk</option>
+              <option value="safe">Safe</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {activeTab === 'groups' ? (
+        <SectionCard title="Evidence Groups" caption="Correlated Browser Sessions" className="nv-section--balanced">
+          <div className="nv-scroll-region nv-scroll-region--xl">
+            {loading ? (
+              <TableSkeleton rows={6} />
+            ) : (
+              <DataTable
+                columns={groupedColumns}
+                rows={filteredGroups}
+                rowKey={(row, index) => row.group_key || `${row.page_url || row.base_domain}-${index}`}
+                onRowClick={(row) => setSelectedEvidence(row)}
+                emptyTitle="No grouped evidence detected"
+                emptyDescription="Enable inspection on a managed device and browse through the NetVisor launchers to populate correlated evidence clusters."
               />
-            </label>
-            <label className="nv-field">
-              <input
-                type="text"
-                placeholder="Domain..."
-                value={filters.domain}
-                onChange={(event) => setFilters((current) => ({ ...current, domain: event.target.value }))}
-              />
-            </label>
-            <label className="nv-field">
-              <select value={filters.risk} onChange={(event) => setFilters((current) => ({ ...current, risk: event.target.value }))}>
-                <option value="all">All Risk</option>
-                <option value="safe">Safe</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
-            </label>
+            )}
           </div>
-        </div>
-
-        <div className="nv-scroll-region nv-scroll-region--xl">
-          {loading ? (
-            <TableSkeleton rows={6} />
-          ) : (
-            <DataTable
-              columns={groupedColumns}
-              rows={filteredGroups}
-              rowKey={(row, index) => row.group_key || `${row.page_url || row.base_domain}-${index}`}
-              onRowClick={(row) => setSelectedEvidence(row)}
-              emptyTitle="No grouped evidence detected"
-              emptyDescription="Enable inspection on a managed device and browse through the NetVisor launchers to populate correlated evidence clusters."
-            />
-          )}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Raw Browser Sessions" caption="Global Feed" className="nv-section--balanced">
-        <div className="nv-scroll-region nv-scroll-region--xl">
-          {loading ? (
-            <TableSkeleton rows={6} />
-          ) : (
-            <DataTable
-              columns={rawColumns}
-              rows={filteredEvents}
-              rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
-              onRowClick={(row) => {
-                if (row.device_ip) {
-                  navigate(`/user/${encodeURIComponent(row.device_ip)}`);
-                }
-              }}
-              emptyTitle="No DPI activity detected"
-              emptyDescription="Ensure inspection is enabled on a managed device, the proxy is running, and browsing happens through the NetVisor launchers."
-            />
-          )}
-        </div>
-      </SectionCard>
+        </SectionCard>
+      ) : (
+        <SectionCard title="Raw Browser Sessions" caption="Global Feed" className="nv-section--balanced">
+          <div className="nv-scroll-region nv-scroll-region--xl">
+            {loading ? (
+              <TableSkeleton rows={6} />
+            ) : (
+              <DataTable
+                columns={rawColumns}
+                rows={filteredEvents}
+                rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
+                onRowClick={(row) => setSelectedEvidence(row)}
+                emptyTitle="No DPI activity detected"
+                emptyDescription="Ensure inspection is enabled on a managed device, the proxy is running, and browsing happens through the NetVisor launchers."
+              />
+            )}
+          </div>
+        </SectionCard>
+      )}
 
       <WebEvidenceDrawer
         open={Boolean(selectedEvidence)}
