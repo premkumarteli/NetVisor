@@ -35,6 +35,14 @@ class SystemService:
         "audit_logs",
     )
 
+    _ALLOWED_TABLES = frozenset(OPERATIONAL_TABLES)
+
+    def _validate_table_name(self, table_name: str) -> str:
+        """Validate table name against whitelist to prevent SQL injection."""
+        if table_name not in self._ALLOWED_TABLES:
+            raise ValueError(f"Table '{table_name}' is not in the allowed tables list")
+        return table_name
+
     def __init__(self, backup_root: Optional[Path] = None):
         self.backup_root = Path(backup_root or settings.BACKUP_DIR)
         self._status_cache_ttl_seconds = max(float(os.getenv("NETVISOR_HEALTH_CACHE_SECONDS", "10")), 0.0)
@@ -91,18 +99,20 @@ class SystemService:
         self._backup_retention_cache_days = None
 
     def _table_count(self, cursor, table_name: str, organization_id: Optional[str] = None) -> int:
+        self._validate_table_name(table_name)
         if organization_id:
-            cursor.execute(f"SELECT COUNT(*) AS count FROM {table_name} WHERE organization_id = %s", (organization_id,))
+            cursor.execute("SELECT COUNT(*) AS count FROM {} WHERE organization_id = %s".format(table_name), (organization_id,))
         else:
-            cursor.execute(f"SELECT COUNT(*) AS count FROM {table_name}")
+            cursor.execute("SELECT COUNT(*) AS count FROM {}".format(table_name))
         row = cursor.fetchone() or {}
         return int(row.get("count") or 0)
 
     def _export_table_to_csv(self, db_conn, table_name: str, backup_dir: Path, organization_id: Optional[str] = None) -> int:
+        self._validate_table_name(table_name)
         cursor = db_conn.cursor(dictionary=True)
         try:
             # Query schema first to get column names safely
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT 0")
+            cursor.execute("SELECT * FROM {} LIMIT 0".format(table_name))
             cursor.fetchall()  # Clear unread result set
             columns = cursor.column_names or ()
             if not columns:
@@ -113,9 +123,9 @@ class SystemService:
 
             # Stream query with deterministic ordering
             if organization_id:
-                cursor.execute(f"SELECT * FROM {table_name} WHERE organization_id = %s{order_clause}", (organization_id,))
+                cursor.execute("SELECT * FROM {} WHERE organization_id = %s{}".format(table_name, order_clause), (organization_id,))
             else:
-                cursor.execute(f"SELECT * FROM {table_name}{order_clause}")
+                cursor.execute("SELECT * FROM {}{}".format(table_name, order_clause))
             
             csv_path = backup_dir / f"{table_name}.csv"
             total_exported = 0
@@ -407,13 +417,14 @@ class SystemService:
                 row_count = self._table_count(cursor, table_name, organization_id)
                 if row_count == 0:
                     continue
+                self._validate_table_name(table_name)
                 if organization_id:
-                    cursor.execute(f"DELETE FROM {table_name} WHERE organization_id = %s", (organization_id,))
+                    cursor.execute("DELETE FROM {} WHERE organization_id = %s".format(table_name), (organization_id,))
                 else:
-                    cursor.execute(f"DELETE FROM {table_name}")
+                    cursor.execute("DELETE FROM {}".format(table_name))
                 cleared_counts[table_name] = row_count
                 if not organization_id and table_name in auto_increment_tables:
-                    cursor.execute(f"ALTER TABLE {table_name} AUTO_INCREMENT = 1")
+                    cursor.execute("ALTER TABLE {} AUTO_INCREMENT = 1".format(table_name))
             db_conn.commit()
             if not organization_id:
                 self._clear_runtime_files()
@@ -632,6 +643,81 @@ class SystemService:
             return rows
         finally:
             cursor.close()
+
+    def export_all_tables_to_db_dump(self, db_conn) -> None:
+        import csv
+        
+        project_root = Path(__file__).resolve().parents[2]
+        db_dump_root = project_root / "db_dump"
+        db_dump_root.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        target_dir = db_dump_root / timestamp
+        target_dir.mkdir(parents=True, exist_ok=True)
+        
+        cursor = db_conn.cursor()
+        try:
+            cursor.execute("SHOW TABLES")
+            tables = [row[0] for row in cursor.fetchall()]
+        finally:
+            cursor.close()
+            
+        summary_info = []
+        
+        for table in tables:
+            # Validate table name to prevent SQL injection
+            # Only export tables that are in our allowed list or system tables
+            if table not in self._ALLOWED_TABLES and not table.startswith("system_"):
+                logger.warning("SystemService: Skipping export of non-standard table '%s'", table)
+                continue
+                
+            csv_path = target_dir / f"{table}.csv"
+            row_count = 0
+            
+            cursor = db_conn.cursor(dictionary=True)
+            try:
+                # Use backticks for table name safety
+                cursor.execute("SELECT * FROM `{}` LIMIT 0".format(table))
+                cursor.fetchall()
+                columns = cursor.column_names or ()
+                
+                if not columns:
+                    continue
+                    
+                fieldnames = list(columns)
+                cursor.execute("SELECT * FROM `{}`".format(table))
+                
+                with csv_path.open("w", newline="", encoding="utf-8") as handle:
+                    writer = csv.DictWriter(handle, fieldnames=fieldnames)
+                    writer.writeheader()
+                    while True:
+                        rows = cursor.fetchmany(size=1000)
+                        if not rows:
+                            break
+                        for row in rows:
+                            writer.writerow({key: self._serialize_value(value) for key, value in row.items()})
+                        row_count += len(rows)
+                        
+                summary_info.append((table, row_count))
+                logger.info("SystemService: Exported %d rows from '%s' to %s", row_count, table, csv_path.name)
+            except Exception as e:
+                logger.error("SystemService: Failed to export table '%s': %s", table, e)
+            finally:
+                cursor.close()
+                
+        # Write database_export.txt
+        export_txt_path = target_dir / "database_export.txt"
+        try:
+            with export_txt_path.open("w", encoding="utf-8") as f:
+                f.write(f"=== NetVisor Database Full Export ===\n")
+                f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+                f.write(f"Total Tables Exported: {len(summary_info)}\n")
+                f.write(f"====================================\n\n")
+                for table, count in summary_info:
+                    f.write(f"Table: {table:<30} | Rows: {count}\n")
+            logger.info("SystemService: Full export summary written to %s", export_txt_path.name)
+        except Exception as e:
+            logger.error("SystemService: Failed to write database_export.txt: %s", e)
 
     def reset_operational_data(
         self,

@@ -5,7 +5,7 @@ from app.engines.threat.exfiltration import ExfiltrationDetector
 from app.engines.threat.port_scan import PortScanDetector
 from app.engines.threat.dns_tunneling import DNSTunnelingDetector
 from app.engines.threat.beaconing import BeaconingDetector
-from shared.engine import Severity
+from engine import Severity
 
 def test_config_overrides_exfiltration():
     config = EngineConfig()

@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone
-from shared.engine import Severity
+from engine import Severity
 from app.engines.registry import EngineRegistry
 
 @pytest.fixture
@@ -116,7 +116,7 @@ def test_parallel_risk_correlation(registry):
     results in exactly one correlation alert due to suppression store thread safety.
     """
     import concurrent.futures
-    from shared.engine import Finding, Severity
+    from engine import Finding, Severity
 
     # Reset state to ensure clean start
     risk_engine = registry.get("risk")

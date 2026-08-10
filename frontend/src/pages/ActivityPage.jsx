@@ -30,11 +30,25 @@ const ActivityPage = () => {
       return;
     }
 
-    const now = new Date().toLocaleTimeString();
-    setTrafficData((prev) => ({
-      labels: [...prev.labels, now].slice(-20),
-      values: [...prev.values, numericValue].slice(-20),
-    }));
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const timeStr = `${hh}:${mm}`;
+
+    setTrafficData((prev) => {
+      const lastLabel = prev.labels[prev.labels.length - 1];
+      if (lastLabel === timeStr) {
+        const nextValues = [...prev.values];
+        if (nextValues.length > 0) {
+          nextValues[nextValues.length - 1] = numericValue;
+          return { ...prev, values: nextValues };
+        }
+      }
+      return {
+        labels: [...prev.labels, timeStr].slice(-20),
+        values: [...prev.values, numericValue].slice(-20),
+      };
+    });
   }, []);
 
   const fetchTraffic = useCallback(async ({ background = false } = {}) => {
@@ -50,7 +64,7 @@ const ActivityPage = () => {
       const nextStats = statsRes.data || {};
       setStats(nextStats);
       setLogs(activityRes.data || []);
-      updateTrafficChart(nextStats.bandwidth_value ?? nextStats.bandwidth);
+      updateTrafficChart(nextStats.bandwidth_bytes_sec ?? 0);
     } catch (err) {
       console.error('Failed to fetch traffic activity', err);
     } finally {
@@ -61,7 +75,33 @@ const ActivityPage = () => {
   }, [updateTrafficChart]);
 
   useEffect(() => {
-    fetchTraffic();
+    const init = async () => {
+      setLoading(true);
+      try {
+        const historyRes = await systemService.getTrafficHistory(20, 'minute');
+        const history = historyRes.data || [];
+        const initialLabels = history.map((h) => {
+          let cleanTs = h.timestamp || h.hour || '';
+          if (cleanTs && !cleanTs.includes('T') && !cleanTs.includes('Z')) {
+            cleanTs = cleanTs.replace(' ', 'T') + 'Z';
+          }
+          const d = new Date(cleanTs);
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          return `${hh}:${mm}`;
+        });
+        const initialValues = history.map((h) => (Number(h.byte_count) || 0) / 60);
+        setTrafficData({
+          labels: initialLabels,
+          values: initialValues,
+        });
+      } catch (err) {
+        console.error('Failed to load initial traffic history', err);
+      }
+      await fetchTraffic({ background: true });
+      setLoading(false);
+    };
+    init();
   }, [fetchTraffic]);
 
   useVisibilityPolling(() => fetchTraffic({ background: true }), 15000);

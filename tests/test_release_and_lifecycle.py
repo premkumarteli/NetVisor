@@ -11,7 +11,7 @@ from app.services.system_service import SystemService
 from agent.main import NetworkAgent
 from gateway.main import GatewayCollector
 from gateway.security.transport import GatewayApiClient
-from shared.collector.flow_manager import FlowManager
+from collector.flow_manager import FlowManager
 
 
 class _IdentityProtector:

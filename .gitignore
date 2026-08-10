@@ -73,3 +73,12 @@ keys/
 **/target/
 app/correlation_engine/rust/target/
 
+
+# Large binaries, archives, and database dumps
+*.zip
+*.exe
+db_dump/
+database_data_dump.txt
+database_export.txt
+python
+

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from shared.security.agent_auth import sign_request
+from security.agent_auth import sign_request
 from app.core.config import settings
 from app.services.agent_auth_service import AgentAuthenticationError, agent_auth_service
 

@@ -11,7 +11,7 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from shared.security.agent_auth import sign_request
+from security.agent_auth import sign_request
 from app.core.config import settings
 
 class ChaosSuite(unittest.TestCase):

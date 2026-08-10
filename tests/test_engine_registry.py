@@ -2,7 +2,7 @@ import pytest
 from app.engines.registry import EngineRegistry
 from app.engines.common.config import EngineConfig
 from app.engines.device.engine import DeviceEngine
-from shared.engine import BaseEngine, EngineResult, Finding, Severity
+from engine import BaseEngine, EngineResult, Finding, Severity
 
 class MockEngine(BaseEngine):
     def __init__(self, name: str, version: str = "1.0.0") -> None:

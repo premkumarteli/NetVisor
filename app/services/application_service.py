@@ -910,7 +910,7 @@ application_service = ApplicationService()
 
 
 def application_compatibility_wrapper(row: Any) -> "EngineResult":
-    from shared.engine import EngineResult, Finding, Severity
+    from engine import EngineResult, Finding, Severity
     app_label = application_service.classify_app(row)
     
     findings = []

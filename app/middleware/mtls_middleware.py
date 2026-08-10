@@ -8,7 +8,10 @@ MTLS_MODE (disabled | optional | required).
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
+from typing import Optional
 
+import anyio
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -33,6 +36,10 @@ _MTLS_EXEMPT_SUFFIXES = (
     "/certificate/renew",
     "/certificate/ca",
 )
+
+# Cache for revocation checks (TTL: 5 minutes)
+_REVOCATION_CACHE: dict[str, tuple[bool, float]] = {}
+_REVOCATION_CACHE_TTL = 300.0  # 5 minutes
 
 
 class MTLSMiddleware(BaseHTTPMiddleware):
@@ -95,27 +102,20 @@ class MTLSMiddleware(BaseHTTPMiddleware):
         has_valid_cert = cert_count > 0 and bool(cert_serial)
 
         if has_valid_cert:
-            # Check revocation in the database
+            # Check revocation in the database (async, cached, non-blocking)
             try:
-                from ..db.session import get_db_connection
-                from ..services.ca import CertificateAuthority
-
-                conn = get_db_connection()
-                try:
-                    ca = CertificateAuthority(settings.MTLS_CA_DIR)
-                    if ca.is_revoked(conn, cert_serial):
-                        logger.warning(
-                            "mTLS: Revoked certificate used: serial=%s subject=%s path=%s",
-                            cert_serial,
-                            cert_subject,
-                            path,
-                        )
-                        return JSONResponse(
-                            status_code=403,
-                            content={"detail": "Client certificate has been revoked."},
-                        )
-                finally:
-                    conn.close()
+                is_revoked = await self._check_revocation_async(cert_serial)
+                if is_revoked:
+                    logger.warning(
+                        "mTLS: Revoked certificate used: serial=%s subject=%s path=%s",
+                        cert_serial,
+                        cert_subject,
+                        path,
+                    )
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Client certificate has been revoked."},
+                    )
             except Exception as exc:
                 logger.error("mTLS: Revocation check failed: %s", exc)
                 # In optional mode, allow through on check failure
@@ -149,3 +149,39 @@ class MTLSMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+    async def _check_revocation_async(self, cert_serial: str) -> bool:
+        """Check certificate revocation asynchronously with caching."""
+        import time
+        
+        # Check cache first
+        now = time.monotonic()
+        if cert_serial in _REVOCATION_CACHE:
+            cached_result, cached_time = _REVOCATION_CACHE[cert_serial]
+            if now - cached_time < _REVOCATION_CACHE_TTL:
+                return cached_result
+        
+        # Run sync DB check in thread pool to avoid blocking event loop
+        def _sync_revocation_check() -> bool:
+            from ..db.session import get_db_connection
+            from ..services.ca import CertificateAuthority
+            
+            conn = get_db_connection()
+            try:
+                ca = CertificateAuthority(settings.MTLS_CA_DIR)
+                return ca.is_revoked(conn, cert_serial)
+            finally:
+                conn.close()
+        
+        result = await anyio.to_thread.run_sync(_sync_revocation_check)
+        
+        # Update cache
+        _REVOCATION_CACHE[cert_serial] = (result, now)
+        
+        # Simple cache cleanup (remove expired entries)
+        if len(_REVOCATION_CACHE) > 1000:
+            expired = [k for k, (_, t) in _REVOCATION_CACHE.items() if now - t > _REVOCATION_CACHE_TTL]
+            for k in expired:
+                _REVOCATION_CACHE.pop(k, None)
+        
+        return result

@@ -157,6 +157,10 @@ const DevicesPage = () => {
 
   const visibleDevices = useMemo(() => {
     return devices.filter((device) => {
+      // Exclude passive observed ARP devices without active signals
+      if (device.management_mode === 'byod' && !device.top_application && !device.is_online) {
+        return false;
+      }
       const matchesMode = modeFilter === 'all' || device.management_mode === modeFilter;
       const haystack = [
         device.hostname,

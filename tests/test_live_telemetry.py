@@ -117,8 +117,8 @@ async def test_event_dispatcher_queuing(monkeypatch):
 
 
 def test_flow_manager_event_types(monkeypatch):
-    from shared.collector.flow_manager import FlowManager
-    from shared.collector import PacketObservation
+    from collector.flow_manager import FlowManager
+    from collector import PacketObservation
     
     events = []
     def callback(summary):

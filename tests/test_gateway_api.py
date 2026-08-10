@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from app.api import gateway as gateway_api
 from app.core.config import settings
-from shared.security.agent_auth import sign_request
+from security.agent_auth import sign_request
 from app.services.flow_service import FlowQueueBackpressureError
 from app.services.gateway_auth_service import gateway_auth_service
 from app.schemas.flow_schema import FlowBase

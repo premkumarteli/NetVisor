@@ -47,6 +47,7 @@ class LiveTelemetryStore:
             "bandwidth_samples": deque(),  # deque of (timestamp, byte_count)
             "active_flows": {},          # flow_key -> last_seen_timestamp
             "flows_24h": 0,
+            "known_ips": set(),
         }
 
     def _format_bytes(self, byte_count: float) -> str:
@@ -60,11 +61,16 @@ class LiveTelemetryStore:
         """Prime the live telemetry store with initial values from MySQL."""
         cursor = conn.cursor(dictionary=True)
         try:
-            # 1. Total devices count per org
-            cursor.execute("SELECT organization_id, COUNT(*) AS count FROM devices GROUP BY organization_id")
+            # 1. Total devices count and known IPs per org
+            cursor.execute("SELECT ip, organization_id FROM devices")
             for row in cursor.fetchall() or []:
                 org_id = row.get("organization_id") or "default"
-                self._states[org_id]["total_devices_count"] = int(row.get("count") or 0)
+                ip = row.get("ip")
+                if ip:
+                    self._states[org_id]["known_ips"].add(ip)
+                
+                # Reset counter to 0 first and increment
+                self._states[org_id]["total_devices_count"] = len(self._states[org_id]["known_ips"])
 
             # 2. Risk distribution of unresolved alerts in the last 24 hours
             cursor.execute(
@@ -151,17 +157,33 @@ class LiveTelemetryStore:
             if proto:
                 state["top_protocols"][proto] += bytes_count
 
+    def _is_private_ip(self, ip: str) -> bool:
+        try:
+            import ipaddress
+            ip_obj = ipaddress.ip_address(ip)
+            return ip_obj.is_private and not ip_obj.is_multicast and not ip_obj.is_loopback
+        except Exception:
+            return False
+
     def record_device_seen(self, organization_id: str, ip: str) -> None:
+        if not self._is_private_ip(ip):
+            return
         org_id = organization_id or "default"
         with self._get_org_lock(org_id):
             state = self._states[org_id]
-            state["active_devices"][ip] = time.time()
+            if ip in state["known_ips"]:
+                state["active_devices"][ip] = time.time()
+
+    def register_known_ip(self, organization_id: str, ip: str) -> None:
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            state = self._states[org_id]
+            state["known_ips"].add(ip)
+            state["total_devices_count"] = len(state["known_ips"])
 
     def increment_device_count(self, organization_id: str) -> None:
-        org_id = organization_id or "default"
-        with self._get_org_lock(org_id):
-            state = self._states[org_id]
-            state["total_devices_count"] += 1
+        # Kept for backward compatibility, register_known_ip updates count automatically
+        pass
 
     def record_alert(self, organization_id: str, alert_data: dict) -> None:
         org_id = organization_id or "default"
@@ -213,6 +235,7 @@ class LiveTelemetryStore:
                 "flows_24h": state["flows_24h"],
                 "bandwidth": bandwidth_str,
                 "bandwidth_value": bandwidth_mbps,
+                "bandwidth_bytes_sec": round(bandwidth_bytes / 60, 2),
                 "risk_distribution": dict(state["risk_distribution"]),
                 "threat_summary": {
                     "total": total_threats,

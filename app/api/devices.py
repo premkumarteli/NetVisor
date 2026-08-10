@@ -10,12 +10,13 @@ router = APIRouter()
 
 @router.get("/", response_model=List[Device])
 async def list_devices(
+    include_observed: bool = False,
     current_user: dict = Depends(require_org_admin)
 ):
     conn = get_db_connection()
     try:
         org_id = current_user.get("organization_id")
-        devices = device_service.get_devices(conn, organization_id=org_id)
+        devices = device_service.get_devices(conn, organization_id=org_id, include_observed=include_observed)
 
         # For flow_logs fallback rows that lack an 'id' field
         for d in devices:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import shared.collector.preflight as preflight
+import collector.preflight as preflight
 
 
 def test_preflight_flags_localhost_target_as_critical(tmp_path: Path):

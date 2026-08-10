@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     CHAOS_ENABLED: bool = Field(default=False, validation_alias="NETVISOR_CHAOS_ENABLED")
 
     SECRET_KEY: str = Field(default="", validation_alias="NETVISOR_SECRET_KEY")
+    JWT_ALGORITHM: str = Field(default="RS256", validation_alias="NETVISOR_JWT_ALGORITHM")
+    JWT_PRIVATE_KEY: str = Field(default="", validation_alias="NETVISOR_JWT_PRIVATE_KEY")
+    JWT_PUBLIC_KEY: str = Field(default="", validation_alias="NETVISOR_JWT_PUBLIC_KEY")
+    JWT_PRIVATE_KEY_PATH: str = Field(default="", validation_alias="NETVISOR_JWT_PRIVATE_KEY_PATH")
+    JWT_PUBLIC_KEY_PATH: str = Field(default="", validation_alias="NETVISOR_JWT_PUBLIC_KEY_PATH")
     ENVIRONMENT: str = Field(default="production", validation_alias="NETVISOR_ENVIRONMENT")
     TRUSTED_PROXIES: str = Field(default="127.0.0.1,::1", validation_alias="NETVISOR_TRUSTED_PROXIES")
     AGENT_API_KEY: str = Field(default="", validation_alias="AGENT_API_KEY")
@@ -188,6 +193,15 @@ class Settings(BaseSettings):
         if self.FLOW_INGEST_MAX_PENDING_FLOWS < 100:
             errors.append("NETVISOR_FLOW_INGEST_MAX_PENDING_FLOWS must be >= 100 (got {})".format(self.FLOW_INGEST_MAX_PENDING_FLOWS))
         
+        # JWT key validation for RS256
+        if self.JWT_ALGORITHM.upper() == "RS256":
+            has_private_key = bool(self.JWT_PRIVATE_KEY or self.JWT_PRIVATE_KEY_PATH)
+            has_public_key = bool(self.JWT_PUBLIC_KEY or self.JWT_PUBLIC_KEY_PATH)
+            if not has_private_key:
+                errors.append("RS256 requires NETVISOR_JWT_PRIVATE_KEY or NETVISOR_JWT_PRIVATE_KEY_PATH")
+            if not has_public_key:
+                errors.append("RS256 requires NETVISOR_JWT_PUBLIC_KEY or NETVISOR_JWT_PUBLIC_KEY_PATH")
+        
         # Magic number documentation (Issue #18)
         # 30 min session: Reasonable for security; configurable per deployment
         # 50K pending flows: Prevents unbounded queue growth; tune based on DB throughput
@@ -195,4 +209,24 @@ class Settings(BaseSettings):
         
         return errors
 
-settings = Settings()
+
+# Global settings instance (can be overridden for testing)
+_settings_instance: Settings | None = None
+
+
+def get_settings() -> Settings:
+    """Get the global settings instance, creating it if needed."""
+    global _settings_instance
+    if _settings_instance is None:
+        _settings_instance = Settings()
+    return _settings_instance
+
+
+def set_settings(settings: Settings) -> None:
+    """Override the global settings instance (for testing)."""
+    global _settings_instance
+    _settings_instance = settings
+
+
+# Backward compatibility - deprecated, use get_settings() instead
+settings = get_settings()

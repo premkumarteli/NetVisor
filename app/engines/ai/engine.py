@@ -2,7 +2,7 @@ import time
 import threading
 from datetime import datetime, timezone
 from typing import Dict, List
-from shared.engine import BaseEngine, EngineResult, Finding, Severity
+from engine import BaseEngine, EngineResult, Finding, Severity
 from app.engines.common.config import EngineConfig
 from app.engines.ai.analyzer import AIAnalyzer
 from app.engines.ai.summary_engine import AISummaryEngine

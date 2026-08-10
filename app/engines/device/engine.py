@@ -1,6 +1,6 @@
 import time
 import threading
-from shared.engine import BaseEngine, EngineResult, Finding, Severity
+from engine import BaseEngine, EngineResult, Finding, Severity
 
 from .pipeline import DevicePipeline
 

@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 from scapy.all import rdpcap
 from pydantic import ValidationError
 
-from shared.collector.flow_manager import FlowManager
-from shared.collector.observations import PacketObservation
+from collector.flow_manager import FlowManager
+from collector.observations import PacketObservation
 from app.schemas.flow_schema import FlowBase
 from app.engines.registry import EngineRegistry
 

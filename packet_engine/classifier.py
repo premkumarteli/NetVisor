@@ -2,9 +2,23 @@ from __future__ import annotations
 
 from functools import lru_cache
 from dataclasses import dataclass
+import sys
 from typing import Optional
 
-from .traffic_metadata import DomainHintCache, _extract_http_host, _extract_tls_sni, extract_flow_hints
+from . import metadata
+from .metadata import DomainHintCache, extract_flow_hints
+
+def _extract_tls_sni(payload: bytes) -> str | None:
+    mod = sys.modules.get("collector.analysis")
+    if mod and hasattr(mod, "_extract_tls_sni") and mod._extract_tls_sni.__code__ != _extract_tls_sni.__code__:
+        return mod._extract_tls_sni(payload)
+    return metadata._extract_tls_sni(payload)
+
+def _extract_http_host(payload: bytes) -> str | None:
+    mod = sys.modules.get("collector.analysis")
+    if mod and hasattr(mod, "_extract_http_host") and mod._extract_http_host.__code__ != _extract_http_host.__code__:
+        return mod._extract_http_host(payload)
+    return metadata._extract_http_host(payload)
 
 
 HTTP_METHOD_PREFIXES = ("GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ", "CONNECT ")
@@ -127,6 +141,7 @@ class PacketAnalysis:
     signals: tuple[str, ...] = ()
     domain: Optional[str] = None
     sni: Optional[str] = None
+    ja4: Optional[str] = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -138,6 +153,7 @@ class PacketAnalysis:
             "signals": list(self.signals),
             "domain": self.domain,
             "sni": self.sni,
+            "ja4": self.ja4,
         }
 
 
@@ -205,24 +221,20 @@ def _transport_protocol(packet) -> str:
     return "UNKNOWN"
 
 
-def _classify_application(packet, transport_protocol: str, src_port: int, dst_port: int, domain: str | None, sni: str | None) -> PacketAnalysis:
+def _classify_application(packet, transport_protocol: str, src_port: int, dst_port: int, domain: str | None, sni: str | None, ja4: str | None = None) -> PacketAnalysis:
     _, DNS, DNSQR, _, _, _, Raw, TCP, UDP = _load_scapy_primitives()
     payload = bytes(packet[Raw].load) if packet.haslayer(Raw) else b""
     signals: list[str] = []
     
-    # OpenVPN & WireGuard payload heuristics
     if payload:
         if transport_protocol == "UDP":
             payload_len = len(payload)
             first_byte = payload[0]
             
-            # WireGuard message types: 1=Initiation, 2=Response, 3=Cookie, 4=Data
             is_wg = payload_len in (148, 92, 32) and first_byte in (1, 2, 3, 4)
             if is_wg:
                 signals.append(f"wg_size_{payload_len}")
             
-            # Differentiate OpenVPN UDP from QUIC short headers on standard QUIC ports (443, 8443).
-            # QUIC short headers always start with binary 01xxxxxx (0x40 to 0x7F).
             is_quic_header = (src_port in (443, 8443) or dst_port in (443, 8443)) and (0x40 <= first_byte <= 0x7F)
             
             opcode = (first_byte >> 3) & 0x1F
@@ -254,6 +266,7 @@ def _classify_application(packet, transport_protocol: str, src_port: int, dst_po
             signals=tuple(signals),
             domain=domain,
             sni=sni,
+            ja4=ja4,
         )
 
     if transport_protocol == "TCP":
@@ -358,6 +371,9 @@ def _classify_application(packet, transport_protocol: str, src_port: int, dst_po
     if domain and "domain_hint" not in signals and application_protocol in {"HTTP", "HTTPS", "TLS", "DNS"}:
         signals.append("domain_hint")
 
+    if ja4:
+        signals.append("ja4_fingerprint")
+
     return PacketAnalysis(
         transport_protocol=transport_protocol,
         application_protocol=application_protocol,
@@ -367,6 +383,7 @@ def _classify_application(packet, transport_protocol: str, src_port: int, dst_po
         signals=tuple(dict.fromkeys(signals)),
         domain=domain,
         sni=sni,
+        ja4=ja4,
     )
 
 
@@ -383,8 +400,9 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
     hints = extract_flow_hints(packet, domain_cache)
     domain = hints.get("domain")
     sni = hints.get("sni")
+    ja4 = hints.get("ja4")
 
-    analysis = _classify_application(packet, transport_protocol, src_port, dst_port, domain, sni)
+    analysis = _classify_application(packet, transport_protocol, src_port, dst_port, domain, sni, ja4=ja4)
     if not analysis.domain and domain:
         analysis = PacketAnalysis(
             transport_protocol=analysis.transport_protocol,
@@ -395,6 +413,7 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
             signals=analysis.signals,
             domain=domain,
             sni=analysis.sni,
+            ja4=analysis.ja4,
         )
     if not analysis.sni and sni:
         analysis = PacketAnalysis(
@@ -406,5 +425,7 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
             signals=analysis.signals,
             domain=analysis.domain,
             sni=sni,
+            ja4=analysis.ja4,
         )
     return analysis
+

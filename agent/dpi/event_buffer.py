@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from shared.intel import get_base_domain, normalize_host
+from intel import get_base_domain, normalize_host
 
 from .policy import InspectionPolicy
 from .redaction import hash_text, redact_headers, redact_url, sanitize_text_snippet

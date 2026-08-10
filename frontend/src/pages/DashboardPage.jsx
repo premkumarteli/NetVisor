@@ -258,7 +258,7 @@ const DashboardPage = () => {
   }, [trafficHistory]);
 
   const riskDistribution = stats.risk_distribution || {};
-  const highRiskCount = alerts.length || stats.high_risk || 0;
+  const highRiskCount = typeof stats.high_risk === 'number' ? stats.high_risk : (alerts.length || 0);
   const dominantApp = analytics.top_applications?.[0]?.application || 'Classifying';
   const dominantAppBytes = analytics.top_applications?.[0]?.bandwidth || formatByteCount(analytics.top_applications?.[0]?.bandwidth_bytes || 0);
   const scene = activeTheme?.scene || {};

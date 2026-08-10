@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from shared.engine import BaseEngine, EngineResult, Finding, Severity
+from engine import BaseEngine, EngineResult, Finding, Severity
 from app.engines.common.config import EngineConfig
 from .decay import calculate_decay
 from .suppression import SuppressionStore

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable, Dict, Optional, Tuple
 
-from .observations import PacketObservation
+from .parser import PacketObservation
 
 
 FlowKey = Tuple[str, str, int, int, str]

@@ -2,7 +2,7 @@ import json
 import os
 import pytest
 from datetime import datetime, timezone
-from shared.engine import Severity
+from engine import Severity
 from app.engines.registry import EngineRegistry
 from app.services.application_service import application_service
 from app.utils.asn_lookup import asn_lookup_service

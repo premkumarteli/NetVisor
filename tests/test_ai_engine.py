@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime, timezone
-from shared.engine import Finding, Severity
+from engine import Finding, Severity
 from app.engines.common.config import EngineConfig
 from app.engines.registry import EngineRegistry
 from app.engines.ai.engine import AIEngine

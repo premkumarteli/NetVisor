@@ -4,10 +4,10 @@ import logging
 from collections.abc import Mapping
 from http.cookies import SimpleCookie
 
-from jose import JWTError, jwt
+from jose import JWTError
 
 from .core.config import settings
-from .core.security import ALGORITHM
+from .core.security import verify_access_token
 from .db.session import get_db_connection
 from .services.auth_service import auth_service
 from .services.metrics_service import metrics_service
@@ -62,14 +62,8 @@ def authenticate_socket_connection(environ: Mapping[str, object]) -> dict:
         raise SocketAuthenticationError("Authentication required.")
 
     try:
-        payload = jwt.decode(
-            token,
-            settings.SECRET_KEY,
-            algorithms=[ALGORITHM],
-            issuer="netvisor-backend",
-            audience="netvisor-clients",
-        )
-    except JWTError as exc:
+        payload = verify_access_token(token)
+    except (JWTError, ValueError) as exc:
         metrics_service.increment("socket_auth_failures_total", reason="invalid_token")
         raise SocketAuthenticationError("Invalid authentication token.") from exc
 

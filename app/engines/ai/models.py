@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
-from shared.engine import Finding
+from engine import Finding
 
 @dataclass
 class AnalysisModel:

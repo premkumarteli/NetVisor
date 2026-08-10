@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 import pytest
 
-from shared.engine import Finding, Severity, EngineResult
+from engine import Finding, Severity, EngineResult
 from app.engines.common.config import EngineConfig
 from app.engines.registry import EngineRegistry
 from app.engines.risk.engine import RiskEngine

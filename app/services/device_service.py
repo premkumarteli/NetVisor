@@ -54,7 +54,7 @@ class DeviceService:
         require_runtime_schema(db_conn)
         self._schema_ready = True
 
-    def get_devices(self, db_conn, organization_id: Optional[str] = None) -> List[dict]:
+    def get_devices(self, db_conn, organization_id: Optional[str] = None, include_observed: bool = False) -> List[dict]:
         self.ensure_schema(db_conn)
         managed = self._get_managed_devices(db_conn, organization_id)
         discovered_only = self._get_observed_devices(db_conn, organization_id)
@@ -62,6 +62,13 @@ class DeviceService:
         merged = self._merge_devices(managed + discovered_only)
         self._add_activity_snapshots(db_conn, merged)
         
+        if not include_observed:
+            # Option 1: Only keep active / managed devices, excluding passive observed ARP devices
+            merged = [
+                d for d in merged
+                if d.get("management_mode") == "managed" or (d.get("status") == "Online" and d.get("top_application"))
+            ]
+
         merged.sort(key=lambda d: d.get("last_seen") or "", reverse=True)
         return merged
 
@@ -352,7 +359,20 @@ class DeviceService:
                     seen_dt=seen_dt,
                 )
 
+                try:
+                    if organization_id:
+                        from ..services.live_telemetry_store import live_telemetry_store
+                        live_telemetry_store.register_known_ip(organization_id, normalized_ip)
+                except Exception as exc:
+                    logger.debug(f"Failed to register known IP in live telemetry: {exc}")
+
                 if is_new_device and organization_id:
+                    try:
+                        from ..services.live_telemetry_store import live_telemetry_store
+                        live_telemetry_store.increment_device_count(organization_id)
+                    except Exception as exc:
+                        logger.debug(f"Failed to increment live telemetry device count: {exc}")
+
                     try:
                         from ..services.audit_service import audit_service
                         audit_service.log_agent_registration(

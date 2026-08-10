@@ -1,5 +1,5 @@
 import pytest
-from shared.engine import EngineResult, Finding
+from engine import EngineResult, Finding
 from app.engines.device.engine import DeviceEngine
 from app.engines.application.engine import ApplicationEngine
 from app.engines.vpn.engine import VPNEngine

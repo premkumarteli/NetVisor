@@ -1,10 +1,10 @@
 from collections import deque
 from fastapi import Request, HTTPException, Depends, status
-from jose import jwt, JWTError
+from jose import JWTError
 from pydantic import ValidationError
 from datetime import datetime, timezone
 from .config import settings
-from .security import ALGORITHM
+from .security import verify_access_token
 from ..db.session import get_db_connection
 from ..services.auth_service import auth_service
 from ..services.metrics_service import metrics_service
@@ -59,13 +59,7 @@ def get_current_user(
     conn = None
     try:
         resolved_token = _resolve_request_token(request)
-        payload = jwt.decode(
-            resolved_token,
-            settings.SECRET_KEY,
-            algorithms=[ALGORITHM],
-            issuer="netvisor-backend",
-            audience="netvisor-clients",
-        )
+        payload = verify_access_token(resolved_token)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(
@@ -106,7 +100,7 @@ def get_current_user(
             username=str(user.get("username")),
             email=str(user.get("email")),
         )
-    except (JWTError, ValidationError):
+    except (JWTError, ValidationError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",

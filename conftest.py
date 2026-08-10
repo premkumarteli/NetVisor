@@ -8,6 +8,14 @@ from pathlib import Path
 
 import pytest
 
+from app.core.config import Settings
+from app.core.security import set_settings
+
+# Set test environment variables BEFORE any other imports
+# This ensures Settings reads the correct values when first instantiated
+os.environ["NETVISOR_JWT_ALGORITHM"] = "HS256"
+os.environ["NETVISOR_SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only"
+
 _WORKSPACE_TMP_ROOT: Path | None = None
 
 
@@ -21,6 +29,20 @@ def _configure_pytest_tempdir() -> None:
     for key in ("TMP", "TEMP", "TMPDIR"):
         os.environ[key] = str(workspace_tmp)
     tempfile.tempdir = str(workspace_tmp)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def test_settings():
+    """Configure test settings with HS256 for JWT tokens."""
+    test_settings = Settings(
+        JWT_ALGORITHM="HS256",
+        SECRET_KEY="test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only",
+        NETVISOR_SECRET_KEY="test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only",
+    )
+    set_settings(test_settings)
+    yield
+    # Reset to default settings after tests
+    set_settings(None)
 
 
 _configure_pytest_tempdir()

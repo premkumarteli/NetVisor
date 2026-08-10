@@ -12,8 +12,8 @@ root = Path(__file__).resolve().parent.parent.parent
 if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
-from shared.collector import DpiObservation
-from shared.intel import get_base_domain, get_service_info, is_sensitive_destination, normalize_host
+from packet_engine import DpiObservation
+from intel import get_base_domain, get_service_info, is_sensitive_destination, normalize_host
 
 EVENT_PREFIX = "__NETVISOR_WEB_EVENT__"
 ALLOWED_DOMAINS = {

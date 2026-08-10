@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.device_detector import DeviceDetector
 from agent.security import AgentApiClient, verify_agent_code_integrity
-from shared.collector import (
+from packet_engine import (
     DomainHintCache,
     FlowManager,
     FlowSummary,
@@ -372,6 +372,8 @@ class NetworkAgent:
         threading.Thread(target=self._heartbeat_worker, daemon=True).start()
         print("[*] Starting discovery engine...")
         threading.Thread(target=self._discovery_engine, daemon=True).start()
+        print("[*] Starting live status dashboard...")
+        threading.Thread(target=self._stats_reporter_worker, daemon=True).start()
 
         if WebInspectionController is not None:
             self.web_inspection = WebInspectionController(
@@ -394,6 +396,39 @@ class NetworkAgent:
             logger.warning("Web inspection is disabled because WebInspectionController could not be imported.")
 
         self._workers_started = True
+
+    def _stats_reporter_worker(self):
+        start_time = time.time()
+        # Give some time for initial startup logs to print
+        time.sleep(2)
+        while self.is_running:
+            try:
+                time.sleep(3)
+                snap = self.status_snapshot()
+                elapsed = time.time() - start_time
+                elapsed_str = f"{int(elapsed // 3600):02d}:{int((elapsed % 3600) // 60):02d}:{int(elapsed % 60):02d}"
+                
+                active_flows = snap.get("flow_manager", {}).get("active_flow_count", 0)
+                total_packets = snap.get("capture", {}).get("packets_seen", 0)
+                uploaded_queue = snap.get("upload_queue_depth", 0)
+                devices_seen = snap.get("device_inventory_size", 0)
+                
+                status_text = (
+                    f"{Fore.GREEN}[STATS - {elapsed_str}]{Style.RESET_ALL} "
+                    f"Active Flows: {Fore.YELLOW}{active_flows}{Style.RESET_ALL} | "
+                    f"Packets Sniffed: {Fore.YELLOW}{total_packets}{Style.RESET_ALL} | "
+                    f"Upload Queue: {Fore.YELLOW}{uploaded_queue}{Style.RESET_ALL} | "
+                    f"Discovered Devices: {Fore.YELLOW}{devices_seen}{Style.RESET_ALL}"
+                )
+                
+                if self.verbose:
+                    print(status_text)
+                else:
+                    sys.stdout.write(f"\r{status_text}        ")
+                    sys.stdout.flush()
+            except Exception:
+                pass
+
 
     def _register_agent(self, *, force_reenroll: bool = False):
         retry_delay = 1

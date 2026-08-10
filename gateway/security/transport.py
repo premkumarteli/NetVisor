@@ -15,7 +15,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 
-from shared.security import (
+from security import (
     GATEWAY_BOOTSTRAP_KEY_HEADER,
     GATEWAY_ID_HEADER,
     KEY_VERSION_HEADER,

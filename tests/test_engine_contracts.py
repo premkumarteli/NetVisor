@@ -1,10 +1,10 @@
 import pytest
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
-from shared.engine.severity import Severity
-from shared.engine.findings import Finding
-from shared.engine.result import EngineResult
-from shared.engine.base import BaseEngine
+from engine.severity import Severity
+from engine.findings import Finding
+from engine.result import EngineResult
+from engine.base import BaseEngine
 
 # Define dummy engine implementations for validation
 class DummyDeviceEngine(BaseEngine):

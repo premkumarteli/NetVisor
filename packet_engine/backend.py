@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
-logger = logging.getLogger("netvisor.capture")
+logger = logging.getLogger("netvisor.packet_engine.backend")
 
 
 @lru_cache(maxsize=1)

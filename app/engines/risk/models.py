@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import List
-from shared.engine import Severity
+from engine import Severity
 
 @dataclass(frozen=True)
 class CorrelationRule:

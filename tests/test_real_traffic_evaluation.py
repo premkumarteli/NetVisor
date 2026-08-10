@@ -9,8 +9,8 @@ from app.schemas.flow_schema import FlowBase
 from app.services.flow_service import flow_service
 from app.services.flow_sanitization_service import flow_sanitization_service
 from app.engines.registry import EngineRegistry
-from shared.collector.flow_manager import FlowManager
-from shared.collector.observations import PacketObservation
+from collector.flow_manager import FlowManager
+from collector.observations import PacketObservation
 
 # Mock cursor and connection to inspect DB inserts without needing live MySQL
 class MockCursor:

@@ -75,8 +75,6 @@ def perform_health_check() -> int:
             os.environ["NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN"] = previous_shutdown_setting
 
 def cleanup_runtime_on_process_exit():
-    if os.getenv("NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN", "true").lower() != "true":
-        return
     if os.getenv("NETVISOR_RELOAD", "false").lower() == "true":
         return
 
@@ -86,8 +84,14 @@ def cleanup_runtime_on_process_exit():
 
         conn = get_db_connection()
         try:
-            result = system_service.backup_and_reset_runtime_data(conn, reason="process_exit")
-            print(f"[*] Process-exit runtime cleanup: {result['message']}")
+            # Unconditionally dump all tables to db_dump on process exit
+            system_service.export_all_tables_to_db_dump(conn)
+            print("[*] Full database export to db_dump completed successfully.")
+
+            # Clear runtime data if backup and reset on shutdown is enabled
+            if os.getenv("NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN", "true").lower() == "true":
+                result = system_service.backup_and_reset_runtime_data(conn, reason="process_exit")
+                print(f"[*] Process-exit runtime cleanup: {result['message']}")
         finally:
             conn.close()
     except Exception as exc:

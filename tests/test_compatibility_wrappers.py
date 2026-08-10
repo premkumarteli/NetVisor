@@ -1,4 +1,4 @@
-from shared.engine import EngineResult, Finding
+from engine import EngineResult, Finding
 from agent.device_detector import device_compatibility_wrapper
 from app.services.application_service import application_compatibility_wrapper
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, Optional
 
-from shared.intel import get_base_domain, is_sensitive_destination, normalize_host
+from intel import get_base_domain, is_sensitive_destination, normalize_host
 
 
 DEFAULT_ALLOWED_PROCESSES = ["chrome.exe", "msedge.exe"]

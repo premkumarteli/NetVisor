@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .analysis import analyze_packet
-from .traffic_metadata import DomainHintCache
+from .classifier import analyze_packet
+from .metadata import DomainHintCache
 
 
 @lru_cache(maxsize=1)
@@ -34,6 +34,7 @@ class FlowObservation:
     organization_id: str
     domain: Optional[str] = None
     sni: Optional[str] = None
+    ja4: Optional[str] = None
     src_mac: Optional[str] = None
     dst_mac: Optional[str] = None
     source_type: str = "agent"
@@ -70,6 +71,7 @@ class FlowObservation:
             organization_id=organization_id,
             domain=observation.domain,
             sni=observation.sni,
+            ja4=observation.ja4,
             src_mac=observation.src_mac,
             dst_mac=observation.dst_mac,
             source_type=observation.source_type,
@@ -98,6 +100,7 @@ class FlowObservation:
             "organization_id": self.organization_id,
             "domain": self.domain,
             "sni": self.sni,
+            "ja4": self.ja4,
             "src_mac": self.src_mac,
             "dst_mac": self.dst_mac,
             "source_type": self.source_type,
@@ -126,6 +129,7 @@ class PacketObservation:
     packet_size: int
     domain: Optional[str] = None
     sni: Optional[str] = None
+    ja4: Optional[str] = None
     src_mac: Optional[str] = None
     dst_mac: Optional[str] = None
     application_protocol: Optional[str] = None
@@ -180,9 +184,11 @@ class PacketObservation:
 
         domain = getattr(packet, "captured_domain", None)
         sni = getattr(packet, "captured_sni", None)
+        ja4 = getattr(packet, "captured_ja4", None)
         if analysis:
             domain = domain or analysis.domain
             sni = sni or analysis.sni
+            ja4 = ja4 or analysis.ja4
 
         return cls(
             observed_at=observed_at if observed_at is not None else time.time(),
@@ -196,6 +202,7 @@ class PacketObservation:
             packet_size=len(packet),
             domain=domain,
             sni=sni,
+            ja4=ja4,
             src_mac=packet[Ether].src if packet.haslayer(Ether) else None,
             dst_mac=packet[Ether].dst if packet.haslayer(Ether) else None,
             application_protocol=analysis.application_protocol if analysis else proto,

@@ -565,7 +565,7 @@ class DeviceDetector:
 
 
 def device_compatibility_wrapper(ip: str, mac: str | None = None, hostname: str | None = None, active_probe: bool = True) -> "EngineResult":
-    from shared.engine import EngineResult, Finding, Severity
+    from engine import EngineResult, Finding, Severity
     detector = DeviceDetector()
     resolved_hostname = hostname or detector.resolve_hostname(ip) or "Unknown"
     vendor = detector.resolve_vendor(mac)

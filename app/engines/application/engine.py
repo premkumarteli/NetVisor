@@ -1,6 +1,6 @@
 import time
 import threading
-from shared.engine import BaseEngine, EngineResult
+from engine import BaseEngine, EngineResult
 
 class ApplicationEngine(BaseEngine):
     def __init__(self) -> None:

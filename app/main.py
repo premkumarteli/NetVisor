@@ -158,6 +158,18 @@ async def lifespan(app: FastAPI):
     broadcast_scheduler.stop()
     event_dispatcher.stop()
 
+    # Export all database tables to db_dump unconditionally on shutdown
+    shutdown_export_conn = None
+    try:
+        shutdown_export_conn = get_db_connection()
+        system_service.export_all_tables_to_db_dump(shutdown_export_conn)
+        logger.info("Shutdown full database export to db_dump complete.")
+    except Exception as e:
+        logger.error("Shutdown full database export failed: %s", e)
+    finally:
+        if shutdown_export_conn:
+            shutdown_export_conn.close()
+
     shutdown_conn = None
     if settings.BACKUP_AND_RESET_ON_SHUTDOWN:
         try:

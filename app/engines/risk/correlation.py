@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Dict, Tuple
-from shared.engine import Finding
+from engine import Finding
 from .models import CorrelationRule, DEFAULT_RULES
 
 class Correlator:

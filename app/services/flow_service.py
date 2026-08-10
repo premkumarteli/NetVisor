@@ -271,6 +271,46 @@ class FlowService:
             [text, app_prefix, prefix, prefix],
         )
 
+    _ALLOWED_FLOW_LOG_COLUMNS = frozenset({
+        "organization_id",
+        "src_ip",
+        "dst_ip",
+        "application",
+        "domain",
+        "sni",
+        "internal_device_ip",
+        "external_endpoint_ip",
+        "last_seen",
+        "start_time",
+        "ingest_hash",
+    })
+
+    def _validate_where_clause(self, where_clause: str) -> None:
+        """Validate WHERE clause only contains allowed column names to prevent SQL injection."""
+        import re
+        # Extract column names from comparisons (col = %s, col LIKE %s, etc.)
+        # Matches patterns like: column = %s, column LIKE %s, column <= %s, etc.
+        column_pattern = re.compile(r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*(=|LIKE|<=|>=|<|>|!=|<>)\s*%s', re.IGNORECASE)
+        for match in column_pattern.finditer(where_clause):
+            column = match.group(1)
+            if column not in self._ALLOWED_FLOW_LOG_COLUMNS:
+                raise ValueError(f"Invalid column '{column}' in WHERE clause")
+        
+        # Also check for SQL injection attempts like semicolons, UNION, etc.
+        dangerous_patterns = [
+            r';',
+            r'\bUNION\b',
+            r'\bDROP\b',
+            r'\bDELETE\b',
+            r'\bINSERT\b',
+            r'\bUPDATE\b',
+            r'--',
+            r'/\*',
+        ]
+        for pattern in dangerous_patterns:
+            if re.search(pattern, where_clause, re.IGNORECASE):
+                raise ValueError(f"Potentially dangerous pattern detected in WHERE clause")
+
     def build_flow_log_query_parts(
         self,
         organization_id: str,
@@ -1802,18 +1842,21 @@ class FlowService:
                 search=search,
             )
             
+            # Validate WHERE clause to prevent SQL injection
+            self._validate_where_clause(where_str)
+
             # Count total
-            count_sql = f"SELECT COUNT(*) as total FROM flow_logs WHERE {where_str}"
+            count_sql = "SELECT COUNT(*) as total FROM flow_logs WHERE {}".format(where_str)
             cursor.execute(count_sql, tuple(params))
             total = cursor.fetchone()["total"]
 
             # Fetch data
-            data_sql = f"""
+            data_sql = """
                 SELECT * FROM flow_logs 
-                WHERE {where_str} 
+                WHERE {} 
                 ORDER BY last_seen DESC 
                 LIMIT %s OFFSET %s
-            """
+            """.format(where_str)
             params.extend([limit, offset])
             cursor.execute(data_sql, tuple(params))
             rows = cursor.fetchall()

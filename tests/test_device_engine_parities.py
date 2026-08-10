@@ -6,7 +6,7 @@ import pytest
 from app.engines.device.engine import DeviceEngine
 from app.engines.device.active_prober import ActiveProber
 from agent.device_detector import device_compatibility_wrapper
-from shared.engine import EngineResult
+from engine import EngineResult
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "devices")
 

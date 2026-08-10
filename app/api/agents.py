@@ -16,7 +16,7 @@ from ..services.metrics_service import metrics_service
 from ..services.web_inspection_service import web_inspection_service
 from ..schemas.user_schema import GenericResponse
 from .dpi import dpi_event_emitter
-from shared.security import REENROLL_REQUEST_HEADER
+from security import REENROLL_REQUEST_HEADER
 
 import asyncio
 import hmac

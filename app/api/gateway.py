@@ -19,7 +19,7 @@ from ..services.gateway_auth_service import GatewayAuthenticationError, gateway_
 from ..services.gateway_service import gateway_service
 from ..services.metrics_service import metrics_service
 from ..services.audit_service import audit_service
-from shared.security import REENROLL_REQUEST_HEADER
+from security import REENROLL_REQUEST_HEADER
 
 logger = logging.getLogger("netvisor.api.gateway")
 router = APIRouter()

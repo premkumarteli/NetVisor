@@ -16,7 +16,7 @@ import requests
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 
-from shared.security import (
+from security import (
     AGENT_ID_HEADER,
     KEY_VERSION_HEADER,
     LEGACY_API_KEY_HEADER,

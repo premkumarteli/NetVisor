@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from scapy.all import Ether, IP, TCP  # type: ignore
 
-from shared.collector import (
+from collector import (
     DpiObservation,
     FlowManager,
     FlowObservation,
@@ -11,7 +11,7 @@ from shared.collector import (
     ScapyCaptureBackend,
     build_capture_backend,
 )
-import shared.collector.capture as capture_module
+import collector.capture as capture_module
 
 
 def test_packet_observation_round_trip_to_flow_observation():

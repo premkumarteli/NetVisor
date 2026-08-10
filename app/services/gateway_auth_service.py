@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import Request
 
 from ..core.config import settings
-from shared.security.agent_auth import (
+from security.agent_auth import (
     GATEWAY_BOOTSTRAP_KEY_HEADER,
     GATEWAY_ID_HEADER,
     KEY_VERSION_HEADER,

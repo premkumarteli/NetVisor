@@ -2,7 +2,7 @@ import os
 import json
 import pytest
 from app.engines.threat.engine import ThreatEngine
-from shared.engine import EngineResult
+from engine import EngineResult
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "threats")
 

@@ -2,7 +2,7 @@ import time
 import threading
 from datetime import datetime, timezone
 from typing import List
-from shared.engine import BaseEngine, EngineResult, Finding
+from engine import BaseEngine, EngineResult, Finding
 
 from .state import SlidingWindowStore
 from .port_scan import PortScanDetector

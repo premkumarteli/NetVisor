@@ -1,5 +1,5 @@
 from typing import Any, Dict, List
-from shared.engine import Finding, Severity
+from engine import Finding, Severity
 from app.engines.ai.models import AnalysisModel
 from app.engines.ai.mitre import get_mitre_mapping
 

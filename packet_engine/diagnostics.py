@@ -13,7 +13,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency in probe environments
     requests = None
 
-logger = logging.getLogger("netvisor.collector.preflight")
+logger = logging.getLogger("netvisor.packet_engine.diagnostics")
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,22 @@ def _check_config_valid(config_path: Path, server_url: str | None) -> PreflightR
     return _result("config_valid", True, f"Configuration valid. Server: {server_url}")
 
 
+import sys
+
+def _get_requests():
+    mod = sys.modules.get("collector.preflight")
+    if mod and hasattr(mod, "requests"):
+        return mod.requests
+    return requests
+
+
+def _get_gethostbyname():
+    mod = sys.modules.get("collector.preflight")
+    if mod and hasattr(mod, "gethostbyname"):
+        return mod.gethostbyname
+    return gethostbyname
+
+
 def _check_dns_resolution(server_url: str | None) -> PreflightResult:
     if not server_url:
         return _result("dns_resolution", False, "No server URL configured; DNS not checked.", "warning")
@@ -48,7 +64,8 @@ def _check_dns_resolution(server_url: str | None) -> PreflightResult:
     if hostname in {"127.0.0.1", "localhost", "::1"}:
         return _result("dns_resolution", True, f"Local hostname '{hostname}' does not require external DNS.")
     try:
-        ip = gethostbyname(hostname)
+        resolver = _get_gethostbyname()
+        ip = resolver(hostname)
         return _result("dns_resolution", True, f"Resolved {hostname} to {ip}.")
     except Exception as exc:
         return _result("dns_resolution", False, f"Unable to resolve {hostname}: {exc}", "warning")
@@ -57,7 +74,8 @@ def _check_dns_resolution(server_url: str | None) -> PreflightResult:
 def _check_server_reachable(server_url: str | None) -> PreflightResult:
     if not server_url:
         return _result("server_reachable", False, "No server URL configured.", "critical")
-    if requests is None:
+    req = _get_requests()
+    if req is None:
         return _result("server_reachable", False, "requests library not available for connectivity check", "warning")
 
     base_url = server_url.rstrip("/")
@@ -67,7 +85,7 @@ def _check_server_reachable(server_url: str | None) -> PreflightResult:
         base_url = base_url.rstrip("/") + "/api/v1"
     ping_url = base_url + "/ping"
     try:
-        response = requests.get(ping_url, timeout=5)
+        response = req.get(ping_url, timeout=5)
         if response.ok:
             return _result("server_reachable", True, f"Server responded OK at {ping_url}.")
         return _result("server_reachable", False, f"Server returned HTTP {response.status_code} from {ping_url}", "critical")

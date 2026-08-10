@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import Request
 
-from shared.security.agent_auth import (
+from security.agent_auth import (
     AGENT_ID_HEADER,
     KEY_VERSION_HEADER,
     NONCE_HEADER,

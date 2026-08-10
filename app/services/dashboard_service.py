@@ -97,6 +97,7 @@ class DashboardService:
                 "flows_24h": int(flow_stats.get("flows_24h") or 0),
                 "bandwidth": self._format_bytes(bandwidth_bytes / 60) + "/s",
                 "bandwidth_value": bandwidth_mbps,
+                "bandwidth_bytes_sec": round(bandwidth_bytes / 60, 2),
                 "risk_distribution": risk_distribution,
                 "threat_summary": {
                     "total": sum(risk_distribution.values()),
@@ -154,12 +155,12 @@ class DashboardService:
                 py_fmt = "%Y-%m-%d %H:00:00"
                 delta = datetime.timedelta(hours=1)
 
-            # 2. Build the query params
+            # 2. Build the query params in correct order of placeholders
             params = [date_fmt]
             org_filter = ""
             if organization_id:
                 org_filter = "organization_id = %s AND "
-                params.insert(0, organization_id)
+                params.append(organization_id)
             
             # Query up to the exact current time (now) to make sure we include all recent flows
             params.extend([start_time, now])

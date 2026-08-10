@@ -1,5 +1,5 @@
 from typing import Dict, List, Optional
-from shared.engine import BaseEngine, EngineResult, Finding
+from engine import BaseEngine, EngineResult, Finding
 from app.engines.common.config import EngineConfig
 from app.engines.device.engine import DeviceEngine
 from app.engines.threat.engine import ThreatEngine

@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 import math
 from typing import Any, Optional
-from shared.engine import Finding, Severity
+from engine import Finding, Severity
 from .state import get_flow_field
 from app.engines.common.config import EngineConfig
 

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.core.config import settings
-from shared.security.agent_auth import sign_request
+from security.agent_auth import sign_request
 from app.services.gateway_auth_service import GatewayAuthenticationError, gateway_auth_service
 
 

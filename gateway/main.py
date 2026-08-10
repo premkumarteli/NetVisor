@@ -19,7 +19,7 @@ from pathlib import Path
 from colorama import Fore, Style
 
 from agent.device_detector import DeviceDetector
-from shared.collector import (
+from packet_engine import (
     DomainHintCache,
     FlowManager,
     FlowSummary,
