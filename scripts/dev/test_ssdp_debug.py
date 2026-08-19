@@ -1,5 +1,5 @@
 import json
-from app.engines.device.pipeline import DevicePipeline
+from backend.engines.device.pipeline import DevicePipeline
 
 fixture_data = {
   "name": "roku_ssdp",
@@ -20,7 +20,7 @@ print("Profile SSDP services:", fixture_data["input"].get("ssdp_services"))
 print("Profile SSDP friendly name:", fixture_data["input"].get("ssdp_friendly_name"))
 
 # Let's test the SSDP detector directly
-from app.engines.device.ssdp_detector import SSDPDetector
+from backend.engines.device.ssdp_detector import SSDPDetector
 detector = SSDPDetector()
 res = detector.analyze(
     fixture_data["input"].get("ssdp_services"),

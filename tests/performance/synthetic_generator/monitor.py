@@ -1,7 +1,7 @@
 import time
 import psutil
 import logging
-from app.db.session import get_db_connection
+from backend.db.session import get_db_connection
 
 logger = logging.getLogger("netvisor.replay.monitor")
 

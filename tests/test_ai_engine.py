@@ -1,9 +1,9 @@
 import pytest
 from datetime import datetime, timezone
 from engine import Finding, Severity
-from app.engines.common.config import EngineConfig
-from app.engines.registry import EngineRegistry
-from app.engines.ai.engine import AIEngine
+from backend.engines.common.config import EngineConfig
+from backend.engines.registry import EngineRegistry
+from backend.engines.ai.engine import AIEngine
 
 def test_ai_engine_with_empty_findings():
     engine = AIEngine()

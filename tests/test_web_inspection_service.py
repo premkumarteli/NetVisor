@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.services.web_inspection_service import web_inspection_service
+from backend.services.web_inspection_service import web_inspection_service
 
 
 def test_default_policy_uses_expected_defaults():
@@ -177,7 +177,7 @@ def test_store_events_uses_page_url_to_keep_tabs_distinct(monkeypatch):
     conn = _StoreConnection()
     monkeypatch.setattr(web_inspection_service, "ensure_schema", lambda db_conn: None)
     monkeypatch.setattr(
-        "app.services.web_inspection_service.threat_intel.check_threat",
+        "backend.services.web_inspection_service.threat_intel.check_threat",
         lambda event: {"risk_level": "safe", "threat_msg": None},
     )
 

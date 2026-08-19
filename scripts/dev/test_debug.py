@@ -1,5 +1,5 @@
-from app.engines.registry import EngineRegistry
-from app.engines.threat.beaconing import BeaconingDetector
+from backend.engines.registry import EngineRegistry
+from backend.engines.threat.beaconing import BeaconingDetector
 from statistics import mean, pstdev
 
 original_analyze = BeaconingDetector.analyze

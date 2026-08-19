@@ -1,4 +1,4 @@
-from app.services.metrics_service import MetricsService
+from backend.services.metrics_service import MetricsService
 
 
 def test_metrics_service_tracks_counters_gauges_and_histograms():

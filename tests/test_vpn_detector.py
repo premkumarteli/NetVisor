@@ -20,7 +20,7 @@ import time
 from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
-from app.services.vpn_detector import (
+from backend.services.vpn_detector import (
     ASNLookupService,
     ASNRecord,
     TorIntelligence,
@@ -449,7 +449,7 @@ def test_vpn_detector_scores_suspicious_port():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_wireguard_heuristic_detector():
-    from app.engines.vpn.wireguard import WireGuardHeuristicDetector
+    from backend.engines.vpn.wireguard import WireGuardHeuristicDetector
     detector = WireGuardHeuristicDetector()
     
     # 1. Non-UDP flow should be ignored
@@ -466,7 +466,7 @@ def test_wireguard_heuristic_detector():
 
 
 def test_openvpn_signature_detector():
-    from app.engines.vpn.openvpn import OpenVPNSignatureDetector
+    from backend.engines.vpn.openvpn import OpenVPNSignatureDetector
     detector = OpenVPNSignatureDetector()
 
     # 1. No OpenVPN signal
@@ -488,7 +488,7 @@ def test_openvpn_signature_detector():
 
 
 def test_tls_certificate_detector():
-    from app.engines.vpn.tls_cert import TLSCertificateDetector
+    from backend.engines.vpn.tls_cert import TLSCertificateDetector
     detector = TLSCertificateDetector()
 
     # 1. Matching SNI
@@ -511,18 +511,18 @@ def test_tls_certificate_detector():
 
 
 def test_asn_reputation_detector():
-    from app.engines.vpn.asn_detector import ASNReputationDetector
+    from backend.engines.vpn.asn_detector import ASNReputationDetector
     from unittest.mock import patch
     detector = ASNReputationDetector()
 
     # 1. Test Tor exit node matching
-    with patch("app.services.vpn_detector.TorIntelligence.is_tor_exit", return_value=True):
+    with patch("backend.services.vpn_detector.TorIntelligence.is_tor_exit", return_value=True):
         is_tor, is_asn, provider, reason = detector.analyze("185.220.101.1")
         assert is_tor is True
         assert provider == "Tor Exit Node"
 
     # 2. Test Datacenter provider matching
-    with patch("app.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
+    with patch("backend.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
         mock_lookup.return_value = {"asn": 16276, "organization": "OVH SAS"}
         is_tor, is_asn, provider, reason = detector.analyze("1.2.3.4")
         assert is_asn is True
@@ -530,7 +530,7 @@ def test_asn_reputation_detector():
         assert "ovh" in reason
 
     # 3. Test VPN provider matching
-    with patch("app.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
+    with patch("backend.utils.asn_lookup.asn_lookup_service.lookup_asn_details") as mock_lookup:
         mock_lookup.return_value = {"asn": 136787, "organization": "Mullvad VPN"}
         is_tor, is_asn, provider, reason = detector.analyze("5.6.7.8")
         assert is_asn is True
@@ -539,7 +539,7 @@ def test_asn_reputation_detector():
 
 def test_asn_lookup_pruning_and_pending_count():
     from concurrent.futures import Future
-    from app.services.vpn_detector import ASNLookupService
+    from backend.services.vpn_detector import ASNLookupService
     from unittest.mock import patch
 
     svc = ASNLookupService()

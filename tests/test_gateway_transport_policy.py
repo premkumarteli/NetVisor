@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tempfile
 
 import pytest
 import requests
@@ -28,12 +27,6 @@ class FakeResponse:
         self.closed = True
 
 
-def _tmpdir() -> Path:
-    base = Path.cwd() / "tmp"
-    base.mkdir(parents=True, exist_ok=True)
-    return Path(tempfile.mkdtemp(prefix="netvisor-gateway-transport-", dir=base))
-
-
 def _client(tmp_dir: Path, *, pins=None) -> GatewayApiClient:
     store = GatewayStateStore(
         tmp_dir / "transport-state.bin",
@@ -48,8 +41,8 @@ def _client(tmp_dir: Path, *, pins=None) -> GatewayApiClient:
     )
 
 
-def test_remote_backend_requires_https():
-    client = _client(_tmpdir())
+def test_remote_backend_requires_https(tmp_path: Path):
+    client = _client(tmp_path)
 
     try:
         client._enforce_transport_policy("http://example.com/api/v1/gateway/register")
@@ -58,36 +51,36 @@ def test_remote_backend_requires_https():
         assert "must use HTTPS" in str(exc)
 
 
-def test_remote_https_requires_seed_pins():
-    client = _client(_tmpdir())
+def test_remote_https_requires_seed_pins(tmp_path: Path):
+    client = _client(tmp_path)
 
     with pytest.raises(requests.exceptions.SSLError, match="require configured TLS pins"):
         client._enforce_transport_policy("https://example.com/api/v1/gateway/register")
 
 
-def test_private_lan_http_requires_explicit_opt_in():
-    client = _client(_tmpdir())
+def test_private_lan_http_requires_explicit_opt_in(tmp_path: Path):
+    client = _client(tmp_path)
 
     with pytest.raises(requests.exceptions.SSLError, match="must use HTTPS"):
         client._enforce_transport_policy("http://10.159.79.96:8000/api/v1/gateway/register")
 
 
-def test_local_http_is_allowed_without_pins():
-    client = _client(_tmpdir())
+def test_local_http_is_allowed_without_pins(tmp_path: Path):
+    client = _client(tmp_path)
 
     client._enforce_transport_policy("http://127.0.0.1:8000/api/v1/gateway/register")
 
 
-def test_private_lan_http_is_allowed_when_opt_in_enabled(monkeypatch):
+def test_private_lan_http_is_allowed_when_opt_in_enabled(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("NETVISOR_ALLOW_LAN_HTTP", "true")
-    client = _client(_tmpdir())
+    client = _client(tmp_path)
 
     client._enforce_transport_policy("http://10.159.79.96:8000/api/v1/gateway/register")
 
 
-def test_remote_tls_pin_mismatch_is_rejected(monkeypatch):
+def test_remote_tls_pin_mismatch_is_rejected(monkeypatch, tmp_path: Path):
     client = _client(
-        _tmpdir(),
+        tmp_path,
         pins=[{"pin_type": "cert_sha256", "pin_sha256": "A" * 64, "status": "active"}],
     )
     response = FakeResponse()
@@ -101,3 +94,4 @@ def test_remote_tls_pin_mismatch_is_rejected(monkeypatch):
     except requests.exceptions.SSLError as exc:
         assert "pin mismatch" in str(exc).lower()
     assert response.closed is True
+

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from app.services.application_service import application_service
+from backend.services.application_service import application_service
 
 
 def test_get_base_domain_uses_effective_tld_plus_one():
@@ -160,7 +160,7 @@ def test_get_application_devices_aggregates_sessions_by_device(monkeypatch):
 
     monkeypatch.setattr(application_service, "ensure_schema", lambda *_: None)
     monkeypatch.setattr(
-        "app.services.application_service.device_service.get_devices",
+        "backend.services.application_service.device_service.get_devices",
         lambda *args, **kwargs: [{"ip": "10.0.0.10", "hostname": "DESKTOP-IFIA9GL", "management_mode": "managed"}],
     )
     monkeypatch.setattr(application_service, "_build_sessions", lambda *args, **kwargs: sessions)

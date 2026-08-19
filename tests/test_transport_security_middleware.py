@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from fastapi.responses import Response
 
-import app.middleware.transport_security as transport_security_module
+import backend.middleware.transport_security as transport_security_module
 
 
 class _FakeMetrics:

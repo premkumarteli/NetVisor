@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from app.services.auth_service import auth_service
-from app.core.config import settings
+from backend.services.auth_service import auth_service
+from backend.core.config import settings
 
 
 class RefreshTokenCursor:
@@ -251,7 +251,7 @@ def test_cleanup_expired_tokens():
 # API Endpoint Tests
 
 from fastapi import Response
-from app.api import auth as auth_api
+from backend.api import auth as auth_api
 from types import SimpleNamespace
 import asyncio
 

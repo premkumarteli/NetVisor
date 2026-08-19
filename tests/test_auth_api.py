@@ -6,10 +6,10 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException, Response
 
-from app.api import auth as auth_api
-from app.core import dependencies
-from app.core.config import settings
-from app.core.security import create_access_token
+from backend.api import auth as auth_api
+from backend.core import dependencies
+from backend.core.config import settings
+from backend.core.security import create_access_token
 
 
 class _Connection:

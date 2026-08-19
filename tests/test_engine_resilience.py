@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime, timezone
 from engine import Severity
-from app.engines.registry import EngineRegistry
+from backend.engines.registry import EngineRegistry
 
 @pytest.fixture
 def registry():

@@ -3,8 +3,8 @@ import json
 import socket
 from unittest.mock import patch
 import pytest
-from app.engines.device.engine import DeviceEngine
-from app.engines.device.active_prober import ActiveProber
+from backend.engines.device.engine import DeviceEngine
+from backend.engines.device.active_prober import ActiveProber
 from agent.device_detector import device_compatibility_wrapper
 from engine import EngineResult
 

@@ -3,9 +3,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.core.config import settings
+from backend.core.config import settings
 from security.agent_auth import sign_request
-from app.services.gateway_auth_service import GatewayAuthenticationError, gateway_auth_service
+from backend.services.gateway_auth_service import GatewayAuthenticationError, gateway_auth_service
 
 
 class FakeRequestUrl:

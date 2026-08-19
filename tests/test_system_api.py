@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.api import system as system_api
+from backend.api import system as system_api
 
 
 class _Connection:

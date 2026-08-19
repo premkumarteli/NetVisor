@@ -3,9 +3,9 @@ import time
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-from app.services.live_telemetry_store import LiveTelemetryStore
-from app.services.event_dispatcher import EventDispatcher, flow_ingestion_queue
-from app.services.broadcast_scheduler import BroadcastScheduler
+from backend.services.live_telemetry_store import LiveTelemetryStore
+from backend.services.event_dispatcher import EventDispatcher, flow_ingestion_queue
+from backend.services.broadcast_scheduler import BroadcastScheduler
 
 def test_live_telemetry_store_flow_recording():
     store = LiveTelemetryStore()
@@ -18,6 +18,7 @@ def test_live_telemetry_store_flow_recording():
     
     # Record some benign flows
     flow_key1 = ("10.0.0.5", "8.8.8.8", 1234, 443, "TCP")
+    store.register_known_ip("org-test", "10.0.0.5")
     store.record_flow("org-test", flow_key1, bytes_count=1000, packets_count=10, app="HTTPS", proto="TCP", is_new=True, is_end=False)
     store.record_device_seen("org-test", "10.0.0.5")
     store.increment_device_count("org-test")

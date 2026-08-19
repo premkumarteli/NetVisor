@@ -3,7 +3,7 @@ import json
 
 from dotenv import load_dotenv
 
-from app.services.system_service import SystemService
+from backend.services.system_service import SystemService
 
 
 def run_backup_retention(retention_days: int | None = None, dry_run: bool = False) -> dict:

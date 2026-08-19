@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.services.flow_sanitization_service import flow_sanitization_service
+from backend.services.flow_sanitization_service import flow_sanitization_service
 
 
 def test_flow_sanitization_tolerates_missing_timestamps():

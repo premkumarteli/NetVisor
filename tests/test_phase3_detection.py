@@ -1,5 +1,5 @@
-from app.services.threat_intelligence_service import threat_intel
-from app.services.vpn_detector import vpn_detector
+from backend.services.threat_intelligence_service import threat_intel
+from backend.services.vpn_detector import vpn_detector
 
 
 def test_threat_intel_uses_consistent_severity_levels():

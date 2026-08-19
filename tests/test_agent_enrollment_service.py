@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from app.core.config import settings
-from app.services.agent_enrollment_service import AgentEnrollmentService
+from backend.core.config import settings
+from backend.services.agent_enrollment_service import AgentEnrollmentService
 
 
 class _EnrollmentCursor:

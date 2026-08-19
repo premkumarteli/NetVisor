@@ -8,8 +8,8 @@ from pydantic import ValidationError
 
 from collector.flow_manager import FlowManager
 from collector.observations import PacketObservation
-from app.schemas.flow_schema import FlowBase
-from app.engines.registry import EngineRegistry
+from backend.schemas.flow_schema import FlowBase
+from backend.engines.registry import EngineRegistry
 
 def run_pcap_through_flow_manager(pcap_path: str) -> list:
     flows = []
@@ -260,7 +260,7 @@ def test_wireguard_pipeline():
     Ensure the WireGuard PCAP triggers the vpn_detected finding using modular heuristics.
     """
     from unittest.mock import patch
-    with patch("app.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
+    with patch("backend.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
         mock_lookup.return_value = {"asn": 9009, "organization": "M247 Ltd"}
 
         flows = run_pcap_through_flow_manager("tests/fixtures/pcaps/wireguard.pcap")
@@ -357,7 +357,7 @@ def test_wireguard_without_asn_reputation():
     is below the threshold (0.50) and does NOT trigger a vpn_detected finding.
     """
     from unittest.mock import patch
-    with patch("app.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
+    with patch("backend.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
         mock_lookup.return_value = None
 
         flows = run_pcap_through_flow_manager("tests/fixtures/pcaps/wireguard.pcap")
@@ -391,7 +391,7 @@ def test_wireguard_plus_tls():
     and triggers a vpn_detected finding.
     """
     from unittest.mock import patch
-    with patch("app.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
+    with patch("backend.engines.vpn.asn_detector.asn_lookup_service.lookup_asn_details") as mock_lookup:
         mock_lookup.return_value = None
 
         flows = run_pcap_through_flow_manager("tests/fixtures/pcaps/wireguard.pcap")

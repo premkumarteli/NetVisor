@@ -1,4 +1,4 @@
-from app.db import session as db_session
+from backend.db import session as db_session
 
 
 class _FakeConnection:

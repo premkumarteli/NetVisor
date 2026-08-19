@@ -49,7 +49,7 @@ def tmp_agent_dir(tmp_path):
 
 @pytest.fixture
 def ca(tmp_ca_dir):
-    from app.services.ca import CertificateAuthority
+    from backend.services.ca import CertificateAuthority
     ca_instance = CertificateAuthority(tmp_ca_dir)
     ca_instance.ensure_ca()
     return ca_instance
@@ -78,7 +78,7 @@ def agent_csr():
 
 class TestCABootstrap:
     def test_ca_generates_key_and_cert(self, tmp_ca_dir):
-        from app.services.ca import CertificateAuthority
+        from backend.services.ca import CertificateAuthority
 
         ca = CertificateAuthority(tmp_ca_dir)
         ca.ensure_ca()
@@ -109,7 +109,7 @@ class TestCABootstrap:
 
     def test_ca_idempotent(self, tmp_ca_dir):
         """Calling ensure_ca() twice does not regenerate the CA."""
-        from app.services.ca import CertificateAuthority
+        from backend.services.ca import CertificateAuthority
 
         ca = CertificateAuthority(tmp_ca_dir)
         ca.ensure_ca()
@@ -421,9 +421,9 @@ class TestMTLSMiddleware:
 
     def test_disabled_mode_passes_through(self):
         """When MTLS_MODE=disabled, no certificate checks happen."""
-        from app.middleware.mtls_middleware import MTLSMiddleware
+        from backend.middleware.mtls_middleware import MTLSMiddleware
 
-        with patch("app.middleware.mtls_middleware.settings") as mock_settings:
+        with patch("backend.middleware.mtls_middleware.settings") as mock_settings:
             mock_settings.MTLS_MODE = "disabled"
 
             middleware = MTLSMiddleware(app=MagicMock())
@@ -432,28 +432,28 @@ class TestMTLSMiddleware:
 
     def test_non_protected_path_passes_through(self):
         """Paths outside /api/v1/collect/ and /api/v1/gateway/ are not checked."""
-        from app.middleware.mtls_middleware import _MTLS_PROTECTED_PREFIXES
+        from backend.middleware.mtls_middleware import _MTLS_PROTECTED_PREFIXES
 
         path = "/api/v1/health/ready"
         is_protected = any(path.startswith(prefix) for prefix in _MTLS_PROTECTED_PREFIXES)
         assert is_protected is False
 
     def test_protected_path_is_detected(self):
-        from app.middleware.mtls_middleware import _MTLS_PROTECTED_PREFIXES
+        from backend.middleware.mtls_middleware import _MTLS_PROTECTED_PREFIXES
 
         path = "/api/v1/collect/heartbeat"
         is_protected = any(path.startswith(prefix) for prefix in _MTLS_PROTECTED_PREFIXES)
         assert is_protected is True
 
     def test_exempt_path_is_detected(self):
-        from app.middleware.mtls_middleware import _MTLS_EXEMPT_SUFFIXES
+        from backend.middleware.mtls_middleware import _MTLS_EXEMPT_SUFFIXES
 
         path = "/api/v1/collect/certificate/ca"
         is_exempt = any(path.endswith(suffix) for suffix in _MTLS_EXEMPT_SUFFIXES)
         assert is_exempt is True
 
     def test_bootstrap_path_is_exempt(self):
-        from app.middleware.mtls_middleware import _MTLS_EXEMPT_SUFFIXES
+        from backend.middleware.mtls_middleware import _MTLS_EXEMPT_SUFFIXES
 
         path = "/api/v1/collect/bootstrap"
         is_exempt = any(path.endswith(suffix) for suffix in _MTLS_EXEMPT_SUFFIXES)
@@ -497,7 +497,7 @@ class TestGatewayCertificates:
 
 class TestMTLSConfig:
     def test_default_mtls_mode_is_disabled(self):
-        from app.core.config import Settings
+        from backend.core.config import Settings
 
         s = Settings(
             NETVISOR_SECRET_KEY="test-key-1234567890",
@@ -510,7 +510,7 @@ class TestMTLSConfig:
         assert s.MTLS_MODE == "disabled"
 
     def test_mtls_cert_validity_default(self):
-        from app.core.config import Settings
+        from backend.core.config import Settings
 
         s = Settings(
             NETVISOR_SECRET_KEY="test-key-1234567890",

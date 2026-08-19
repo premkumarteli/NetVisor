@@ -1,4 +1,4 @@
-from app.utils.network import (
+from backend.utils.network import (
     classify_ip_scope,
     is_rfc1918_device_ip,
     is_unicast_mac,

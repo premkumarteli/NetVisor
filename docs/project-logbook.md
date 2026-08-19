@@ -37,6 +37,8 @@ The current architecture separates visibility into two paths:
 | March-April 2026 | Introduced the modern FastAPI, React, agent, gateway, shared-runtime architecture with DPI and gateway privacy boundaries. |
 | May 2026 | Hardened enrollment and ingestion, tested DPI and Windows hotspot gateway collection, and redesigned telemetry pages for readability. |
 | June 2026 | Modularized the security detection engines registry, hardened concurrency safety, and built a decoupled real-time event-driven ingestion pipeline with Socket.IO dashboard broadcasts. |
+| July 2026 | Hardened mTLS revocation checks, implemented transparent browser intercepting and sensitive data redaction, secured Windows Service execution, and optimized ingestion throughput with partitioned locks. |
+| August 2026 | Modernized the Web Inspection dashboard, resolved critical SQL Injection, connection leak, and JWT algorithm confusion vulnerabilities, compiled the service manager, and documented architecture flows and justifications. |
 
 ---
 
@@ -50,6 +52,7 @@ The current architecture separates visibility into two paths:
 | **Version 4** | FastAPI + React | API performance upgrades and interactive analyst dashboard. |
 | **Version 5** | Agent + Gateway + Backend | Differentiated managed agent vs metadata-only gateway collection. |
 | **Version 6** | Modular Engine Platform | Unified detection engines registry with concurrency controls. |
+| **Version 7** | Hardened Production System | SQL Injection whitelisting, mTLS non-blocking checks, and RS256 authentication. |
 
 ---
 
@@ -1319,6 +1322,170 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 
 - Ran `pytest` testing suite. All 446 unit and integration tests passed cleanly.
+
+---
+
+## 2026-07-11 - DPI Integration, Windows Service Registry Hardening, and Self-Healing CA
+
+**Work completed**
+
+- **UI & Schema Alignment:** Updated `web_schema.py` and `web_inspection_service.py` to map and expose status parameters (`browser_launcher_deprecated`, `trust_scope`, `trust_store_match`, `key_protection`) to the frontend.
+- **Frontend UI Setup:** Updated `DpiSetupGuide.jsx` to display a "Local Capture Mode Active" banner when transparent browser traffic interception is active.
+- **Windows Service Registry Hardening:** Updated the C# service manager `service_controller.cs` to dynamically parse Python home from `pyvenv.cfg` and inject environment variables (`SystemRoot`, `PATH`, `PYTHONPATH`) into the registry, preventing background service startup timeouts.
+- **Self-Healing Certificates:** Implemented DPAPI context-aware self-healing logic in `ensure_ca_files()` inside `cert_manager.py` to automatically regenerate CA certificates when running contexts change (e.g. from user account to `LocalSystem`).
+- **Transparent Local Browser Interception:** Configured transparent interception mode for Chrome, Edge, and Firefox at the OS level via `NETVISOR_DPI_CAPTURE_MODE=local_browsers`.
+- **Sensitive Data Redaction:** Added sensitive credentials and authorization headers redaction in `redaction.py` and `mitm_addon.py`. Enforces hashing/redacting of cookies, authorization tokens, Fernet tokens, JWTs, and sensitive query keys.
+- **Production-Grade Security Hardening:** Refactored rate limiting to use Redis-backed sliding window logs with an in-memory fallback, implemented spoofing-resistant IP resolution via `resolve_source_ip` using a `TRUSTED_PROXIES` whitelist, enabled secure-only cookies in production environments, enforced strict JWT claims verification (`iss`, `aud`, `iat`, `jti`), injected HTTP security headers (HSTS, CSP, etc.), and redacted tracebacks/errors before logging.
+
+**Problem found**
+
+- Virtual/inactive Windows network adapters caused SCM start timeouts (`%%1053`).
+- DPAPI-encrypted private keys conflicted between user account context and `LocalSystem` service context, throwing `FileNotFoundError` or decryption errors.
+- Unconditional trust of `X-Forwarded-For` and in-memory rate limiting allowed IP spoofing and clustered rate-limit bypass.
+
+**Solution or learning**
+
+- Parsing the Python home path dynamically and passing it to the SCM registry preserves SCM environment context.
+- Self-healing certificates automatically handle user-to-system security context transitions.
+- Source IPs must only be resolved from headers when the direct peer is a trusted proxy.
+
+**Evidence**
+
+- Background Windows service successfully runs under `LocalSystem`.
+- Over 700+ browser events successfully intercepted and written to `web_events` table.
+- Passed local rate limiting and security headers validations. Commits `41372df018`, `858ff060ec`, and `ea7d2c1e8f` in Git.
+
+---
+
+## 2026-07-12 - RemixIcon Local Bundling & Logo Config
+
+**Work completed**
+
+- **Local Asset Provisioning:** Bundled the RemixIcon stylesheet and font files locally within the frontend build structure instead of loading them from public CDN endpoints.
+- **Antigravity Logo Config:** Added custom logo visual settings for branding consistency in air-gapped analyst workstations.
+
+**Problem found**
+
+- Deploying NetVisor in offline, proxied, or air-gapped corporate environments caused missing icons and styling glitches due to blocked external CDN requests.
+
+**Solution or learning**
+
+- Bundling static assets locally guarantees application visual parity and UI completeness across all network contexts.
+
+**Evidence**
+
+- Verified rendering of RemixIcons offline. Commit `d7e5394282f` in Git.
+
+---
+
+## 2026-07-21 - Performance & Concurrency Hardening (Partitioned Locks & Ingestion Pool)
+
+**Work completed**
+
+- **Partitioned Concurrency Locks:** Refactored `live_telemetry_store.py` and `audit_service.py` to use partitioned locks indexed by organization ID (`defaultdict(threading.Lock)`). This removes the bottleneck of a single global lock during multi-tenant updates.
+- **Dedicated DB Executor:** Added a `ThreadPoolExecutor` (`self._db_executor = ThreadPoolExecutor(max_workers=4)`) in `FlowService` to offload blocking MySQL writes and Redis Stream calls from the FastAPI event loop.
+- **Deadlock Resilience:** Implemented a retry wrapper for MySQL deadlock error code `1213` in `_sync_persist_batch` with backoff logic.
+- **Bulk Ingestion:** Optimized query patterns using batch inserts and `FOR UPDATE SKIP LOCKED`.
+
+**Problem found**
+
+- Concurrent multi-tenant ingestion spikes led to global lock contention, resulting in high event loop lag.
+- Overlapping subnet updates from multiple agents caused MySQL InnoDB transaction overlaps and deadlocks, rolling back ingestion tasks.
+
+**Solution or learning**
+
+- Tenant-based lock partitioning prevents global lock bottlenecks. Dedicated DB threads preserve FastAPI asyncio thread loop responsiveness.
+
+**Evidence**
+
+- Sustained concurrent ingestion tests completed without deadlock failures or event loop blocks. Commit `164356ab62` in Git.
+
+---
+
+## 2026-08-02 - Web Inspection Layout & UI Null-Safety
+
+**Work completed**
+
+- **Tabbed Layout:** Redesigned the Web Inspection DPI dashboard on the React frontend using a tabbed structure (Active Telemetry, URL Log, Payload Snippets, Setup Guide).
+- **Device Null-Safety:** Added defensive rendering guards on devices views to handle missing/empty properties safely.
+
+**Problem found**
+
+- The DPI dashboard was cluttered and difficult to navigate. In addition, devices without complete baseline telemetry caused React page crashes due to null properties.
+
+**Solution or learning**
+
+- Segmenting complex telemetry grids into tabs improves analyst workflow efficiency. All UI components rendering external data must have fallback defaults.
+
+**Evidence**
+
+- Verified React app compilation and runtime safety. Commit `1f966b5863` / `d55a6fb469` in Git.
+
+---
+
+## 2026-08-11 - Project Restructuring & Phase 1 Security Fixes
+
+**Work completed**
+
+- **Project Restructuring:** Cleaned up code layout and moved historical configuration artifacts to standardized directories.
+- **SQL Injection Remediation:** Parameterized dynamic table counts, CSV exports, and database resets in `system_service.py` and `flow_service.py`, using strict whitelists of allowed table and filter column names.
+- **mTLS Connection Leak Fix:** Implemented cache-based serial revocation lookups (5-minute TTL) inside `mtls_middleware.py` and executed the query asynchronously in a thread pool via `anyio.to_thread.run_sync()`.
+- **JWT Authentication Migration:** Replaced symmetric `HS256` token signing with asymmetric `RS256` in `security.py`, adding PEM key loaders and validating `iss`, `aud`, `iat`, and `jti` claims.
+- **Service Manager CLI:** Added the compiled `netvisor_manager.exe` (built from `service_controller.cs`) to facilitate agent management on Windows test nodes.
+
+**Problem found**
+
+- Security audit identified SQL injection paths in maintenance tools, DB connection starvation in mTLS middleware under concurrent requests, and algorithm confusion vulnerability in authentication tokens.
+
+**Solution or learning**
+
+- Whitelisting column/table names is necessary for dynamic SQL queries. Asymmetric keys prevent token forging even if application secrets are exposed.
+
+**Evidence**
+
+- Successfully executed security stress tests; all unit and integration tests passed cleanly. Commit `c4b005e7bb` and `fbf077375b` in Git.
+
+---
+
+## 2026-08-13 - Flow Architecture Diagrams & Tech Stack Justification
+
+**Work completed**
+
+- **Architecture Documentation:** Authored a comprehensive flow diagram in `docs/project_flow_diagram.md` illustrating data routing from agents/gateways, processing via the async event dispatcher and modular engines, and Socket.IO broadcast rooms.
+- **Technology Stack Justification:** Prepared the `docs/reports/technology-stack-report.md` detailing backend/frontend libraries and justifying the use of programmatic Python modules (Scapy, mitmproxy) for packet capture and DPI over standalone heavy tools like Wireshark.
+
+**Problem found**
+
+- Evaluators required clear architecture specifications and a technical justification for chosen capture methodologies rather than manual Wireshark packet capture.
+
+**Solution or learning**
+
+- Programmatic capturing and custom parsing allow real-time multitenant analytics, alerts correlation, and automation which manual tools cannot provide.
+
+**Evidence**
+
+- Generated `docs/project_flow_diagram.md` and `docs/reports/technology-stack-report.md`.
+
+---
+
+## 2026-08-16 - Logbook Update & Project Synthesis (Today)
+
+**Work completed**
+
+- **Logbook Synchronization:** Consolidated and updated the project logbook with all past design developments, performance updates, layout refactorings, security remediations, and documentation sprints from July and August 2026.
+- **Project Documentation Review:** Conducted a comprehensive audit of current source configurations and walkthrough files to align development logs.
+
+**Problem found**
+
+- The academic project logbook had fallen out of sync with actual engineering progress since early July 2026.
+
+**Solution or learning**
+
+- Maintain documentation incrementally to match actual repository commit history.
+
+**Evidence**
+
+- Verified changes inside `docs/project-logbook.md`.
 
 ---
 

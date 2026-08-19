@@ -10,11 +10,11 @@ from fastapi import HTTPException
 # Test targets
 from agent.security.dpapi import FileProtector, DynamicProtector
 from agent.dpi.redaction import redact_url
-from app.core.config import settings
-from app.services.device_service import device_service
-from app.services.alert_service import alert_service
-from app.services.agent_enrollment_service import agent_enrollment_service
-from app.services.system_service import system_service
+from backend.core.config import settings
+from backend.services.device_service import device_service
+from backend.services.alert_service import alert_service
+from backend.services.agent_enrollment_service import agent_enrollment_service
+from backend.services.system_service import system_service
 
 
 # --- 1. Test FileProtector & DynamicProtector ---

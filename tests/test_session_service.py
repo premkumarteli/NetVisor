@@ -1,4 +1,4 @@
-from app.services.session_service import session_service
+from backend.services.session_service import session_service
 
 
 def test_session_id_prefers_domain_over_rotating_endpoint_ip():

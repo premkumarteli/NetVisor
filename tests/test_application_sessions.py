@@ -1,4 +1,4 @@
-from app.services.application_service import application_service
+from backend.services.application_service import application_service
 
 
 def test_meaningful_session_filters_internal_unknown_noise():

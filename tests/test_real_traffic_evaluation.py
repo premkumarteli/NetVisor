@@ -5,10 +5,10 @@ from types import SimpleNamespace
 import pytest
 from scapy.all import rdpcap
 
-from app.schemas.flow_schema import FlowBase
-from app.services.flow_service import flow_service
-from app.services.flow_sanitization_service import flow_sanitization_service
-from app.engines.registry import EngineRegistry
+from backend.schemas.flow_schema import FlowBase
+from backend.services.flow_service import flow_service
+from backend.services.flow_sanitization_service import flow_sanitization_service
+from backend.engines.registry import EngineRegistry
 from collector.flow_manager import FlowManager
 from collector.observations import PacketObservation
 
@@ -47,22 +47,22 @@ class MockConnection:
 
 @pytest.fixture(autouse=True)
 def mock_db_schema_checks(monkeypatch):
-    import app.db.session
-    import app.services.managed_device_service
-    import app.services.session_service
-    import app.services.external_endpoint_service
+    import backend.db.session
+    import backend.services.managed_device_service
+    import backend.services.session_service
+    import backend.services.external_endpoint_service
     
     ready_status = {"ready": True, "missing_tables": [], "missing_columns": [], "missing_indexes": []}
-    monkeypatch.setattr(app.db.session, "runtime_schema_status", lambda *args, **kwargs: ready_status)
-    monkeypatch.setattr(app.db.session, "require_runtime_schema", lambda *args, **kwargs: ready_status)
+    monkeypatch.setattr(backend.db.session, "runtime_schema_status", lambda *args, **kwargs: ready_status)
+    monkeypatch.setattr(backend.db.session, "require_runtime_schema", lambda *args, **kwargs: ready_status)
     
     # Patch direct imports in services
-    if hasattr(app.services.managed_device_service, "require_runtime_schema"):
-        monkeypatch.setattr(app.services.managed_device_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
-    if hasattr(app.services.session_service, "require_runtime_schema"):
-        monkeypatch.setattr(app.services.session_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
-    if hasattr(app.services.external_endpoint_service, "require_runtime_schema"):
-        monkeypatch.setattr(app.services.external_endpoint_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
+    if hasattr(backend.services.managed_device_service, "require_runtime_schema"):
+        monkeypatch.setattr(backend.services.managed_device_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
+    if hasattr(backend.services.session_service, "require_runtime_schema"):
+        monkeypatch.setattr(backend.services.session_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
+    if hasattr(backend.services.external_endpoint_service, "require_runtime_schema"):
+        monkeypatch.setattr(backend.services.external_endpoint_service, "require_runtime_schema", lambda *args, **kwargs: ready_status)
 
 
 def run_pcap_through_flow_manager(pcap_path: str) -> list:
@@ -106,7 +106,7 @@ def test_real_wireguard_traffic_ingestion(monkeypatch):
     in the database detailing the 'WireGuard' vpn_type.
     """
     # Force Mock ASN reputation check to return M247 organization
-    from app.engines.vpn.asn_detector import asn_lookup_service
+    from backend.engines.vpn.asn_detector import asn_lookup_service
     monkeypatch.setattr(
         asn_lookup_service,
         "lookup_asn_details",
@@ -173,7 +173,7 @@ def test_real_tor_traffic_ingestion(monkeypatch):
     and result in a critical/high severity VPN alert.
     """
     # Force live TorExit check to return True for the destination IP
-    from app.services.vpn_detector import vpn_detector
+    from backend.services.vpn_detector import vpn_detector
     monkeypatch.setattr(
         vpn_detector._tor,
         "is_tor_exit",

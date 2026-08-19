@@ -2,8 +2,8 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.db.session import get_db_connection
-from app.services.dashboard_service import dashboard_service
+from backend.db.session import get_db_connection
+from backend.services.dashboard_service import dashboard_service
 
 conn = get_db_connection()
 try:

@@ -3,8 +3,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi.testclient import TestClient
-from app.main import app
-from app.core.dependencies import require_org_admin, get_current_user
+from backend.main import app
+from backend.core.dependencies import require_org_admin, get_current_user
 
 # Get the inner FastAPI app
 fastapi_app = app.other_asgi_app

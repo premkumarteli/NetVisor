@@ -11,9 +11,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.core.config import settings
-from app.db.session import get_db_connection
-from app.services.flow_service import flow_service
+from backend.core.config import settings
+from backend.db.session import get_db_connection
+from backend.services.flow_service import flow_service
 
 
 def benchmark_cases(*, ip_search: str, app_search: str, domain_search: str) -> tuple:

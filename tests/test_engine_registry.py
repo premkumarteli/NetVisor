@@ -1,7 +1,7 @@
 import pytest
-from app.engines.registry import EngineRegistry
-from app.engines.common.config import EngineConfig
-from app.engines.device.engine import DeviceEngine
+from backend.engines.registry import EngineRegistry
+from backend.engines.common.config import EngineConfig
+from backend.engines.device.engine import DeviceEngine
 from engine import BaseEngine, EngineResult, Finding, Severity
 
 class MockEngine(BaseEngine):

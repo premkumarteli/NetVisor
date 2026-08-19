@@ -16,7 +16,7 @@ PROJECT_ROOT = _find_project_root(Path(__file__))
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.db.session import get_db_connection
+from backend.db.session import get_db_connection
 
 def column_exists(cursor, table_name: str, column_name: str) -> bool:
     cursor.execute(

@@ -3,9 +3,9 @@ import os
 import pytest
 from datetime import datetime, timezone
 from engine import Severity
-from app.engines.registry import EngineRegistry
-from app.services.application_service import application_service
-from app.utils.asn_lookup import asn_lookup_service
+from backend.engines.registry import EngineRegistry
+from backend.services.application_service import application_service
+from backend.utils.asn_lookup import asn_lookup_service
 
 # Load fixtures helper
 def load_fixture(name: str) -> dict:
@@ -37,7 +37,7 @@ def test_compatibility_wrapper_findings(monkeypatch):
         lambda ip: {"asn": 13335, "organization": "Cloudflare"} if ip else None
     )
     
-    from app.services.application_service import application_compatibility_wrapper
+    from backend.services.application_service import application_compatibility_wrapper
     
     # 1. Curl finding
     curl_data = load_fixture("curl_tls.json")

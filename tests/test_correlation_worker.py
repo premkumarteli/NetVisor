@@ -4,9 +4,9 @@ import ipaddress
 import threading
 import asyncio
 from unittest.mock import MagicMock, AsyncMock
-from app.services.correlation_worker import CorrelationWorker
-from app.services.evidence_cache import evidence_cache, EvidenceSnapshot
-from app.core.config import settings
+from backend.services.correlation_worker import CorrelationWorker
+from backend.services.evidence_cache import evidence_cache, EvidenceSnapshot
+from backend.core.config import settings
 
 @pytest.fixture(autouse=True)
 def clean_cache_and_settings():
@@ -98,7 +98,7 @@ def test_infrastructure_cidr_membership():
     org_cidrs = worker._get_org_cidrs("org_1")
     infra_ips, infra_nets = worker._get_infra_assets("org_1")
     
-    from app.utils.network import classify_ip_scope_v2
+    from backend.utils.network import classify_ip_scope_v2
     # 10.0.0.5 is inside 10.0.0.0/28
     assert classify_ip_scope_v2("10.0.0.5", org_cidrs, infra_ips, infra_nets) == "INFRASTRUCTURE"
     # 10.0.0.20 is outside 10.0.0.0/28
@@ -298,7 +298,7 @@ async def test_redis_retry_and_dlq(monkeypatch):
     # Mock xreadgroup to return empty to terminate the consumer loop quickly
     mock_redis.xreadgroup.return_value = []
     
-    monkeypatch.setattr("app.services.correlation_worker.get_redis_connection", lambda: mock_redis)
+    monkeypatch.setattr("backend.services.correlation_worker.get_redis_connection", lambda: mock_redis)
     
     worker = CorrelationWorker()
     

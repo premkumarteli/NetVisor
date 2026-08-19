@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from starlette.responses import Response
 
-import app.middleware.request_context as request_context_module
+import backend.middleware.request_context as request_context_module
 
 
 class _FakeMetrics:

@@ -5,13 +5,13 @@ from types import SimpleNamespace
 import pytest
 
 from engine import Finding, Severity, EngineResult
-from app.engines.common.config import EngineConfig
-from app.engines.registry import EngineRegistry
-from app.engines.risk.engine import RiskEngine
-from app.engines.risk.decay import calculate_decay
-from app.engines.risk.suppression import SuppressionStore
-from app.engines.risk.correlation import Correlator
-from app.engines.risk.models import CorrelationRule, DEFAULT_RULES
+from backend.engines.common.config import EngineConfig
+from backend.engines.registry import EngineRegistry
+from backend.engines.risk.engine import RiskEngine
+from backend.engines.risk.decay import calculate_decay
+from backend.engines.risk.suppression import SuppressionStore
+from backend.engines.risk.correlation import Correlator
+from backend.engines.risk.models import CorrelationRule, DEFAULT_RULES
 
 def make_flow(**overrides):
     base = {

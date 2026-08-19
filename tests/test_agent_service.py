@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.services.agent_service import agent_service
+from backend.services.agent_service import agent_service
 
 
 def test_build_agent_entry_marks_recent_heartbeat_online():

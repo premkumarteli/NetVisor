@@ -11,10 +11,10 @@ import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.system_service import SystemService
-from app.services.flow_service import FlowService
-from app.core.security import create_access_token, verify_access_token, set_settings
-from app.core.config import Settings
+from backend.services.system_service import SystemService
+from backend.services.flow_service import FlowService
+from backend.core.security import create_access_token, verify_access_token, set_settings
+from backend.core.config import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -270,7 +270,7 @@ class TestSystemServiceSQLInjection:
                 return [None, None, DummyPath()]
         
         # This should not raise an error, but should only export allowed tables
-        with patch("app.services.system_service.Path", lambda *args: DummyPathResolver() if args and "system_service.py" in str(args[0]) else Path(*args)):
+        with patch("backend.services.system_service.Path", lambda *args: DummyPathResolver() if args and "system_service.py" in str(args[0]) else Path(*args)):
             service.export_all_tables_to_db_dump(conn)
         
         # Verify only allowed tables were exported
@@ -389,7 +389,7 @@ class TestMTLSMiddleware:
     @pytest.mark.anyio
     async def test_revocation_check_uses_thread_pool(self):
         """Test that revocation check runs in thread pool."""
-        from app.middleware.mtls_middleware import MTLSMiddleware
+        from backend.middleware.mtls_middleware import MTLSMiddleware
         
         middleware = MTLSMiddleware(app=None)
         
@@ -406,14 +406,14 @@ class TestMTLSMiddleware:
     @pytest.mark.anyio
     async def test_revocation_check_caches_results(self):
         """Test that revocation results are cached."""
-        from app.middleware.mtls_middleware import MTLSMiddleware, _REVOCATION_CACHE
+        from backend.middleware.mtls_middleware import MTLSMiddleware, _REVOCATION_CACHE
         
         middleware = MTLSMiddleware(app=None)
         
         # Clear cache
         _REVOCATION_CACHE.clear()
         
-        with patch('app.middleware.mtls_middleware.anyio.to_thread.run_sync') as mock_run_sync:
+        with patch('backend.middleware.mtls_middleware.anyio.to_thread.run_sync') as mock_run_sync:
             mock_run_sync.return_value = False
             
             # First call
@@ -427,25 +427,21 @@ class TestMTLSMiddleware:
             assert mock_run_sync.call_count == 1  # Still 1, cached
 
     @pytest.mark.anyio
-    async def test_revocation_check_handles_db_error_in_optional_mode(self):
+    async def test_revocation_check_handles_db_error_in_optional_mode(self, monkeypatch):
         """Test that DB errors are handled gracefully in optional mode."""
-        from app.middleware.mtls_middleware import MTLSMiddleware
-        from app.core.config import settings
+        from backend.middleware.mtls_middleware import MTLSMiddleware
+        from backend.core.config import settings
         
-        original_mode = settings.MTLS_MODE
-        settings.MTLS_MODE = "optional"
+        monkeypatch.setattr(settings, "MTLS_MODE", "optional")
+        middleware = MTLSMiddleware(app=None)
         
-        try:
-            middleware = MTLSMiddleware(app=None)
+        with patch('backend.middleware.mtls_middleware.anyio.to_thread.run_sync') as mock_run_sync:
+            mock_run_sync.side_effect = Exception("DB connection failed")
             
-            with patch('app.middleware.mtls_middleware.anyio.to_thread.run_sync') as mock_run_sync:
-                mock_run_sync.side_effect = Exception("DB connection failed")
-                
-                # Should not raise in optional mode
-                result = await middleware._check_revocation_async("serial-123")
-                assert result is False  # Default to not revoked on error
-        finally:
-            settings.MTLS_MODE = original_mode
+            # Should not raise in optional mode
+            result = await middleware._check_revocation_async("serial-123")
+            assert result is False  # Default to not revoked on error
+
 
 
 # ============================================================
@@ -455,7 +451,7 @@ class TestMTLSMiddleware:
 class TestJWTRS256:
     """Test JWT RS256 token creation and verification."""
 
-    def test_create_access_token_rs256(self, tmp_path):
+    def test_create_access_token_rs256(self, tmp_path, monkeypatch):
         """Test creating RS256 token with key files."""
         # Generate test RSA keys
         from cryptography.hazmat.primitives.asymmetric import rsa
@@ -480,13 +476,12 @@ class TestJWTRS256:
         public_key_path.write_bytes(public_pem)
         
         # Set environment
-        import os
-        os.environ["NETVISOR_JWT_ALGORITHM"] = "RS256"
-        os.environ["NETVISOR_JWT_PRIVATE_KEY_PATH"] = str(private_key_path)
-        os.environ["NETVISOR_JWT_PUBLIC_KEY_PATH"] = str(public_key_path)
+        monkeypatch.setenv("NETVISOR_JWT_ALGORITHM", "RS256")
+        monkeypatch.setenv("NETVISOR_JWT_PRIVATE_KEY_PATH", str(private_key_path))
+        monkeypatch.setenv("NETVISOR_JWT_PUBLIC_KEY_PATH", str(public_key_path))
         
         # Reload settings
-        from app.core.config import Settings
+        from backend.core.config import Settings
         settings = Settings()
         set_settings(settings)
         
@@ -502,17 +497,16 @@ class TestJWTRS256:
         assert payload["iss"] == "netvisor-backend"
         assert payload["aud"] == "netvisor-clients"
 
-    def test_create_access_token_hs256_fallback_with_warning(self, tmp_path):
+    def test_create_access_token_hs256_fallback_with_warning(self, tmp_path, monkeypatch):
         """Test HS256 fallback works but emits deprecation warning."""
-        import os
         import warnings
         
-        os.environ["NETVISOR_JWT_ALGORITHM"] = "HS256"
-        os.environ["NETVISOR_SECRET_KEY"] = "test-secret-key-that-is-long-enough-for-hs256"
-        os.environ.pop("NETVISOR_JWT_PRIVATE_KEY_PATH", None)
-        os.environ.pop("NETVISOR_JWT_PUBLIC_KEY_PATH", None)
+        monkeypatch.setenv("NETVISOR_JWT_ALGORITHM", "HS256")
+        monkeypatch.setenv("NETVISOR_SECRET_KEY", "test-secret-key-that-is-long-enough-for-hs256")
+        monkeypatch.delenv("NETVISOR_JWT_PRIVATE_KEY_PATH", raising=False)
+        monkeypatch.delenv("NETVISOR_JWT_PUBLIC_KEY_PATH", raising=False)
         
-        from app.core.config import Settings
+        from backend.core.config import Settings
         settings = Settings()
         set_settings(settings)
         
@@ -528,11 +522,10 @@ class TestJWTRS256:
         payload = verify_access_token(token)
         assert payload["sub"] == "user-123"
 
-    def test_verify_access_token_rejects_invalid_signature(self, tmp_path):
+    def test_verify_access_token_rejects_invalid_signature(self, tmp_path, monkeypatch):
         """Test that tokens with invalid signatures are rejected."""
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.primitives import serialization
-        import os
         
         # Generate two key pairs
         private_key1 = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -554,9 +547,9 @@ class TestJWTRS256:
         )
         
         # Sign with key1, verify with key2 (should fail)
-        os.environ["NETVISOR_JWT_ALGORITHM"] = "RS256"
-        os.environ["NETVISOR_JWT_PRIVATE_KEY_PATH"] = str(tmp_path / "private1.pem")
-        os.environ["NETVISOR_JWT_PUBLIC_KEY_PATH"] = str(tmp_path / "public2.pem")
+        monkeypatch.setenv("NETVISOR_JWT_ALGORITHM", "RS256")
+        monkeypatch.setenv("NETVISOR_JWT_PRIVATE_KEY_PATH", str(tmp_path / "private1.pem"))
+        monkeypatch.setenv("NETVISOR_JWT_PUBLIC_KEY_PATH", str(tmp_path / "public2.pem"))
         
         (tmp_path / "private1.pem").write_bytes(private_pem1)
         (tmp_path / "public1.pem").write_bytes(public_pem1)
@@ -566,26 +559,25 @@ class TestJWTRS256:
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ))
         
-        from app.core.config import Settings
+        from backend.core.config import Settings
         settings = Settings()
         set_settings(settings)
         
         token = create_access_token("user-123")
         
         # Now change to verify with different public key
-        os.environ["NETVISOR_JWT_PUBLIC_KEY_PATH"] = str(tmp_path / "public2.pem")
+        monkeypatch.setenv("NETVISOR_JWT_PUBLIC_KEY_PATH", str(tmp_path / "public2.pem"))
         settings = Settings()
         set_settings(settings)
         
         with pytest.raises(ValueError, match="Invalid token"):
             verify_access_token(token)
 
-    def test_verify_access_token_rejects_expired_token(self, tmp_path):
+    def test_verify_access_token_rejects_expired_token(self, tmp_path, monkeypatch):
         """Test that expired tokens are rejected."""
         from datetime import timedelta
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.hazmat.primitives import serialization
-        import os
         
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         private_pem = private_key.private_bytes(
@@ -603,11 +595,11 @@ class TestJWTRS256:
         private_key_path.write_bytes(private_pem)
         public_key_path.write_bytes(public_pem)
         
-        os.environ["NETVISOR_JWT_ALGORITHM"] = "RS256"
-        os.environ["NETVISOR_JWT_PRIVATE_KEY_PATH"] = str(private_key_path)
-        os.environ["NETVISOR_JWT_PUBLIC_KEY_PATH"] = str(public_key_path)
+        monkeypatch.setenv("NETVISOR_JWT_ALGORITHM", "RS256")
+        monkeypatch.setenv("NETVISOR_JWT_PRIVATE_KEY_PATH", str(private_key_path))
+        monkeypatch.setenv("NETVISOR_JWT_PUBLIC_KEY_PATH", str(public_key_path))
         
-        from app.core.config import Settings
+        from backend.core.config import Settings
         settings = Settings()
         set_settings(settings)
         
@@ -616,6 +608,7 @@ class TestJWTRS256:
         
         with pytest.raises(ValueError, match="Invalid token"):
             verify_access_token(token)
+
 
 
 # ============================================================

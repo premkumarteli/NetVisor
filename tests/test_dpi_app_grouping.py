@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import app.api.dpi as dpi
+import backend.api.dpi as dpi
 
 
 class DummyConn:

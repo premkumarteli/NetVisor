@@ -1,6 +1,6 @@
 from engine import EngineResult, Finding
 from agent.device_detector import device_compatibility_wrapper
-from app.services.application_service import application_compatibility_wrapper
+from backend.services.application_service import application_compatibility_wrapper
 
 def test_device_compatibility_wrapper_success():
     res = device_compatibility_wrapper(ip="192.168.1.10", mac="00:50:56:11:22:33", hostname="DESKTOP-ABC")

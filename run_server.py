@@ -17,7 +17,7 @@ def perform_health_check() -> int:
     server = None
     server_thread = None
     try:
-        from app.main import app
+        from backend.main import app
 
         probe_port = None
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -79,8 +79,8 @@ def cleanup_runtime_on_process_exit():
         return
 
     try:
-        from app.db.session import get_db_connection
-        from app.services.system_service import system_service
+        from backend.db.session import get_db_connection
+        from backend.services.system_service import system_service
 
         conn = get_db_connection()
         try:
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     print(f"[*] Proxy Headers:  {'enabled' if trust_proxy_headers else 'disabled'}")
     try:
         uvicorn.run(
-            "app.main:app",
+            "backend.main:app",
             host="0.0.0.0",
             port=8000,
             reload=reload_enabled,

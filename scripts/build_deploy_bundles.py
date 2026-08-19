@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives import serialization
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = PROJECT_ROOT / "build" / "deploy"
 CANONICAL_RUNTIME_ROOTS = {
-    "app",
+    "backend",
     "agent",
     "gateway",
     "shared",
@@ -51,7 +51,7 @@ IGNORE_PATTERNS = shutil.ignore_patterns(
 
 BUNDLES = {
     "server": [
-        ("app", "app"),
+        ("backend", "backend"),
         ("packet_engine", "packet_engine"),
         ("proto", "proto"),
         ("intel", "intel"),

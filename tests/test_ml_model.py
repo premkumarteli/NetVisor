@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import joblib
 
-from app.ml.features import FEATURE_NAMES, FEATURE_VERSION, extract_flow_features, feature_metadata
-from app.ml.model import NetVisorModel
+from backend.ml.features import FEATURE_NAMES, FEATURE_VERSION, extract_flow_features, feature_metadata
+from backend.ml.model import NetVisorModel
 
 
 def test_flow_feature_contract_is_versioned():

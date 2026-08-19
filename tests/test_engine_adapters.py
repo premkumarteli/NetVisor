@@ -1,8 +1,8 @@
 import pytest
 from engine import EngineResult, Finding
-from app.engines.device.engine import DeviceEngine
-from app.engines.application.engine import ApplicationEngine
-from app.engines.vpn.engine import VPNEngine
+from backend.engines.device.engine import DeviceEngine
+from backend.engines.application.engine import ApplicationEngine
+from backend.engines.vpn.engine import VPNEngine
 
 def test_device_engine_adapter():
     engine = DeviceEngine()

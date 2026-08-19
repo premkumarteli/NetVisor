@@ -1,7 +1,1 @@
-# NetVisor development/test dependencies
--r requirements-server.txt
-requests
-scapy
-colorama
-cryptography
-pytest
+-r requirements/dev.in

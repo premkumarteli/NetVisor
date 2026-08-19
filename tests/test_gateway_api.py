@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException
 
-from app.api import gateway as gateway_api
-from app.core.config import settings
+from backend.api import gateway as gateway_api
+from backend.core.config import settings
 from security.agent_auth import sign_request
-from app.services.flow_service import FlowQueueBackpressureError
-from app.services.gateway_auth_service import gateway_auth_service
-from app.schemas.flow_schema import FlowBase
+from backend.services.flow_service import FlowQueueBackpressureError
+from backend.services.gateway_auth_service import gateway_auth_service
+from backend.schemas.flow_schema import FlowBase
 
 
 class _RequestUrl:

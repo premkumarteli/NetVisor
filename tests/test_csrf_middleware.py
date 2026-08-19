@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.config import settings
-from app.middleware.csrf_protection import CSRFProtectionError, validate_csrf_request
+from backend.core.config import settings
+from backend.middleware.csrf_protection import CSRFProtectionError, validate_csrf_request
 
 
 def _request(*, method="POST", path="/mutate", cookies=None, headers=None):

@@ -1,10 +1,10 @@
 from datetime import datetime, timedelta
-from app.engines.common.config import EngineConfig
-from app.engines.threat.state import SlidingWindowStore
-from app.engines.threat.exfiltration import ExfiltrationDetector
-from app.engines.threat.port_scan import PortScanDetector
-from app.engines.threat.dns_tunneling import DNSTunnelingDetector
-from app.engines.threat.beaconing import BeaconingDetector
+from backend.engines.common.config import EngineConfig
+from backend.engines.threat.state import SlidingWindowStore
+from backend.engines.threat.exfiltration import ExfiltrationDetector
+from backend.engines.threat.port_scan import PortScanDetector
+from backend.engines.threat.dns_tunneling import DNSTunnelingDetector
+from backend.engines.threat.beaconing import BeaconingDetector
 from engine import Severity
 
 def test_config_overrides_exfiltration():

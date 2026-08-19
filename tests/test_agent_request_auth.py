@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 import pytest
 
 from security.agent_auth import sign_request
-from app.core.config import settings
-from app.services.agent_auth_service import AgentAuthenticationError, agent_auth_service
+from backend.core.config import settings
+from backend.services.agent_auth_service import AgentAuthenticationError, agent_auth_service
 
 
 class FakeRequestUrl:

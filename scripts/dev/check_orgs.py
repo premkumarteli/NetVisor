@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.db.session import get_db_connection
+from backend.db.session import get_db_connection
 
 conn = get_db_connection()
 cursor = conn.cursor(dictionary=True)

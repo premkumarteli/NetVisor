@@ -173,6 +173,12 @@ const DashboardPage = () => {
     trafficPollInterval
   );
 
+  const pollDashboardOverview = useCallback(() => {
+    fetchDashboard({ background: true });
+  }, [fetchDashboard]);
+
+  useVisibilityPolling(pollDashboardOverview, 15000);
+
   const handlePacketEvent = useCallback((event) => {
     setActivity((current) => [event, ...current].slice(0, 18));
 
@@ -233,6 +239,48 @@ const DashboardPage = () => {
     () => devices.filter((device) => device.management_mode === 'managed'),
     [devices],
   );
+
+  const agentsSummary = useMemo(() => {
+    if (stats.agents_summary && typeof stats.agents_summary === 'object') {
+      return {
+        online: Number(stats.agents_summary.online) || 0,
+        offline: Number(stats.agents_summary.offline) || 0,
+        total: Number(stats.agents_summary.total) || 0,
+        degraded: Number(stats.agents_summary.degraded) || 0,
+        queueDepth: Number(stats.agents_summary.queue_depth) || 0,
+      };
+    }
+    return {
+      online: Number(stats.active_devices) || 0,
+      offline: Math.max((Number(stats.total_devices) || 0) - (Number(stats.active_devices) || 0), 0),
+      total: Number(stats.total_devices) || 0,
+      degraded: 0,
+      queueDepth: 0,
+    };
+  }, [stats]);
+
+  const gatewaysSummary = useMemo(() => {
+    if (stats.gateways_summary && typeof stats.gateways_summary === 'object') {
+      return {
+        online: Number(stats.gateways_summary.online) || 0,
+        offline: Number(stats.gateways_summary.offline) || 0,
+        total: Number(stats.gateways_summary.total) || 0,
+        degraded: Number(stats.gateways_summary.degraded) || 0,
+        queueDepth: Number(stats.gateways_summary.queue_depth) || 0,
+      };
+    }
+    return { online: 0, offline: 0, total: 0, degraded: 0, queueDepth: 0 };
+  }, [stats]);
+
+  const fleetBufferQueue = useMemo(() => {
+    if (typeof stats.fleet_buffer_queue === 'number') {
+      return stats.fleet_buffer_queue;
+    }
+    if (typeof stats.queue_depth === 'number') {
+      return stats.queue_depth;
+    }
+    return agentsSummary.queueDepth + gatewaysSummary.queueDepth;
+  }, [stats, agentsSummary, gatewaysSummary]);
 
   const inspectedCoverage = useMemo(() => {
     if (managedDevices.length === 0) {
@@ -349,6 +397,137 @@ const DashboardPage = () => {
           ))}
         </div>
       )}
+
+      {/* Fleet Observability Section */}
+      <section className="cinematic-panel cinematic-panel--fleet" style={{ marginBottom: '1.5rem' }}>
+        <div className="cinematic-panel__header">
+          <div>
+            <div className="cinematic-kicker">Fleet Observability</div>
+            <h2>Agent &amp; Gateway Status</h2>
+          </div>
+          <button
+            type="button"
+            className="nv-button nv-button--ghost"
+            onClick={() => navigate('/agents')}
+            title="Navigate to Agent Monitoring Page"
+          >
+            View Fleet Details <i className="ri-arrow-right-line"></i>
+          </button>
+        </div>
+
+        <div
+          className="cinematic-fleet-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '1rem',
+            marginTop: '1rem',
+          }}
+        >
+          {/* Agents Card */}
+          <div
+            className="cinematic-fleet-card"
+            onClick={() => navigate('/agents')}
+            style={{
+              cursor: 'pointer',
+              padding: '1.25rem',
+              borderRadius: '12px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              transition: 'all 0.2s ease',
+            }}
+            title="Click to open Agent Monitoring"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
+                <i className="ri-radar-line" style={{ marginRight: '0.4rem', color: '#54c8e8' }}></i> Agents
+              </span>
+              <StatusBadge
+                tone={agentsSummary.degraded > 0 ? 'danger' : (agentsSummary.offline > 0 ? 'warning' : 'success')}
+                icon={agentsSummary.degraded > 0 ? 'ri-error-warning-line' : (agentsSummary.offline > 0 ? 'ri-alert-line' : 'ri-checkbox-circle-line')}
+              >
+                {agentsSummary.degraded > 0
+                  ? `${agentsSummary.degraded} Degraded`
+                  : (agentsSummary.offline > 0 ? `${agentsSummary.offline} Offline` : 'Optimal')}
+              </StatusBadge>
+            </div>
+            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
+              {agentsSummary.online} <span style={{ fontSize: '1rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>/ {agentsSummary.total} Online</span>
+            </strong>
+            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
+              Click to view detailed agent fleet telemetry
+            </small>
+          </div>
+
+          {/* Gateways Card */}
+          <div
+            className="cinematic-fleet-card"
+            onClick={() => navigate('/agents')}
+            style={{
+              cursor: 'pointer',
+              padding: '1.25rem',
+              borderRadius: '12px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              transition: 'all 0.2s ease',
+            }}
+            title="Click to open Agent Monitoring"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
+                <i className="ri-router-line" style={{ marginRight: '0.4rem', color: '#60a5fa' }}></i> Gateways
+              </span>
+              <StatusBadge
+                tone={gatewaysSummary.degraded > 0 ? 'danger' : (gatewaysSummary.offline > 0 ? 'warning' : 'success')}
+                icon={gatewaysSummary.degraded > 0 ? 'ri-error-warning-line' : (gatewaysSummary.offline > 0 ? 'ri-alert-line' : 'ri-checkbox-circle-line')}
+              >
+                {gatewaysSummary.degraded > 0
+                  ? `${gatewaysSummary.degraded} Degraded`
+                  : (gatewaysSummary.offline > 0 ? `${gatewaysSummary.offline} Offline` : 'Optimal')}
+              </StatusBadge>
+            </div>
+            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
+              {gatewaysSummary.online} <span style={{ fontSize: '1rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>/ {gatewaysSummary.total} Online</span>
+            </strong>
+            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
+              Click to view edge gateway nodes
+            </small>
+          </div>
+
+          {/* Fleet Buffer / Queue Card */}
+          <div
+            className="cinematic-fleet-card"
+            onClick={() => navigate('/agents')}
+            style={{
+              cursor: 'pointer',
+              padding: '1.25rem',
+              borderRadius: '12px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              transition: 'all 0.2s ease',
+            }}
+            title="Click to open Agent Monitoring"
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
+                <i className="ri-inbox-archive-line" style={{ marginRight: '0.4rem', color: '#f59e0b' }}></i> Fleet Buffer / Queue
+              </span>
+              <StatusBadge
+                tone={fleetBufferQueue > 0 ? 'warning' : 'success'}
+                icon={fleetBufferQueue > 0 ? 'ri-time-line' : 'ri-check-line'}
+              >
+                {fleetBufferQueue > 0 ? 'Events Buffered' : 'Queue Clear'}
+              </StatusBadge>
+            </div>
+            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
+              {formatCompact(fleetBufferQueue)} <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>events</span>
+            </strong>
+            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
+              Aggregated upload queue depth across fleet
+            </small>
+          </div>
+        </div>
+      </section>
 
       <div className="cinematic-command-grid">
         <main className="cinematic-command-grid__main">

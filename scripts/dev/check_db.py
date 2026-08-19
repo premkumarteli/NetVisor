@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.db.session import get_db_connection
+from backend.db.session import get_db_connection
 import datetime
 
 conn = get_db_connection()

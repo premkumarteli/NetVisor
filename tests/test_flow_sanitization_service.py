@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.services.flow_sanitization_service import flow_sanitization_service
+from backend.services.flow_sanitization_service import flow_sanitization_service
 
 
 def test_sanitize_flow_maps_egress_traffic_to_internal_device_and_external_endpoint():

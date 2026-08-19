@@ -34,7 +34,7 @@ COPY --from=builder /build/requirements-server.txt .
 RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-server.txt
 
 # Copy application code
-COPY app/ ./app/
+COPY backend/ ./backend/
 COPY config/ ./config/
 COPY infra/database/ ./infra/database/
 COPY shared/ ./shared/

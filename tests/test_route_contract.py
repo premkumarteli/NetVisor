@@ -1,4 +1,4 @@
-from app.api.router import api_router
+from backend.api.router import api_router
 
 
 FRONTEND_API_CONTRACT = {

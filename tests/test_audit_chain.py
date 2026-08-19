@@ -2,10 +2,10 @@ import hashlib
 from datetime import datetime
 from types import SimpleNamespace
 import pytest
-from app.services.audit_service import AuditService
-from app.services.audit_chain_service import audit_chain_service
-from app.api import audit_integrity as audit_api
-from app.core.config import settings
+from backend.services.audit_service import AuditService
+from backend.services.audit_chain_service import audit_chain_service
+from backend.api import audit_integrity as audit_api
+from backend.core.config import settings
 
 class AuditLogDB:
     def __init__(self):
@@ -123,7 +123,7 @@ class FakeConnection:
 
 def test_chain_genesis(monkeypatch):
     db = AuditLogDB()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
 
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1")
@@ -140,7 +140,7 @@ def test_chain_genesis(monkeypatch):
 
 def test_chain_links(monkeypatch):
     db = AuditLogDB()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
 
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1")
@@ -157,7 +157,7 @@ def test_chain_links(monkeypatch):
 
 def test_verify_clean_chain(monkeypatch):
     db = AuditLogDB()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
 
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1")
@@ -172,7 +172,7 @@ def test_verify_clean_chain(monkeypatch):
 
 def test_detect_tampered_entry(monkeypatch):
     db = AuditLogDB()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
 
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1")
@@ -187,7 +187,7 @@ def test_detect_tampered_entry(monkeypatch):
 
 def test_detect_deleted_row(monkeypatch):
     db = AuditLogDB()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
 
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1")
@@ -205,7 +205,7 @@ def test_partial_chain(monkeypatch):
     db = AuditLogDB()
     db.insert("org-1", "user-1", "action-1", "127.0.0.1", "res-1", "details-1", datetime.now())
     
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: FakeConnection(db))
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: FakeConnection(db))
     service = AuditService()
     service._log_audit_event("org-1", "user-1", "action-2", "127.0.0.1", "res-2", "details-2")
 

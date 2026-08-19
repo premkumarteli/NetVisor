@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.services.device_service import device_service
+from backend.services.device_service import device_service
 
 
 def test_trackable_device_ip_filters_remote_and_invalid_hosts():

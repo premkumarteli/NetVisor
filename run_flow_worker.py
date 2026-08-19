@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 if __name__ == "__main__":
     load_dotenv()
 
-    from app.main import _validate_runtime_config
-    from app.services.flow_service import flow_service
+    from backend.main import _validate_runtime_config
+    from backend.services.flow_service import flow_service
 
     print("[*] NetVisor Flow Worker Starting...")
     _validate_runtime_config()

@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from app.core.config import settings
-from app.core.security import create_access_token
-from app import realtime
+from backend.core.config import settings
+from backend.core.security import create_access_token
+from backend import realtime
 
 
 class _FakeConn:

@@ -1,4 +1,4 @@
-from app.services.audit_service import AuditService
+from backend.services.audit_service import AuditService
 
 
 class FakeCursor:
@@ -31,7 +31,7 @@ class FakeConnection:
 
 def test_log_audit_event_uses_auto_increment_id(monkeypatch):
     fake_conn = FakeConnection()
-    monkeypatch.setattr("app.services.audit_service.get_db_connection", lambda: fake_conn)
+    monkeypatch.setattr("backend.services.audit_service.get_db_connection", lambda: fake_conn)
 
     service = AuditService()
     service._log_audit_event(

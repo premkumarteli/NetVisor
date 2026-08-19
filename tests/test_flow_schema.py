@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.flow_schema import FlowBase
+from backend.schemas.flow_schema import FlowBase
 
 
 def sample_flow(**overrides):

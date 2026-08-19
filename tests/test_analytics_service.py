@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
-from app.services.analytics_service import analytics_service
-from app.services.application_service import application_service
-from app.services.flow_service import flow_service
+from backend.services.analytics_service import analytics_service
+from backend.services.application_service import application_service
+from backend.services.flow_service import flow_service
 
 
 class DummyConn:

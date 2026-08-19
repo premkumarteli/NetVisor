@@ -1,7 +1,7 @@
 import os
 import json
 import pytest
-from app.engines.threat.engine import ThreatEngine
+from backend.engines.threat.engine import ThreatEngine
 from engine import EngineResult
 
 FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures", "threats")

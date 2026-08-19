@@ -1,5 +1,5 @@
-from app.schemas.user_schema import UserCreate
-from app.services.auth_service import auth_service
+from backend.schemas.user_schema import UserCreate
+from backend.services.auth_service import auth_service
 
 
 class FakeCursor:
@@ -99,7 +99,7 @@ def test_authenticate_accepts_email_identifier(monkeypatch):
         "locked_until": None,
     }
     conn = AuthConnection(user)
-    monkeypatch.setattr("app.services.auth_service.verify_password", lambda password, hashed: password == "secret123")
+    monkeypatch.setattr("backend.services.auth_service.verify_password", lambda password, hashed: password == "secret123")
 
     authenticated = auth_service.authenticate(conn, "alice@example.com", "secret123")
 

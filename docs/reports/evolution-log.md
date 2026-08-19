@@ -13,6 +13,8 @@ Welcome to the project evolution log book for **NetVisor**! This document record
 | **4. Architectural Split** | Mar 22, 2026 | Separated monolithic services into dedicated `app`, `frontend`, `agent`, and `gateway` modules. |
 | **5. Visual & DPI Polish** | Mar 24, 2026 | Enhanced UI with sleek background animations, grid layering, and high DPI visibility. |
 | **6. CI Pipeline & Telemetry** | May 1-3, 2026 | Built admin enrollment flows, isolated deploy builds, and optimized ingestion benchmarks. |
+| **7. Modular Engines** | June 2026 | Transitioned to unified EngineRegistry, decoupled real-time flow ingestion event loop, and resolved QUIC collisions. |
+| **8. Production Hardening** | July-Aug 2026 | Implemented transparent browser intercepting and sensitive redaction, secured Windows SCM execution, partitioned concurrency locks, and fixed SQL Injection & JWT vulnerabilities. |
 
 ---
 
@@ -60,6 +62,7 @@ Welcome to the project evolution log book for **NetVisor**! This document record
     *   Optimized ingestion baseline, alert handling structures, and ML metadata tracking.
 *   **May 3, 2026 (CI & Telemetry Verification):**
     *   Polished device telemetry and application analytics views.
+
 ### June 2026: Gateway Hardening & Modular Engine Migration
 *   **June 6-7, 2026 (Gateway Hardening):**
     *   Added gateway hardening snapshots so startup health reports now expose missing bootstrap keys, missing TLS pins, unenrolled state, and capture-interface issues.
@@ -85,6 +88,41 @@ Welcome to the project evolution log book for **NetVisor**! This document record
 *   **June 21, 2026 (Live Verification & Legacy Retirement - Today):**
     *   *Fixes*: Solved dashboard VPN feed missing keys (`vpn_score`, `vpn_provider`) and the QUIC vs OpenVPN UDP opcode collision in `analysis.py`.
     *   *Phase 12B (Legacy Retirement)*: Permanently deleted all retired legacy engines, legacy wrappers, and legacy test files. Verified that all **427 tests pass cleanly** with 0 regressions.
+
+### 🔒 July 2026: Ingestion Alignment & Security Hardening
+*   **July 7, 2026 (Ingestion Worker Cutover):**
+    *   Refactored `flow_writer_worker` Redis Stream consumer to deserialize dictionary payloads into Pydantic `FlowBase` objects.
+    *   Consolidated persistence layers: routed all MySQL and ClickHouse writes exclusively through the `flow_writer_worker` path.
+    *   Added configurable `ChaosMiddleware` gating under a settings flag.
+*   **July 11, 2026 (DPI Integration & Windows Service Registry Hardening):**
+    *   Mapped and exposed status parameters (`browser_launcher_deprecated`, `trust_scope`, `trust_store_match`, `key_protection`) to the React frontend.
+    *   Implemented `service_controller.cs` environment initialization to resolve SCM start timeouts.
+    *   Added self-healing certificate logic to handle decryption context changes.
+    *   Configured transparent local browser interception for Chrome, Edge, and Firefox via `NETVISOR_DPI_CAPTURE_MODE=local_browsers`.
+    *   Implemented sensitive credential and authorization header redactions within payload snippets, URLs, and headers.
+    *   Integrated Redis-backed rate limiting, spoof-resistant IP resolving with `TRUSTED_PROXIES` validation, secure-only cookies, strict JWT claims verification, and global exception log redaction.
+*   **July 12, 2026 (UI Icon Portability):**
+    *   Bundled RemixIcon assets locally in the frontend workspace to support offline deployment environments.
+*   **July 21, 2026 (High-Load Performance Optimizations):**
+    *   Partitioned concurrency locks by organization ID to remove global lock contention bottlenecks.
+    *   Offloaded blocking MySQL writes and Redis Stream tasks to a dedicated `ThreadPoolExecutor` to keep the FastAPI event loop responsive.
+    *   Added MySQL transaction deadlock (`1213`) recovery/retry mechanics.
+
+### 📈 August 2026: UI Modernization, Vulnerability Mitigation & Documentation
+*   **Aug 2, 2026 (DPI UI Polish):**
+    *   Modernized the Web Inspection DPI analyst view with a tabbed layout.
+    *   Introduced rendering safeguards to handle null/uninitialized device properties safely.
+*   **Aug 11, 2026 (Project Refactoring & Security Sprint):**
+    *   Restructured project file layout to align backend, frontend, agent, and gateway components.
+    *   Fixed SQL Injection vectors in `system_service.py` and `flow_service.py` via whitelists and parameterization.
+    *   Resolved mTLS connection leaks in middleware via asynchronous execution and cached revocation status.
+    *   Migrated access tokens to asymmetric `RS256` keys and enforced strict claim verification.
+    *   Added compiled `netvisor_manager.exe` tool to support agent service management on target Windows nodes.
+*   **Aug 13, 2026 (Technical Documentation):**
+    *   Authored the comprehensive NetVisor flow diagram (`project_flow_diagram.md`) tracing data from collection to real-time Socket.IO broadcasts.
+    *   Prepared the technology stack report (`technology-stack-report.md`) detailing language metrics and justifying Python-based packet analysis over manual Wireshark.
+*   **Aug 16, 2026 (Logbook Synchronization - Today):**
+    *   Consolidated the main project logbook (`project-logbook.md`) and evolution logbook with all past work up to today.
 
 ---
 

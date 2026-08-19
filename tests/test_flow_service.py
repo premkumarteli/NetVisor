@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-from app.services import flow_service as flow_service_module
-from app.services.flow_service import FlowQueueBackpressureError, flow_service
-from app.services.flow_sanitization_service import flow_sanitization_service
+from backend.services import flow_service as flow_service_module
+from backend.services.flow_service import FlowQueueBackpressureError, flow_service
+from backend.services.flow_sanitization_service import flow_sanitization_service
 
 
 def test_agent_flows_are_always_managed():
@@ -145,8 +145,8 @@ def test_buffer_flow_updates_queue_metrics(monkeypatch):
         metadata_only=False,
     )
 
-    import app.db.redis_client
-    monkeypatch.setattr(app.db.redis_client, "get_redis_connection", lambda: None)
+    import backend.db.redis_client
+    monkeypatch.setattr(backend.db.redis_client, "get_redis_connection", lambda: None)
     monkeypatch.setattr(flow_service_module, "get_db_connection", lambda: conn)
     monkeypatch.setattr(flow_service, "_ensure_processing_ready", lambda db_conn: None)
     monkeypatch.setattr(flow_service, "_enforce_backpressure", lambda db_conn, incoming_flows: None)
@@ -322,8 +322,8 @@ def test_buffer_flow_raises_backpressure_when_queue_depth_is_exceeded(monkeypatc
         metadata_only=False,
     )
 
-    import app.db.redis_client
-    monkeypatch.setattr(app.db.redis_client, "get_redis_connection", lambda: None)
+    import backend.db.redis_client
+    monkeypatch.setattr(backend.db.redis_client, "get_redis_connection", lambda: None)
     monkeypatch.setattr(flow_service_module, "get_db_connection", lambda: conn)
     monkeypatch.setattr(flow_service, "_ensure_processing_ready", lambda db_conn: None)
     monkeypatch.setattr(
@@ -479,11 +479,11 @@ def test_flow_log_hash_lookup_prevents_cross_batch_duplicate_counting():
 
 @pytest.mark.anyio
 async def test_flow_writer_worker_backoff(monkeypatch):
-    from app.services.flow_service import FlowService
+    from backend.services.flow_service import FlowService
     from unittest.mock import AsyncMock, patch, MagicMock
 
-    import app.db.redis_client
-    monkeypatch.setattr(app.db.redis_client, "get_redis_connection", lambda: None)
+    import backend.db.redis_client
+    monkeypatch.setattr(backend.db.redis_client, "get_redis_connection", lambda: None)
 
     svc = FlowService()
     

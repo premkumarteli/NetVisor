@@ -1,4 +1,4 @@
-from app.utils import domain_utils
+from backend.utils import domain_utils
 
 
 def test_get_base_domain_returns_none_when_extractor_fails(monkeypatch):

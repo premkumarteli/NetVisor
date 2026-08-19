@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from app.core import dependencies
+from backend.core import dependencies
 
 
 def _request(path: str = "/api/v1/auth/login", host: str = "127.0.0.1"):

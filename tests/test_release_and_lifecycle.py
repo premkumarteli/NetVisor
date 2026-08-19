@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from agent.security.transport import AgentApiClient
-import app.services.release_service as release_module
-from app.services.system_service import SystemService
+import backend.services.release_service as release_module
+from backend.services.system_service import SystemService
 from agent.main import NetworkAgent
 from gateway.main import GatewayCollector
 from gateway.security.transport import GatewayApiClient

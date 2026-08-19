@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from security.agent_auth import sign_request
-from app.core.config import settings
+from backend.core.config import settings
 
 class ChaosSuite(unittest.TestCase):
     
@@ -23,7 +23,7 @@ class ChaosSuite(unittest.TestCase):
         mock_disk.return_value = shutil._ntuple_diskusage(100*1024*1024*1024, 96*1024*1024*1024, 4*1024*1024*1024)
         
         # Test app helper or logic that monitors storage space
-        from app.services.system_service import system_service
+        from backend.services.system_service import system_service
         # Simulate disk health check
         disk_status = shutil.disk_usage(".")
         used_ratio = disk_status.used / disk_status.total
@@ -35,21 +35,21 @@ class ChaosSuite(unittest.TestCase):
         print("SUCCESS: Chaos Test passed - Disk Full (96%) correctly identified.")
 
     # 2. DB Down Graceful Degradation
-    @patch("app.db.session.get_db_connection")
+    @patch("backend.db.session.get_db_connection")
     def test_db_down_graceful_handling(self, mock_conn):
         # Simulate MySQL operational failure
         mock_conn.side_effect = mysql.connector.errors.OperationalError(
             2002, "Can't connect to local MySQL server through socket"
         )
         
-        from app.db.session import get_db_connection
+        from backend.db.session import get_db_connection
         with self.assertRaises(mysql.connector.errors.OperationalError):
             get_db_connection()
             
         print("SUCCESS: Chaos Test passed - DB connection failure handled gracefully.")
 
     # 3. DB Latency Injection
-    @patch("app.db.session.get_db_connection")
+    @patch("backend.db.session.get_db_connection")
     def test_db_latency_injection(self, mock_conn):
         # Wrap connection cursor execution to inject latency
         fake_conn = MagicMock()

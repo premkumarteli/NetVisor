@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 def run_server():
     """Start NetVisor Server in background."""
     print("Starting server for Real Infrastructure Chaos validation...")
-    cmd = [os.path.join(".venv", "Scripts", "python"), "-m", "uvicorn", "app.main:app", "--port", "8000"]
+    cmd = [os.path.join(".venv", "Scripts", "python"), "-m", "uvicorn", "backend.main:app", "--port", "8000"]
     env = os.environ.copy()
     env["MTLS_MODE"] = "disabled"
     env["NETVISOR_CHAOS_TESTING"] = "1"

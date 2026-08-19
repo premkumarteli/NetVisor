@@ -120,7 +120,9 @@ export const playSuccessSound = () => {
           gain2.connect(ctx.destination);
           osc2.start();
           osc2.stop(time2 + 0.18);
-        } catch {}
+        } catch {
+          /* ignore audio playback errors */
+        }
       }, 60);
     } else {
       // Default success chime
@@ -150,7 +152,9 @@ export const playSuccessSound = () => {
           gain2.connect(ctx.destination);
           osc2.start();
           osc2.stop(time2 + 0.25);
-        } catch {}
+        } catch {
+          /* ignore audio playback errors */
+        }
       }, 80);
     }
   } catch (e) {

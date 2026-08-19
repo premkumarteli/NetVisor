@@ -1,7 +1,7 @@
 import json
 
-from app.core.config import settings
-from app.services.agent_auth_service import agent_auth_service
+from backend.core.config import settings
+from backend.services.agent_auth_service import agent_auth_service
 
 
 def test_transport_pins_filters_invalid_entries(monkeypatch):

@@ -14,7 +14,7 @@ from tests.performance.synthetic_generator.sender import ReplaySender
 from tests.performance.synthetic_generator.collector import MetricsCollector
 from tests.performance.synthetic_generator.monitor import ResourceMonitor
 from tests.performance.synthetic_generator.writer import ResultWriter
-from app.core.config import settings
+from backend.core.config import settings
 
 # Test Configurations
 AGENT_ID = "test-replay-agent"
@@ -22,8 +22,8 @@ KEY_VERSION = 1
 
 def bootstrap_agent_db(sender: ReplaySender) -> str:
     print("Bootstrapping test agent in database...")
-    from app.db.session import get_db_connection
-    from app.services.agent_service import agent_service
+    from backend.db.session import get_db_connection
+    from backend.services.agent_service import agent_service
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -123,7 +123,7 @@ def main():
     
     # 1. Start Uvicorn backend process
     print("Launching NetVisor Server in background...")
-    cmd = [os.path.join(".venv", "Scripts", "python"), "-m", "uvicorn", "app.main:app", "--port", "8000"]
+    cmd = [os.path.join(".venv", "Scripts", "python"), "-m", "uvicorn", "backend.main:app", "--port", "8000"]
     env = os.environ.copy()
     env["MTLS_MODE"] = "disabled"
     env["NETVISOR_CHAOS_TESTING"] = "1"

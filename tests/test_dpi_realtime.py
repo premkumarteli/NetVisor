@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
-from app.api.dpi import DpiEventEmitter
+from backend.api.dpi import DpiEventEmitter
 
 @pytest.mark.anyio
 async def test_dpi_event_emitter_payload_alignment():
@@ -20,7 +20,7 @@ async def test_dpi_event_emitter_payload_alignment():
         "search_query": "test query"
     }
     
-    with patch("app.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
+    with patch("backend.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
         await emitter.emit(mock_event)
         
         # Verify emit_event was called
@@ -53,7 +53,7 @@ async def test_dpi_event_emitter_youtube_title_extraction():
         "last_seen": "2026-03-25 13:00:00"
     }
     
-    with patch("app.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
+    with patch("backend.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
         await emitter.emit(mock_event)
         
         assert mock_emit.called
@@ -77,7 +77,7 @@ async def test_dpi_event_emitter_extracts_bing_query():
         "last_seen": "2026-03-25 13:00:00",
     }
 
-    with patch("app.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
+    with patch("backend.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
         await emitter.emit(mock_event)
 
         assert mock_emit.called
@@ -98,7 +98,7 @@ async def test_dpi_event_emitter_keeps_tabs_separate_when_page_urls_differ():
         "last_seen": "2026-03-25 13:00:00",
     }
 
-    with patch("app.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
+    with patch("backend.api.dpi.emit_event", new_callable=AsyncMock) as mock_emit:
         await emitter.emit({**base_event, "page_url": "https://example.com/tab-1"})
         await emitter.emit({**base_event, "page_url": "https://example.com/tab-2"})
 

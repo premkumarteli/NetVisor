@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from app.core.config import Settings
-from app.core.security import set_settings
+from backend.core.config import Settings
+from backend.core.security import set_settings
 
 # Set test environment variables BEFORE any other imports
 # This ensures Settings reads the correct values when first instantiated
@@ -31,18 +31,27 @@ def _configure_pytest_tempdir() -> None:
     tempfile.tempdir = str(workspace_tmp)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def test_settings():
+@pytest.fixture(scope="function", autouse=True)
+def test_settings(monkeypatch):
     """Configure test settings with HS256 for JWT tokens."""
+    monkeypatch.setenv("NETVISOR_JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("NETVISOR_SECRET_KEY", "test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only")
+    monkeypatch.delenv("NETVISOR_JWT_PRIVATE_KEY_PATH", raising=False)
+    monkeypatch.delenv("NETVISOR_JWT_PUBLIC_KEY_PATH", raising=False)
+    monkeypatch.delenv("NETVISOR_JWT_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("NETVISOR_JWT_PUBLIC_KEY", raising=False)
+
     test_settings = Settings(
         JWT_ALGORITHM="HS256",
         SECRET_KEY="test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only",
         NETVISOR_SECRET_KEY="test-secret-key-that-is-long-enough-for-hs256-testing-purposes-only",
     )
     set_settings(test_settings)
-    yield
+    yield test_settings
     # Reset to default settings after tests
     set_settings(None)
+
 
 
 _configure_pytest_tempdir()

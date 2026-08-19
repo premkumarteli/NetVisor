@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api import agents as agent_api
+from backend.api import agents as agent_api
 
 
 class _RequestUrl:

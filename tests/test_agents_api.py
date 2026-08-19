@@ -1,4 +1,4 @@
-from app.api.agents import _lookup_agent_organization_id
+from backend.api.agents import _lookup_agent_organization_id
 
 
 class _FakeCursor:

@@ -2,8 +2,8 @@ import os
 import time
 from pathlib import Path
 
-from app.db import session as db_session
-from app.services.system_service import SystemService
+from backend.db import session as db_session
+from backend.services.system_service import SystemService
 
 
 class FakeCursor:
