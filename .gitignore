@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Linter config
+.hintrc
+
 # Python
 __pycache__/
 **/__pycache__/
@@ -78,7 +81,6 @@ app/correlation_engine/rust/target/
 # Large binaries, archives, and database dumps
 *.zip
 *.exe
-!netvisor_manager.exe
 db_dump/
 database_data_dump.txt
 database_export.txt
