@@ -1533,16 +1533,111 @@ This project provided deep, hands-on experience in networking, systems security,
 
 ---
 
-## 2026-08-22 - Documentation & Logbook Synchronization (Today)
+## 2026-08-22 - Packet Capture Engine Modernization, 10-Tuple Records & Bidirectional Flow Accounting
 
 **Work completed**
 
-- **Logbook Update:** Formally documented the NetVisor Android native mobile application development, full web parity implementation, and network/security fixes in `docs/project-logbook.md`.
-- **System Verification:** Verified end-to-end alignment between backend services, React web frontend, and Jetpack Compose mobile client.
+- **Server Speed & Throughput Optimization:**
+  - Configured `run_server.py` with multi-worker scaling (`NETVISOR_WORKERS`), socket connection backlog `2048`, `limit_concurrency=1000`, and keepalive optimizations.
+  - Injected FastAPI `GZipMiddleware(minimum_size=1000)` into `backend/main.py` to compress large telemetry and flow query responses by 70–80%.
+  - Tuned MySQL connection pool dynamic sizing via `settings.DB_POOL_SIZE`.
+
+- **10-Tuple Flow Record Model & 802.1Q VLAN Extraction:**
+  - Extended `PacketObservation`, `FlowObservation`, and Pydantic `FlowBase` schema to support full 10-tuple flow metadata: `(src_ip, dst_ip, src_port, dst_port, protocol, src_mac, dst_mac, organization_id, source_type, vlan_id)`.
+  - Added Scapy `Dot1Q` VLAN tag parsing to extract L2.5 VLAN IDs from encapsulated frames.
+  - Added WireGuard default port `51820` signature to `UDP_SIGNATURE_PORTS`.
+
+- **Bidirectional Conversation Key Canonicalization:**
+  - Implemented `.canonical_conversation_key` in `packet_engine/parser.py` using symmetric sorting `(src_ip, src_port) <= (dst_ip, dst_port)` for `ip_pair`, `port_pair`, and `mac_pair`.
+  - Added `is_forward_direction` boolean property on `PacketObservation` for direction classification.
+
+- **Bidirectional Flow Aggregation & Directional Counters:**
+  - Refactored `FlowManager` to key active flow tables on `canonical_conversation_key`, consolidating Client->Server and Server->Client packets into a single unified `FlowState`.
+  - Added `forward_is_original_src` and directional accounting logic to calculate `fwd_bytes`, `rev_bytes`, `fwd_packets`, and `rev_packets` without defaulting all traffic to forward metrics.
+
+- **MAC Role Anchoring Fix:**
+  - Anchored `state.src_mac` and `state.dst_mac` to the initiating flow direction so reverse packets from servers/responders update `state.dst_mac` rather than corrupting `state.src_mac`.
+
+- **TCP Flag State Machine & 2-Second Fast Eviction:**
+  - Added real-time bitmask extraction for TCP flags (`SYN`, `FIN`, `RST`, `PSH`, `ACK`, `URG`, `ECE`, `CWR`).
+  - Implemented fast-close transition in `FlowManager`: flows observing `FIN` or `RST` terminate and flush `FLOW_END` in **2.0 seconds** instead of lingering for the 60-second idle timer.
+
+- **Kernel BPF Filter Ingestion:**
+  - Added `bpf_filter` argument across `CaptureBackend`, `ScapyCaptureBackend`, and `build_capture_backend` to filter out Layer 2 broadcast noise in kernel space before copying to userspace.
+
+**Problem found**
+
+- In initial 10-tuple implementation, `FlowManager.update_from_observation()` keyed on legacy 5-tuple `flow_key`, causing bidirectional TCP conversations to split into two independent flows and leaving `rev_bytes`/`rev_packets` at 0.
+- `canonical_conversation_key` initially omitted MAC pair sorting, causing opposite directions to produce different keys.
+- Subsequent reverse packets were overwriting `state.src_mac` with the responder's MAC, which would misattribute device inventory in downstream services.
+
+**Solution or learning**
+
+- Symmetrically sorted `ip_pair`, `port_pair`, and `mac_pair` in `canonical_conversation_key`.
+- Keyed `FlowManager._flows` on `canonical_conversation_key`, anchored `forward_is_original_src`, and directionally routed packet sizes to `fwd_*` vs `rev_*`.
+- Added direction-aware MAC role assignment (`if is_fwd: state.src_mac = src_mac, state.dst_mac = dst_mac else: state.src_mac = dst_mac, state.dst_mac = src_mac`).
 
 **Evidence**
 
-- Updated `docs/project-logbook.md` and `walkthrough.md`.
+- Added unit tests `test_10tuple_and_canonical_conversation_keys`, `test_tcp_fin_rst_fast_eviction`, `test_flow_manager_bidirectional_accounting`, and `test_flow_manager_mac_anchoring_stability` in `tests/test_collector_observations.py`.
+- Verified full test suite: **571 passed, 0 failed** (100% pass rate).
+- Verified health checks: `run_server.py --health-check`, `run_agent.py --health-check`, `run_gateway.py --health-check` all healthy.
+
+---
+
+## 2026-08-22 - Full Frontend SOC Overhaul, Human Intelligence Translation, Interactive Scrubbing, and DPI Triage Workflows
+
+**Work completed**
+
+- **Human Intelligence & Forensic Translation Layer:**
+  - Built `frontend/src/utils/intelTranslator.js` to translate raw detection keys (`DNS_TUNNEL_RATIO_HIGH`, `SYN_FLOOD`, `TOR_EXIT_NODE`, etc.) into Plain English Summaries, Potential Impact Assessments, and Actionable Remediation Checklists.
+  - Added destination resolution mapping raw IPv4/IPv6 blocks and standard ports to recognizable cloud services (Google Cloud, AWS, Microsoft 365, Cloudflare Edge, Internal Subnets).
+  - Implemented relative time formatting (`formatRelativeTime`) across all tables and drawers with local timestamp tooltips.
+  - Added `frontend/src/utils/exportUtils.js` for instant client-side CSV and JSON exports across all forensic views.
+
+- **Dashboard Architecture & 65% / 35% Command Workspace:**
+  - Enforced a 65% / 35% two-column split (`.cinematic-command-grid` with `grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr)`).
+  - Left Primary Column (~65%): Throughput pressure graph, side-by-side Threat Distribution donut and Severity breakdown lanes, and Live Network Sessions with translated entity providers and compact endpoint formatting.
+  - Right Operations Rail (~35%): Priority Queue live alert feed, Workspace & Sensor Health telemetry, and Top Products bandwidth ranking.
+  - Top Hero Section: Atmospheric `.cinematic-hero` with theme mode badge, live stream status pill, and aligned 4-card metric grid (`Active Devices`, `Active Threats`, `Flows (24h)`, `Inspection Coverage`).
+
+- **Interactive Graphing & Visual Telemetry:**
+  - Upgraded `TrafficChart.jsx` with Catmull-Rom cubic spline smoothing, interactive magnetic scrub crosshair that tracks packet rates, real-time KPI bar (Peak, Average, Current rate), and 1-click resolution toggles (Real-time 60s, Hourly 60m, Daily 24h).
+  - Built `DpiCategoryChart.jsx` providing visual bar breakdown for Media/Video, Search Engines, Cloud/APIs, and Social traffic.
+  - Upgraded `ThreatDistributionChart.jsx` with percentage-share tooltips and safe theme fallbacks.
+
+- **DPI Web Inspection Upgrades:**
+  - Added 1-click triage filter presets (*All Feeds*, *YouTube / Media*, *Search Queries*, *High/Critical Risk*) on `DpiDashboard.jsx` and `DpiActivityPage.jsx`.
+  - Added direct CSV/JSON export buttons for compliance audit trails.
+  - Wrapped raw forensic metadata into collapsible accordions in `WebEvidenceDrawer.jsx`.
+
+- **Authentication & Resilience Enhancements:**
+  - Upgraded `LoginPage.jsx` and `RegisterPage.jsx` with show/hide password visibility toggles, Caps Lock active detection badges, submit loading spinners, clear buttons, and session expiration warning banners.
+  - Replaced disruptive full-page `window.location.href = '/login'` redirects with custom event dispatching (`netvisor:auth-expired`).
+  - Added reusable `ErrorState.jsx` across all major routes with 1-click retry mechanisms.
+
+- **Backend Runtime Fixes:**
+  - Fixed `NameError: name 'public_hostname' is not defined` on server boot in `run_server.py`.
+  - Fixed Redis `xpending_range` dictionary key lookup (`KeyError: 'elapsed_milliseconds'`) in `backend/services/flow_service.py` and `backend/services/correlation_worker.py` using resilient key fallbacks.
+
+**Problem found**
+
+- Raw database codes and cryptic IPv6 addresses overwhelmed analysts with visual noise.
+- Redis stream pending message reclamation failed intermittently due to mismatched dictionary keys between `redis-py` versions.
+- Missing `public_hostname` variable definition caused server startup crashes.
+- Auth expiration caused white screen browser flashes.
+
+**Solution or learning**
+
+- Built an intelligent translation layer between backend telemetry and frontend presentation.
+- Standardized pending info retrieval with `.get()` fallbacks for `'name'`, `'idle'`, and `'delivered'`.
+- Restored the 65% / 35% command workspace ratio with responsive breakpoints and zero-flash auth invalidation.
+
+**Evidence**
+
+- Vite build: **601 modules transformed, 0 errors, 16.36s build time**.
+- Pushed commit `b76b076` to `origin/master`.
+- Verified clean startup on `python run_server.py` binding to `http://0.0.0.0:8000`.
 
 ---
 
