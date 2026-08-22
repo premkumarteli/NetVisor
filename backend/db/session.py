@@ -293,6 +293,7 @@ REQUIRED_RUNTIME_INDEXES = {
     },
     "alerts": {
         "idx_alerts_org_device_severity_time",
+        "idx_alerts_org_resolved_time_sev",
     },
     "external_endpoints": {
         "idx_external_endpoints_org_last_seen",
@@ -311,6 +312,7 @@ REQUIRED_RUNTIME_INDEXES = {
         "idx_web_events_agent_last_seen",
         "idx_web_events_org_last_seen",
         "idx_web_events_base_domain_last_seen",
+        "idx_web_events_org_last_seen_id",
     },
     "audit_logs": {
         "idx_audit_logs_org",
@@ -351,13 +353,14 @@ def _initialize_pool(force: bool = False):
             return _pool
 
         try:
+            pool_size = max(int(getattr(settings, "DB_POOL_SIZE", 20) or 20), 5)
             _pool = pooling.MySQLConnectionPool(
                 pool_name=f"netvisor_pool_{uuid.uuid4().hex[:8]}",
-                pool_size=10,
+                pool_size=pool_size,
                 pool_reset_session=True,
                 **_build_db_config(),
             )
-            logger.info("Managed DB connection pool initialized.")
+            logger.info("Managed DB connection pool initialized with size %d.", pool_size)
         except Exception as exc:
             logger.warning("Failed to initialize connection pool, using direct connections: %s", exc)
             _pool = None
@@ -545,9 +548,26 @@ def runtime_schema_status(conn=None) -> dict:
             conn.close()
 
 
-def require_runtime_schema(conn=None) -> dict:
+_runtime_schema_verified = False
+_runtime_schema_lock = threading.Lock()
+
+
+def reset_schema_verification_cache():
+    global _runtime_schema_verified
+    with _runtime_schema_lock:
+        _runtime_schema_verified = False
+
+
+def require_runtime_schema(conn=None, force: bool = False) -> dict:
+    global _runtime_schema_verified
+    if conn is None and _runtime_schema_verified and not force:
+        return {"ready": True, "missing_tables": [], "missing_columns": [], "missing_indexes": []}
+
     status = runtime_schema_status(conn)
     if status["ready"]:
+        if conn is None:
+            with _runtime_schema_lock:
+                _runtime_schema_verified = True
         return status
 
     details: list[str] = []

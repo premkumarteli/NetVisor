@@ -10,7 +10,10 @@ from typing import Callable, Dict, Optional, Tuple
 from .parser import PacketObservation
 
 
-FlowKey = Tuple[str, str, int, int, str]
+FlowKey = (
+    Tuple[Tuple[str, str], Tuple[int, int], str, Tuple[str, str], str, int]
+    | Tuple[str, str, int, int, str]
+)
 GENERIC_LAYER4_PROTOCOLS = {"TCP", "UDP", "IP", "IPV4", "IPV6", "UNKNOWN"}
 
 
@@ -42,6 +45,19 @@ class FlowState:
     analysis_confidence: float = 0.0
     analysis_signals: tuple[str, ...] = ()
     is_new: bool = True
+    vlan_id: int = 0
+    fwd_bytes: int = 0
+    rev_bytes: int = 0
+    fwd_packets: int = 0
+    rev_packets: int = 0
+    tcp_flags: Optional[str] = None
+    is_closing: bool = False
+    closing_at: Optional[float] = None
+    forward_is_original_src: bool = True
+    orig_src_ip: str = ""
+    orig_dst_ip: str = ""
+    orig_src_port: int = 0
+    orig_dst_port: int = 0
 
     @property
     def duration(self) -> float:
@@ -83,6 +99,12 @@ class FlowSummary:
     source_type: str = "agent"
     metadata_only: bool = False
     event_type: str = "FLOW_UPDATE"
+    vlan_id: int = 0
+    fwd_bytes: int = 0
+    rev_bytes: int = 0
+    fwd_packets: int = 0
+    rev_packets: int = 0
+    tcp_flags: Optional[str] = None
 
 
 class FlowManager:
@@ -168,17 +190,25 @@ class FlowManager:
         self.update_from_observation(observation)
 
     def update_from_observation(self, observation: PacketObservation) -> None:
-        key: FlowKey = observation.flow_key
+        key: FlowKey = observation.canonical_conversation_key
         now = observation.observed_at
         size = observation.packet_size
         src_mac = observation.src_mac
         dst_mac = observation.dst_mac
+        vlan_id = observation.vlan_id
+        tcp_flags = observation.tcp_flags
 
         with self._lock:
             state = self._flows.get(key)
             if state is None:
                 if len(self._flows) >= self.max_flows:
                     self._evict_oldest_locked()
+
+                is_closing = False
+                closing_at = None
+                if tcp_flags and ("F" in tcp_flags or "R" in tcp_flags):
+                    is_closing = True
+                    closing_at = now
 
                 self._flows[key] = FlowState(
                     start_time=now,
@@ -195,19 +225,53 @@ class FlowManager:
                     analysis_source=observation.analysis_source,
                     analysis_confidence=observation.analysis_confidence,
                     analysis_signals=observation.analysis_signals,
+                    vlan_id=vlan_id,
+                    fwd_bytes=size,
+                    rev_bytes=0,
+                    fwd_packets=1,
+                    rev_packets=0,
+                    tcp_flags=tcp_flags,
+                    is_closing=is_closing,
+                    closing_at=closing_at,
+                    forward_is_original_src=observation.is_forward_direction,
+                    orig_src_ip=observation.src_ip,
+                    orig_dst_ip=observation.dst_ip,
+                    orig_src_port=observation.src_port,
+                    orig_dst_port=observation.dst_port,
                 )
             else:
                 state.last_seen = now
                 state.packet_count += 1
                 state.byte_count += size
+                is_fwd = (observation.is_forward_direction == state.forward_is_original_src)
+                if is_fwd:
+                    state.fwd_bytes += size
+                    state.fwd_packets += 1
+                else:
+                    state.rev_bytes += size
+                    state.rev_packets += 1
+                if tcp_flags:
+                    state.tcp_flags = tcp_flags
+                    if "F" in tcp_flags or "R" in tcp_flags:
+                        state.is_closing = True
+                        if state.closing_at is None:
+                            state.closing_at = now
+                if vlan_id and not state.vlan_id:
+                    state.vlan_id = vlan_id
                 if observation.domain:
                     state.domain = observation.domain
                 if observation.sni:
                     state.sni = observation.sni
-                if src_mac:
-                    state.src_mac = src_mac
-                if dst_mac:
-                    state.dst_mac = dst_mac
+                if is_fwd:
+                    if src_mac:
+                        state.src_mac = src_mac
+                    if dst_mac:
+                        state.dst_mac = dst_mac
+                else:
+                    if dst_mac:
+                        state.src_mac = dst_mac
+                    if src_mac:
+                        state.dst_mac = src_mac
                 if observation.application_protocol:
                     candidate_protocol = str(observation.application_protocol).strip().upper()
                     if candidate_protocol and (
@@ -241,9 +305,12 @@ class FlowManager:
 
         with self._lock:
             for key, state in list(self._flows.items()):
-                _, _, _, _, proto = key
+                proto = key[2] if isinstance(key[0], tuple) else key[4]
                 timeout = self.tcp_timeout if proto == "TCP" else self.udp_timeout
-                if now - state.last_seen >= timeout:
+                if state.is_closing and ((state.closing_at and now - state.closing_at >= 2.0) or (now - state.last_seen >= 2.0)):
+                    expired[key] = (state, "FLOW_END")
+                    del self._flows[key]
+                elif now - state.last_seen >= timeout:
                     expired[key] = (state, "FLOW_END")
                     del self._flows[key]
                 elif state.packet_count > 0 and now - state.last_flushed >= self.flush_interval:
@@ -264,6 +331,19 @@ class FlowManager:
                         analysis_confidence=state.analysis_confidence,
                         analysis_signals=state.analysis_signals,
                         is_new=state.is_new,
+                        vlan_id=state.vlan_id,
+                        fwd_bytes=state.fwd_bytes,
+                        rev_bytes=state.rev_bytes,
+                        fwd_packets=state.fwd_packets,
+                        rev_packets=state.rev_packets,
+                        tcp_flags=state.tcp_flags,
+                        is_closing=state.is_closing,
+                        closing_at=state.closing_at,
+                        forward_is_original_src=state.forward_is_original_src,
+                        orig_src_ip=state.orig_src_ip,
+                        orig_dst_ip=state.orig_dst_ip,
+                        orig_src_port=state.orig_src_port,
+                        orig_dst_port=state.orig_dst_port,
                     ), event_type)
                     state.is_new = False
                     state.start_time = state.last_seen
@@ -281,7 +361,14 @@ class FlowManager:
                     continue
 
     def _build_summary(self, key: FlowKey, state: FlowState, event_type: str = "FLOW_UPDATE") -> FlowSummary:
-        src_ip, dst_ip, sport, dport, proto = key
+        if isinstance(key[0], tuple):
+            proto = key[2]
+            src_ip = state.orig_src_ip or key[0][0]
+            dst_ip = state.orig_dst_ip or key[0][1]
+            sport = state.orig_src_port or key[1][0]
+            dport = state.orig_dst_port or key[1][1]
+        else:
+            src_ip, dst_ip, sport, dport, proto = key
         start_dt = datetime.fromtimestamp(state.start_time, tz=timezone.utc)
         last_dt = datetime.fromtimestamp(state.last_seen, tz=timezone.utc)
 
@@ -311,6 +398,12 @@ class FlowManager:
             source_type=self.source_type,
             metadata_only=self.metadata_only,
             event_type=event_type,
+            vlan_id=state.vlan_id,
+            fwd_bytes=state.fwd_bytes,
+            rev_bytes=state.rev_bytes,
+            fwd_packets=state.fwd_packets,
+            rev_packets=state.rev_packets,
+            tcp_flags=state.tcp_flags,
         )
 
     def _evict_oldest_locked(self) -> None:

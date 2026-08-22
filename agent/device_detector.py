@@ -11,6 +11,9 @@ import xml.etree.ElementTree as ET
 
 import psutil
 from scapy.all import ARP, Ether, srp
+import logging
+
+logger = logging.getLogger(__name__)
 
 OUI_VENDOR_PREFIXES = {
     "00:50:56": "VMware",
@@ -100,8 +103,8 @@ class DeviceDetector:
                     if addr.netmask:
                         interface = ipaddress.ip_interface(f"{ip_value}/{addr.netmask}")
                         return str(interface.network)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Exception: %s", e)
 
         if isinstance(target_ip, ipaddress.IPv4Address) and target_ip.is_private:
             return str(ipaddress.ip_network(f"{ip_value}/24", strict=False))
@@ -226,8 +229,8 @@ class DeviceDetector:
                     if name and name != "*":
                         return self._normalize_hostname(name, ip)
                     offset += 18
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Exception: %s", e)
         finally:
             sock.close()
 
@@ -236,7 +239,8 @@ class DeviceDetector:
     def get_dns_name(self, ip):
         try:
             return self._normalize_hostname(socket.gethostbyaddr(ip)[0], ip)
-        except Exception:
+        except Exception as e:
+            logger.debug("Probe failed: %s", e)
             return None
 
     def get_nbtstat_name(self, ip):
@@ -249,7 +253,8 @@ class DeviceDetector:
                 stderr=subprocess.STDOUT,
                 timeout=0.5,
             ).decode(errors="ignore")
-        except Exception:
+        except Exception as e:
+            logger.debug("Probe failed: %s", e)
             return None
 
         for line in output.splitlines():
@@ -271,7 +276,8 @@ class DeviceDetector:
                 stderr=subprocess.STDOUT,
                 timeout=0.6,
             ).decode(errors="ignore")
-        except Exception:
+        except Exception as e:
+            logger.debug("Probe failed: %s", e)
             return None
 
         return self._parse_ping_hostname(output, ip)
@@ -281,7 +287,8 @@ class DeviceDetector:
             with urllib.request.urlopen(url, timeout=timeout) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 return response.read().decode(charset, errors="ignore")
-        except Exception:
+        except Exception as e:
+            logger.debug("Probe failed: %s", e)
             return None
 
     def _extract_xml_name(self, xml_text, ip=None):
@@ -361,7 +368,8 @@ class DeviceDetector:
         try:
             try:
                 sock.sendto(discovery, ("239.255.255.250", 1900))
-            except Exception:
+            except Exception as e:
+                logger.debug("Probe failed: %s", e)
                 return {}
 
             while True:
@@ -369,7 +377,8 @@ class DeviceDetector:
                     data, address = sock.recvfrom(2048)
                 except socket.timeout:
                     break
-                except Exception:
+                except Exception as e:
+                    logger.debug("Probe failed: %s", e)
                     return {}
 
                 location = self._parse_ssdp_location(data.decode(errors="ignore"))
@@ -463,7 +472,8 @@ class DeviceDetector:
                 sock.connect((ip, port))
                 sock.close()
                 return device_type
-            except Exception:
+            except Exception as e:
+                logger.debug("Exception: %s", e)
                 continue
 
         return "Unknown Type"

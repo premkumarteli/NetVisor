@@ -9,9 +9,13 @@ from .features import FEATURE_NAMES, FEATURE_VERSION
 
 logger = logging.getLogger("netvisor.ml.model")
 
+_DEFAULT_MODEL_PATH = os.environ.get(
+    "NETVISOR_ML_MODEL_PATH", "data/models/isolation_forest.pkl"
+)
+
 class NetVisorModel:
-    def __init__(self, model_path="data/models/isolation_forest.pkl"):
-        self.model_path = model_path
+    def __init__(self, model_path=None):
+        self.model_path = model_path or _DEFAULT_MODEL_PATH
         self.feature_version = FEATURE_VERSION
         self.feature_names = list(FEATURE_NAMES)
         self.model = self._load_model()
@@ -30,19 +34,22 @@ class NetVisorModel:
         return IsolationForest(contamination=0.01, random_state=42)
 
     def fit(self, X):
-        """Fit the model with features X."""
+        """Fit the model with features X and atomically save to disk."""
         self.model.fit(X)
-        # Ensure directory exists before saving
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        model_dir = os.path.dirname(self.model_path)
+        if model_dir:
+            os.makedirs(model_dir, exist_ok=True)
+        tmp_path = f"{self.model_path}.tmp.{os.getpid()}"
         joblib.dump(
             {
                 "model": self.model,
                 "feature_version": self.feature_version,
                 "feature_names": self.feature_names,
             },
-            self.model_path,
+            tmp_path,
         )
-        logger.info(f"Model fitted and saved to {self.model_path}")
+        os.replace(tmp_path, self.model_path)
+        logger.info(f"Model fitted and atomically saved to {self.model_path}")
 
     def metadata(self) -> dict:
         return {

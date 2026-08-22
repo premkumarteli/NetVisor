@@ -3,6 +3,7 @@ import StatusBadge from '../V2/StatusBadge';
 import SectionCard from '../V2/SectionCard';
 import { formatUtcTimestampToLocal } from '../../utils/time';
 import { formatBrowserLabel, formatByteCount, getRiskTone } from '../../utils/presentation';
+import { formatRelativeTime } from '../../utils/intelTranslator';
 import {
   getWebEvidencePrimaryLabel,
   getWebEvidenceSearchQueries,
@@ -83,8 +84,8 @@ const WebEvidenceDrawer = ({ open, item, onClose, footer }) => {
           </div>
           <div className="nv-summary-tile">
             <span>Seen</span>
-            <strong>{formatUtcTimestampToLocal(item?.last_seen)}</strong>
-            <p>{item?.first_seen ? `First seen ${formatUtcTimestampToLocal(item.first_seen)}` : 'No first-seen timestamp'}</p>
+            <strong title={formatUtcTimestampToLocal(item?.last_seen)}>{formatRelativeTime(item?.last_seen)}</strong>
+            <p>{formatUtcTimestampToLocal(item?.last_seen)}</p>
           </div>
           <div className="nv-summary-tile">
             <span>Scope</span>
@@ -219,6 +220,15 @@ const WebEvidenceDrawer = ({ open, item, onClose, footer }) => {
             <p>{item.threat_msg}</p>
           </SectionCard>
         ) : null}
+
+        <details style={{ marginTop: '0.5rem', cursor: 'pointer' }}>
+          <summary style={{ fontSize: '0.78rem', color: 'var(--nv-text-muted)', userSelect: 'none', padding: '0.4rem 0' }}>
+            <i className="ri-code-s-slash-line" style={{ marginRight: '0.3rem' }}></i> View Raw Evidence JSON Payload
+          </summary>
+          <pre className="nv-code-block" style={{ marginTop: '0.5rem', maxHeight: '180px', overflowY: 'auto' }}>
+            {JSON.stringify(item, null, 2)}
+          </pre>
+        </details>
       </div>
     </SidePanel>
   );

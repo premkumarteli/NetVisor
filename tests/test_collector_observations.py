@@ -86,8 +86,8 @@ def test_flow_manager_preserves_analyzer_metadata_in_summaries():
     )
 
     manager.update_from_observation(observation)
-    state = manager._flows[observation.flow_key]
-    summary = manager._build_summary(observation.flow_key, state)
+    state = manager._flows[observation.canonical_conversation_key]
+    summary = manager._build_summary(observation.canonical_conversation_key, state)
 
     assert state.application_protocol == "DNS"
     assert state.service_name == "dns"
@@ -158,3 +158,256 @@ def test_dpi_observation_payload_omits_raw_headers():
     assert payload["browser_name"] == "Chrome"
     assert payload["source_type"] == "agent"
     assert "headers" not in payload
+
+
+def test_10tuple_and_canonical_conversation_keys():
+    obs1 = PacketObservation(
+        observed_at=1_710_000_000.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="192.168.1.50",
+        dst_ip="142.250.190.46",
+        src_port=54321,
+        dst_port=443,
+        protocol="TCP",
+        packet_size=512,
+        src_mac="aa:bb:cc:dd:ee:01",
+        dst_mac="aa:bb:cc:dd:ee:02",
+        vlan_id=10,
+        tcp_flags="S",
+    )
+    obs2 = PacketObservation(
+        observed_at=1_710_000_001.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="142.250.190.46",
+        dst_ip="192.168.1.50",
+        src_port=443,
+        dst_port=54321,
+        protocol="TCP",
+        packet_size=1024,
+        src_mac="aa:bb:cc:dd:ee:02",
+        dst_mac="aa:bb:cc:dd:ee:01",
+        vlan_id=10,
+        tcp_flags="SA",
+    )
+
+    # 10-tuple keys
+    assert obs1.flow_key_10tuple == (
+        "192.168.1.50", "142.250.190.46", 54321, 443, "TCP", "aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:02", "-", "agent", 10
+    )
+    # Full canonical key equality for opposite directions of the same conversation
+    assert obs1.canonical_conversation_key == obs2.canonical_conversation_key
+    assert obs1.canonical_conversation_key == (
+        ("142.250.190.46", "192.168.1.50"),
+        (443, 54321),
+        "TCP",
+        ("aa:bb:cc:dd:ee:02", "aa:bb:cc:dd:ee:01"),
+        "agent",
+        10,
+    )
+
+
+def test_tcp_fin_rst_fast_eviction():
+    expired_summaries = []
+    manager = FlowManager(
+        agent_id="agent-1",
+        organization_id="org-1",
+        on_flow_expired=lambda s: expired_summaries.append(s),
+        tcp_timeout=60,
+        start_worker=False,
+    )
+
+    # 1. Start TCP flow with SYN
+    syn_obs = PacketObservation(
+        observed_at=100.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="10.0.0.1",
+        dst_ip="10.0.0.2",
+        src_port=1000,
+        dst_port=80,
+        protocol="TCP",
+        packet_size=64,
+        tcp_flags="S",
+    )
+    manager.update_from_observation(syn_obs)
+    assert syn_obs.canonical_conversation_key in manager._flows
+    assert manager._flows[syn_obs.canonical_conversation_key].is_closing is False
+
+    # 2. Receive FIN
+    fin_obs = PacketObservation(
+        observed_at=105.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="10.0.0.1",
+        dst_ip="10.0.0.2",
+        src_port=1000,
+        dst_port=80,
+        protocol="TCP",
+        packet_size=64,
+        tcp_flags="FA",
+    )
+    manager.update_from_observation(fin_obs)
+    assert manager._flows[syn_obs.canonical_conversation_key].is_closing is True
+
+    # 3. Expire check at t=106 (1 sec after FIN) -> should still be alive
+    import time
+    orig_time = time.time
+    try:
+        import unittest.mock as mock
+        with mock.patch("time.time", return_value=106.0):
+            manager._expire_flows()
+            assert syn_obs.canonical_conversation_key in manager._flows
+
+        # 4. Expire check at t=108 (3 sec after FIN) -> should fast expire!
+        with mock.patch("time.time", return_value=108.0):
+            manager._expire_flows()
+            assert syn_obs.canonical_conversation_key not in manager._flows
+            assert len(expired_summaries) == 2
+            assert expired_summaries[0].event_type == "FLOW_NEW"
+            assert expired_summaries[1].event_type == "FLOW_END"
+    finally:
+        pass
+
+
+def test_flow_manager_bidirectional_accounting():
+    manager = FlowManager(
+        agent_id="agent-1",
+        organization_id="org-1",
+        on_flow_expired=lambda s: None,
+        tcp_timeout=60,
+        start_worker=False,
+    )
+
+    fwd_obs = PacketObservation(
+        observed_at=100.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="192.168.1.50",
+        dst_ip="142.250.190.46",
+        src_port=54321,
+        dst_port=443,
+        protocol="TCP",
+        packet_size=500,
+        src_mac="aa:bb:cc:dd:ee:01",
+        dst_mac="aa:bb:cc:dd:ee:02",
+        vlan_id=10,
+        tcp_flags="PA",
+    )
+    rev_obs = PacketObservation(
+        observed_at=100.1,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="142.250.190.46",
+        dst_ip="192.168.1.50",
+        src_port=443,
+        dst_port=54321,
+        protocol="TCP",
+        packet_size=1200,
+        src_mac="aa:bb:cc:dd:ee:02",
+        dst_mac="aa:bb:cc:dd:ee:01",
+        vlan_id=10,
+        tcp_flags="PA",
+    )
+
+    manager.update_from_observation(fwd_obs)
+    assert len(manager._flows) == 1
+
+    manager.update_from_observation(rev_obs)
+    assert len(manager._flows) == 1
+
+    state = list(manager._flows.values())[0]
+    assert state.packet_count == 2
+    assert state.byte_count == 1700
+    assert state.fwd_bytes == 500
+    assert state.fwd_packets == 1
+    assert state.rev_bytes == 1200
+    assert state.rev_packets == 1
+
+    summary = manager._build_summary(fwd_obs.canonical_conversation_key, state)
+    assert summary.fwd_bytes == 500
+    assert summary.rev_bytes == 1200
+    assert summary.fwd_packets == 1
+    assert summary.rev_packets == 1
+    assert summary.packet_count == 2
+    assert summary.byte_count == 1700
+    assert summary.src_ip == "192.168.1.50"
+    assert summary.dst_ip == "142.250.190.46"
+
+
+def test_flow_manager_mac_anchoring_stability():
+    manager = FlowManager(
+        agent_id="agent-1",
+        organization_id="org-1",
+        on_flow_expired=lambda s: None,
+        tcp_timeout=60,
+        start_worker=False,
+    )
+
+    fwd_obs1 = PacketObservation(
+        observed_at=100.0,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="192.168.1.50",
+        dst_ip="142.250.190.46",
+        src_port=54321,
+        dst_port=443,
+        protocol="TCP",
+        packet_size=100,
+        src_mac="aa:bb:cc:dd:ee:01",
+        dst_mac="aa:bb:cc:dd:ee:02",
+        tcp_flags="S",
+    )
+    rev_obs = PacketObservation(
+        observed_at=100.1,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="142.250.190.46",
+        dst_ip="192.168.1.50",
+        src_port=443,
+        dst_port=54321,
+        protocol="TCP",
+        packet_size=100,
+        src_mac="aa:bb:cc:dd:ee:02",
+        dst_mac="aa:bb:cc:dd:ee:01",
+        tcp_flags="SA",
+    )
+    fwd_obs2 = PacketObservation(
+        observed_at=100.2,
+        source_type="agent",
+        metadata_only=False,
+        src_ip="192.168.1.50",
+        dst_ip="142.250.190.46",
+        src_port=54321,
+        dst_port=443,
+        protocol="TCP",
+        packet_size=100,
+        src_mac="aa:bb:cc:dd:ee:01",
+        dst_mac="aa:bb:cc:dd:ee:02",
+        tcp_flags="A",
+    )
+
+    # 1. First packet (Forward) establishes initial anchor
+    manager.update_from_observation(fwd_obs1)
+    state = list(manager._flows.values())[0]
+    assert state.src_mac == "aa:bb:cc:dd:ee:01"
+    assert state.dst_mac == "aa:bb:cc:dd:ee:02"
+
+    # 2. Second packet (Reverse) must NOT flip state.src_mac / dst_mac
+    manager.update_from_observation(rev_obs)
+    state = list(manager._flows.values())[0]
+    assert state.src_mac == "aa:bb:cc:dd:ee:01"
+    assert state.dst_mac == "aa:bb:cc:dd:ee:02"
+
+    # 3. Third packet (Forward) remains anchored and stable
+    manager.update_from_observation(fwd_obs2)
+    state = list(manager._flows.values())[0]
+    assert state.src_mac == "aa:bb:cc:dd:ee:01"
+    assert state.dst_mac == "aa:bb:cc:dd:ee:02"
+
+    summary = manager._build_summary(fwd_obs1.canonical_conversation_key, state)
+    assert summary.src_mac == "aa:bb:cc:dd:ee:01"
+    assert summary.dst_mac == "aa:bb:cc:dd:ee:02"
+
+

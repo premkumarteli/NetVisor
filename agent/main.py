@@ -65,8 +65,8 @@ class DeviceInventory:
                 with self.storage_file.open("r", encoding="utf-8") as f:
                     self.devices = json.load(f)
                     print(f"{Fore.GREEN}[+] Loaded {len(self.devices)} devices from inventory.")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to load device inventory: %s", e)
 
     def _auto_save_worker(self):
         while True:
@@ -79,8 +79,8 @@ class DeviceInventory:
                 self.storage_file.parent.mkdir(parents=True, exist_ok=True)
                 with self.storage_file.open("w", encoding="utf-8") as f:
                     json.dump(self.devices, f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to save device inventory: %s", e)
 
     def update(self, ip, **kwargs):
         with self.lock:
@@ -239,8 +239,8 @@ class NetworkAgent:
             if config_path.exists():
                 with config_path.open("r", encoding="utf-8") as f:
                     return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to load config from %s: %s", path, e)
         return {}
 
     def _resolve_initial_organization_id(self):
@@ -426,8 +426,8 @@ class NetworkAgent:
                 else:
                     sys.stdout.write(f"\r{status_text}        ")
                     sys.stdout.flush()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Stats reporter error: %s", e)
 
 
     def _register_agent(self, *, force_reenroll: bool = False):
@@ -608,7 +608,7 @@ class NetworkAgent:
             try:
                 if not self.api_client.has_credentials():
                     self._register_agent(force_reenroll=True)
-                cpu = psutil.cpu_percent()
+                cpu = psutil.cpu_percent(interval=0.1)
                 ram = psutil.virtual_memory().percent
                 payload = {
                     "agent_id": self.agent_id,

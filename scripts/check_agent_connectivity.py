@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from collector import preflight_exit_code, print_preflight_report, run_preflight, serialize_preflight_results
+from packet_engine import preflight_exit_code, print_preflight_report, run_preflight, serialize_preflight_results
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

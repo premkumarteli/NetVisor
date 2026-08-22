@@ -79,6 +79,7 @@ class Settings(BaseSettings):
     DB_USER: str = Field(default="root", validation_alias="NETVISOR_DB_USER")
     DB_PASSWORD: str = Field(default="", validation_alias="NETVISOR_DB_PASSWORD")
     DB_NAME: str = Field(default="network_security", validation_alias="NETVISOR_DB_NAME")
+    DB_POOL_SIZE: int = Field(default=20, validation_alias="NETVISOR_DB_POOL_SIZE")
     
     # Redis Configurations
     REDIS_HOST: str = Field(default="localhost", validation_alias="NETVISOR_REDIS_HOST")

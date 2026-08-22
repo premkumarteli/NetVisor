@@ -689,7 +689,9 @@
   z-index: 31;
   display: flex;
   width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2 * var(--nv-space-4));
   flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--nv-border);
   border-radius: 28px;
   background: var(--nv-surface-strong);
@@ -698,6 +700,7 @@
 
 .nv-drawer__header,
 .nv-drawer__footer {
+  flex-shrink: 0;
   padding: var(--nv-space-5) var(--nv-space-6);
   border-bottom: 1px solid rgba(143, 172, 196, 0.1);
 }
@@ -708,16 +711,22 @@
 }
 
 .nv-drawer__body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--nv-space-6);
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
 .nv-drawer__body::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 5px;
+}
+
+.nv-drawer__body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
 }
 
 .nv-drawer__close {
@@ -2141,8 +2150,8 @@
 
 .cinematic-command-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(20rem, 0.34fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1.85fr) minmax(300px, 1fr);
+  gap: 1.25rem;
   align-items: start;
 }
 
@@ -2162,11 +2171,12 @@
 
 .cinematic-panel__watermark {
   position: absolute;
-  right: 1rem;
-  bottom: 0.4rem;
+  right: 1.25rem;
+  bottom: 0.5rem;
   z-index: 0;
-  color: color-mix(in srgb, var(--primary) 13%, transparent);
-  font-size: clamp(5rem, 12vw, 10rem);
+  color: var(--primary, #54c8e8);
+  opacity: 0.04;
+  font-size: clamp(4rem, 8vw, 7rem);
   line-height: 1;
   pointer-events: none;
 }

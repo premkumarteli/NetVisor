@@ -30,6 +30,12 @@ class FlowBase(BaseModel):
     source_type: Literal["agent", "gateway"] = "agent"
     metadata_only: bool = False
     event_type: Optional[str] = "FLOW_UPDATE"
+    vlan_id: int = 0
+    fwd_bytes: int = 0
+    rev_bytes: int = 0
+    fwd_packets: int = 0
+    rev_packets: int = 0
+    tcp_flags: Optional[str] = None
 
     @field_validator("protocol")
     @classmethod

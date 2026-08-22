@@ -213,7 +213,6 @@ services:
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    user: "root"
     security_opt: []
     networks:
       - netvisor

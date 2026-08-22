@@ -44,7 +44,8 @@ def _windows_capture_interfaces() -> list[dict]:
         return []
     try:
         from scapy.arch.windows import get_windows_if_list  # type: ignore
-    except Exception:
+    except Exception as e:
+        logger.warning("Scapy Windows interface list not available: %s", e)
         return []
 
     interfaces: list[dict] = []

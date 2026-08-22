@@ -44,6 +44,12 @@ class FlowObservation:
     analysis_source: str = "transport_fallback"
     analysis_confidence: float = 0.0
     analysis_signals: tuple[str, ...] = ()
+    vlan_id: int = 0
+    fwd_bytes: int = 0
+    rev_bytes: int = 0
+    fwd_packets: int = 0
+    rev_packets: int = 0
+    tcp_flags: Optional[str] = None
 
     @classmethod
     def from_packet_observation(
@@ -81,6 +87,12 @@ class FlowObservation:
             analysis_source=observation.analysis_source,
             analysis_confidence=observation.analysis_confidence,
             analysis_signals=observation.analysis_signals,
+            vlan_id=observation.vlan_id,
+            fwd_bytes=observation.packet_size,
+            rev_bytes=0,
+            fwd_packets=1,
+            rev_packets=0,
+            tcp_flags=observation.tcp_flags,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -110,6 +122,12 @@ class FlowObservation:
             "analysis_source": self.analysis_source,
             "analysis_confidence": self.analysis_confidence,
             "analysis_signals": list(self.analysis_signals),
+            "vlan_id": self.vlan_id,
+            "fwd_bytes": self.fwd_bytes,
+            "rev_bytes": self.rev_bytes,
+            "fwd_packets": self.fwd_packets,
+            "rev_packets": self.rev_packets,
+            "tcp_flags": self.tcp_flags,
         }
 
 
@@ -137,10 +155,54 @@ class PacketObservation:
     analysis_source: str = "transport_fallback"
     analysis_confidence: float = 0.0
     analysis_signals: tuple[str, ...] = ()
+    vlan_id: int = 0
+    tcp_flags: Optional[str] = None
 
     @property
     def flow_key(self) -> tuple[str, str, int, int, str]:
+        """Legacy 5-tuple key: (src_ip, dst_ip, src_port, dst_port, protocol)."""
         return (self.src_ip, self.dst_ip, self.src_port, self.dst_port, self.protocol)
+
+    @property
+    def flow_key_10tuple(self) -> tuple[str, str, int, int, str, str, str, str, str, int]:
+        """Enhanced 10-tuple key."""
+        return (
+            self.src_ip,
+            self.dst_ip,
+            self.src_port,
+            self.dst_port,
+            self.protocol,
+            self.src_mac or "-",
+            self.dst_mac or "-",
+            "-",
+            self.source_type,
+            self.vlan_id,
+        )
+
+    @property
+    def is_forward_direction(self) -> bool:
+        """Returns True if this observation's (src_ip, src_port) <= (dst_ip, dst_port)."""
+        return (self.src_ip, self.src_port) <= (self.dst_ip, self.dst_port)
+
+    @property
+    def canonical_conversation_key(self) -> tuple[tuple[str, str], tuple[int, int], str, tuple[str, str], str, int]:
+        """Bidirectional conversation key: merges Client->Server and Server->Client into a single conversation."""
+        if self.is_forward_direction:
+            ip_pair = (self.src_ip, self.dst_ip)
+            port_pair = (self.src_port, self.dst_port)
+            mac_pair = (self.src_mac or "-", self.dst_mac or "-")
+        else:
+            ip_pair = (self.dst_ip, self.src_ip)
+            port_pair = (self.dst_port, self.src_port)
+            mac_pair = (self.dst_mac or "-", self.src_mac or "-")
+        return (
+            ip_pair,
+            port_pair,
+            self.protocol,
+            mac_pair,
+            self.source_type,
+            self.vlan_id,
+        )
 
     @property
     def observed_at_iso(self) -> str:
@@ -182,6 +244,14 @@ class PacketObservation:
             sport = 0
             dport = 0
 
+        vlan_id = 0
+        try:
+            from scapy.layers.l2 import Dot1Q
+            if packet.haslayer(Dot1Q):
+                vlan_id = int(packet[Dot1Q].vlan)
+        except Exception:
+            pass
+
         domain = getattr(packet, "captured_domain", None)
         sni = getattr(packet, "captured_sni", None)
         ja4 = getattr(packet, "captured_ja4", None)
@@ -210,6 +280,8 @@ class PacketObservation:
             analysis_source=analysis.classification_source if analysis else "transport_fallback",
             analysis_confidence=analysis.confidence if analysis else 0.0,
             analysis_signals=analysis.signals if analysis else (),
+            vlan_id=vlan_id,
+            tcp_flags=analysis.tcp_flags if analysis else None,
         )
 
 

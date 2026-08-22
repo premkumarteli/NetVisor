@@ -36,8 +36,9 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-s
 # Copy application code
 COPY backend/ ./backend/
 COPY config/ ./config/
+COPY engine/ ./engine/
+COPY security/ ./security/
 COPY infra/database/ ./infra/database/
-COPY shared/ ./shared/
 COPY run_server.py .
 COPY run_flow_worker.py .
 

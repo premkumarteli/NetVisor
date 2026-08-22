@@ -405,90 +405,10 @@ class FlowService:
                 f"Flow ingest lag {oldest_pending_age}s exceeds configured limit {max_lag_seconds}s."
             )
 
-    def _column_exists(self, cursor, table_name: str, column_name: str) -> bool:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = %s AND table_name = %s AND column_name = %s
-            LIMIT 1
-            """,
-            (settings.DB_NAME, table_name, column_name),
-        )
-        return cursor.fetchone() is not None
-
-    def _index_exists(self, cursor, table_name: str, index_name: str) -> bool:
-        cursor.execute(
-            """
-            SELECT 1
-            FROM information_schema.statistics
-            WHERE table_schema = %s AND table_name = %s AND index_name = %s
-            LIMIT 1
-            """,
-            (settings.DB_NAME, table_name, index_name),
-        )
-        return cursor.fetchone() is not None
-
     def _ensure_runtime_tables(self, db_conn) -> None:
         require_runtime_schema(db_conn)
 
     def _ensure_flow_log_schema(self, db_conn) -> None:
-        cursor = db_conn.cursor(dictionary=True)
-        try:
-            columns = {
-                "flow_direction": (
-                    "ALTER TABLE flow_logs "
-                    "ADD COLUMN flow_direction VARCHAR(20) NOT NULL DEFAULT 'unknown' AFTER network_scope"
-                ),
-                "analysis_source": (
-                    "ALTER TABLE flow_logs "
-                    "ADD COLUMN analysis_source VARCHAR(64) NOT NULL DEFAULT 'transport_fallback' AFTER agent_id"
-                ),
-                "analysis_confidence": (
-                    "ALTER TABLE flow_logs "
-                    "ADD COLUMN analysis_confidence FLOAT NOT NULL DEFAULT 0.0 AFTER analysis_source"
-                ),
-                "analysis_signals_json": (
-                    "ALTER TABLE flow_logs "
-                    "ADD COLUMN analysis_signals_json TEXT NULL AFTER analysis_confidence"
-                ),
-                "ingest_hash": (
-                    "ALTER TABLE flow_logs "
-                    "ADD COLUMN ingest_hash CHAR(40) NULL AFTER analysis_signals_json"
-                ),
-            }
-            for column_name, alter_sql in columns.items():
-                if self._column_exists(cursor, "flow_logs", column_name):
-                    continue
-                try:
-                    cursor.execute(alter_sql)
-                except mysql.connector.Error as exc:
-                    if int(getattr(exc, "errno", 0) or 0) != 1060:
-                        raise
-
-            indexes = {
-                "idx_flow_logs_direction_last_seen": (
-                    "CREATE INDEX idx_flow_logs_direction_last_seen ON flow_logs (flow_direction, last_seen)"
-                ),
-                "idx_flow_logs_confidence_last_seen": (
-                    "CREATE INDEX idx_flow_logs_confidence_last_seen ON flow_logs (analysis_confidence, last_seen)"
-                ),
-                "uq_flow_logs_ingest_hash": (
-                    "CREATE UNIQUE INDEX uq_flow_logs_ingest_hash ON flow_logs (ingest_hash)"
-                ),
-            }
-            for index_name, create_sql in indexes.items():
-                if self._index_exists(cursor, "flow_logs", index_name):
-                    continue
-                try:
-                    cursor.execute(create_sql)
-                except mysql.connector.Error as exc:
-                    if int(getattr(exc, "errno", 0) or 0) != 1061:
-                        raise
-            db_conn.commit()
-        finally:
-            cursor.close()
-
         require_runtime_schema(db_conn)
 
     def classify_management_mode(self, flow_data, managed_ip_set: set[str]) -> str:
@@ -710,14 +630,11 @@ class FlowService:
             return True
 
         first = flows[0]
-        flows_serialized = []
-        for flow in flows:
-            if hasattr(flow, "model_dump"):
-                flows_serialized.append(flow.model_dump(mode="json"))
-            elif isinstance(flow, dict):
-                flows_serialized.append(dict(flow))
-            else:
-                flows_serialized.append(dict(vars(flow)))
+        flows_serialized = [
+            flow.model_dump(mode="json") if hasattr(flow, "model_dump")
+            else (dict(flow) if isinstance(flow, dict) else dict(vars(flow)))
+            for flow in flows
+        ]
 
         # Resolve organization, agent, and source_type
         org_id = None
@@ -744,7 +661,7 @@ class FlowService:
             from backend.db.redis_client import get_redis_connection
             r = get_redis_connection()
             payload = {
-                "flows": json.dumps(flows_serialized),
+                "flows": json.dumps(flows_serialized, separators=(",", ":")),
                 "org_id": str(org_id or ""),
                 "agent_id": str(agent_id or ""),
                 "source_type": str(source_type),
@@ -1132,11 +1049,24 @@ class FlowService:
                                 # Get pending messages that have been idle for > 15s (15000ms)
                                 pending_info = await self._run_in_executor(r.xpending_range, stream_name, group_name, min="-", max="+", count=10)
                                 for p in pending_info:
-                                    msg_id = p["message_id"]
-                                    idle_ms = p["elapsed_milliseconds"]
-                                    delivery_count = p["times_delivered"]
+                                    if isinstance(p, dict):
+                                        msg_id = p.get("message_id") or p.get("name") or p.get("id")
+                                        idle_ms = p.get("time_since_delivered") or p.get("idle") or 0
+                                        delivery_count = p.get("times_delivered") or p.get("delivered") or 0
+                                    elif isinstance(p, (list, tuple)) and len(p) >= 4:
+                                        msg_id = str(p[0]) if p[0] else None
+                                        idle_ms = p[2] if isinstance(p[2], (int, float)) else 0
+                                        delivery_count = p[3] if isinstance(p[3], (int, float)) else 0
+                                    else:
+                                        continue
                                     
-                                    if idle_ms > 15000:
+                                    try:
+                                        idle_ms = int(idle_ms)
+                                        delivery_count = int(delivery_count)
+                                    except (ValueError, TypeError):
+                                        continue
+                                    
+                                    if msg_id and idle_ms > 15000:
                                         if delivery_count > 5:
                                             # Dead-letter routing
                                             logger.warning("Message %s failed %s times. Routing to dead-letter.", msg_id, delivery_count)
@@ -1182,8 +1112,31 @@ class FlowService:
                         for s_name, s_msgs in messages:
                             for msg_id, payload in s_msgs:
                                 try:
+                                    if not isinstance(payload, dict):
+                                        await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
+                                        continue
+
                                     flows_json = payload.get("flows")
-                                    flows = list(FLOW_BATCH_ADAPTER.validate_python(json.loads(flows_json or "[]")))
+                                    if not flows_json:
+                                        await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
+                                        continue
+
+                                    try:
+                                        parsed_json = json.loads(flows_json)
+                                        flows = list(FLOW_BATCH_ADAPTER.validate_python(parsed_json))
+                                    except Exception as parse_err:
+                                        logger.warning("Corrupted flow payload in stream (%s): %s", msg_id, parse_err)
+                                        await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
+                                        continue
+
+                                    if not flows:
+                                        await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
+                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
+                                        continue
+
                                     self._set_metric("last_batch_size", len(flows))
                                     
                                     persist_started_at = time.perf_counter()

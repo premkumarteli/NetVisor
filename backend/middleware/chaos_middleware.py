@@ -14,6 +14,8 @@ from .chaos_context import (
 
 logger = logging.getLogger("netvisor.chaos")
 
+import os
+
 # Intercept global shutil.disk_usage and socket.getaddrinfo once at import time
 _original_disk_usage = shutil.disk_usage
 _original_getaddrinfo = socket.getaddrinfo
@@ -34,9 +36,11 @@ def chaos_getaddrinfo(*args, **kwargs):
         time.sleep(dns_sec)
     return _original_getaddrinfo(*args, **kwargs)
 
-# Hook wrappers globally at server launch
-shutil.disk_usage = chaos_disk_usage
-socket.getaddrinfo = chaos_getaddrinfo
+# Only hook wrappers globally when chaos testing is explicitly enabled
+if os.environ.get("NETVISOR_CHAOS_ENABLED", "").lower() in ("1", "true", "yes"):
+    shutil.disk_usage = chaos_disk_usage
+    socket.getaddrinfo = chaos_getaddrinfo
+    logger.info("Chaos middleware monkey-patches activated")
 
 class ChaosMiddleware(BaseHTTPMiddleware):
     """Middleware that populates request-scoped context variables to trigger thread-safe chaos."""

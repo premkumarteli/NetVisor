@@ -91,13 +91,17 @@
   gap: var(--nv-space-5);
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 .nv-rail__nav::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  width: 4px;
+}
+
+.nv-rail__nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
 }
 
 .nv-rail__group {
@@ -188,8 +192,9 @@
 .nv-main {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
-  overflow-x: clip;
+  overflow-x: hidden;
 }
 
 .nv-topbar {
@@ -210,7 +215,8 @@
   justify-content: flex-start;
   width: 100%;
   min-width: 0;
-  overflow-x: clip;
+  flex: 1;
+  overflow-x: hidden;
   padding: 1.05rem;
 }
 

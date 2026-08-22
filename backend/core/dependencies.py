@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from datetime import datetime, timezone
 from .config import settings
 from .security import verify_access_token
-from ..db.session import get_db_connection
+from ..db.session import get_db, get_db_connection
 from ..services.auth_service import auth_service
 from ..services.metrics_service import metrics_service
 import logging
@@ -81,8 +81,8 @@ class SecurityContext(dict):
 
 def get_current_user(
     request: Request,
+    conn = Depends(get_db),
 ):
-    conn = None
     try:
         resolved_token = _resolve_request_token(request)
         payload = verify_access_token(resolved_token)
@@ -93,7 +93,6 @@ def get_current_user(
                 detail="Could not validate credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        conn = get_db_connection()
         user = auth_service.get_user_by_id(conn, user_id)
         if not user:
             raise HTTPException(
@@ -137,9 +136,6 @@ def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    finally:
-        if conn:
-            conn.close()
 
 def require_org_scoped_role(*roles: str):
     """FastAPI dependency factory enforcing role requirements and providing organization context."""

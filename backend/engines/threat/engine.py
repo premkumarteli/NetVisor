@@ -60,7 +60,7 @@ class ThreatEngine(BaseEngine):
         # Parse observed_at timestamp
         last_seen = context.get("last_seen") if isinstance(context, dict) else getattr(context, "last_seen", None)
         if not last_seen:
-            observed_at = datetime.utcnow()
+            observed_at = datetime.now(timezone.utc)
         elif isinstance(last_seen, datetime):
             observed_at = last_seen
         else:
@@ -75,7 +75,7 @@ class ThreatEngine(BaseEngine):
                 try:
                     observed_at = datetime.fromisoformat(last_seen)
                 except ValueError:
-                    observed_at = datetime.utcnow()
+                    observed_at = datetime.now(timezone.utc)
 
         # Strip tzinfo to ensure timezone-naive datetime comparison
         if observed_at.tzinfo is not None:

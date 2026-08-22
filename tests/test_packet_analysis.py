@@ -36,7 +36,7 @@ def test_analyze_packet_classifies_http_host_header():
 
 
 def test_analyze_packet_classifies_tls_sni(monkeypatch):
-    monkeypatch.setattr("collector.analysis._extract_tls_sni", lambda _: "github.com")
+    monkeypatch.setattr("packet_engine.classifier._extract_tls_sni", lambda _: "github.com")
     packet = IP(src="10.0.0.10", dst="140.82.112.4") / TCP(sport=54001, dport=443) / Raw(load=b"client-hello")
 
     analysis = analyze_packet(packet)

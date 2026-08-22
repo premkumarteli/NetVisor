@@ -17,9 +17,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
-      if (window.location.pathname !== "/login") {
-        window.location.href = "/login";
-      }
+      window.dispatchEvent(new CustomEvent("netvisor:auth-expired", { detail: error.response }));
     }
     return Promise.reject(error);
   }

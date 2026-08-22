@@ -7,6 +7,7 @@ import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
 import ThreatDrawer from '../components/V2/ThreatDrawer';
+import ErrorState from '../components/V2/ErrorState';
 import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { getRiskTone } from '../utils/presentation';
@@ -15,12 +16,14 @@ const ThreatsPage = () => {
   const [threats, setThreats] = useState([]);
   const [threatCount, setThreatCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedThreat, setSelectedThreat] = useState(null);
 
   const fetchThreats = useCallback(async ({ background = false } = {}) => {
     if (!background) {
       setLoading(true);
     }
+    setError(null);
     try {
       const [res, statsRes] = await Promise.all([
         systemService.getAlerts({
@@ -35,6 +38,9 @@ const ThreatsPage = () => {
       setThreatCount(statsRes.data?.high_risk || 0);
     } catch (err) {
       console.error('Failed to fetch threats', err);
+      if (!background) {
+        setError('Failed to fetch high-risk security alerts from the gateway.');
+      }
     } finally {
       if (!background) {
         setLoading(false);
@@ -104,6 +110,14 @@ const ThreatsPage = () => {
       render: (row) => <StatusBadge tone={getRiskTone(row.severity)}>{row.severity}</StatusBadge>,
     },
   ];
+
+  if (error && !loading && threats.length === 0) {
+    return (
+      <div className="nv-page">
+        <ErrorState title="Threat Telemetry Error" message={error} onRetry={() => fetchThreats()} />
+      </div>
+    );
+  }
 
   return (
     <div className="nv-page">

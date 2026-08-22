@@ -39,7 +39,9 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-a
 # Copy application code
 COPY agent/ ./agent/
 COPY config/ ./config/
-COPY shared/ ./shared/
+COPY engine/ ./engine/
+COPY packet_engine/ ./packet_engine/
+COPY security/ ./security/
 COPY run_agent.py .
 
 # Create non-root user with capabilities for packet capture

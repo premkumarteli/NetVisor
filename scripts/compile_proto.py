@@ -59,8 +59,21 @@ def compile_protobufs():
                 print(f"Running command: {' '.join(cmd)}")
                 subprocess.check_call(cmd)
             print("Protobuf compilation completed successfully via standard protoc!")
+        except subprocess.CalledProcessError as e:
+            print(f"Error running standard protoc: {e}")
+            if e.stderr:
+                print(f"stderr: {e.stderr}")
+            if e.stdout:
+                print(f"stdout: {e.stdout}")
+            print("Please install grpcio-tools in the environment:")
+            print("  pip install grpcio-tools")
+            sys.exit(1)
         except Exception as e:
             print(f"Error running standard protoc: {e}")
+            if hasattr(e, 'stderr') and e.stderr:
+                print(e.stderr.decode() if isinstance(e.stderr, bytes) else e.stderr)
+            elif hasattr(e, 'output') and e.output:
+                print(e.output.decode() if isinstance(e.output, bytes) else e.output)
             print("Please install grpcio-tools in the environment:")
             print("  pip install grpcio-tools")
             sys.exit(1)

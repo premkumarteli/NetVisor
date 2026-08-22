@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Shield Glow / Outline -->
+    <path
+        android:pathData="M54,28 L78,38 L78,56 C78,72 68,82 54,88 C40,82 30,72 30,56 L30,38 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#00F3FF"
+        android:fillColor="#1500F3FF" />
+
+    <!-- Inner Shield Accent -->
+    <path
+        android:pathData="M54,34 L72,42 L72,55 C72,67 64,75 54,80 C44,75 36,67 36,55 L36,42 Z"
+        android:strokeWidth="1.2"
+        android:strokeColor="#8B5CF6"
+        android:fillColor="#0A8B5CF6" />
+
+    <!-- Cyber Visor / Horizontal Scan Slit -->
+    <path
+        android:pathData="M38,52 L70,52 L66,58 L42,58 Z"
+        android:fillColor="#00F3FF" />
+
+    <!-- Center Radar / Threat Core Node -->
+    <path
+        android:pathData="M54,48 L58,54 L54,60 L50,54 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Connection Network Nodes -->
+    <path
+        android:pathData="M54,66 L54,74"
+        android:strokeWidth="2"
+        android:strokeColor="#00F3FF" />
+    <path
+        android:pathData="M48,74 L60,74"
+        android:strokeWidth="2"
+        android:strokeColor="#00F3FF" />
+</vector>

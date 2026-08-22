@@ -1468,7 +1468,7 @@ This project provided deep, hands-on experience in networking, systems security,
 
 ---
 
-## 2026-08-16 - Logbook Update & Project Synthesis (Today)
+## 2026-08-16 - Logbook Update & Project Synthesis
 
 **Work completed**
 
@@ -1486,6 +1486,63 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 
 - Verified changes inside `docs/project-logbook.md`.
+
+---
+
+## 2026-08-20 - NetVisor Android Mobile App & Full Web Parity
+
+**Work completed**
+
+- **Mobile Application Architecture:** Initialized and structured the native Android application (`Android_Application`) using modern Android Jetpack Compose, Material 3, Coroutines, StateFlow, Kotlinx Serialization, and Retrofit/OkHttp.
+- **Cyberpunk UI & Branding:** Built custom glassmorphic UI components (`GlassCard`, `GlassSurface`, `GlassButton`, `StatusBadge`, `FloatingBottomNavBar`) and branded the application as "NetVisor" with custom vector shield launcher icons (`ic_launcher_background.xml`, `ic_launcher_foreground.xml`, `ic_netvisor_logo.xml`).
+- **Compose Blur Fix:** Diagnosed and resolved a render-shader bug where Compose `Modifier.blur(20.dp)` on parent containers caused complete illegibility on Android 12+ (API 31+). Replaced with high-contrast translucent cyber gradients and glowing cyan borders.
+- **Pre-filled Default Authentication:** Configured `LoginScreen.kt` with default demo credentials (`admin` / `NetVisor!DemoAccess99`) and interactive 1-tap switcher chips for `Admin` and `Operator` accounts.
+- **Full Web Platform Parity:**
+  - `HomeScreen.kt` / `HomeViewModel.kt`: Live operational health status, active threat metrics, 24h traffic volume, and real-time security activity stream.
+  - `NetworkScreen.kt` / `NetworkViewModel.kt` & `DeviceDetailsScreen.kt`: Searchable device inventory with online indicators, OS badges, and deep risk-score factor inspection.
+  - `ThreatsScreen.kt` / `ThreatsViewModel.kt`: Live incident alerts with severity filtering (`Critical`, `High`, `Medium`, `Low`).
+  - `DpiScreen.kt` / `DpiViewModel.kt`: Deep Packet Inspection decoder status and real-time inspectable HTTP/TLS web flows with risk classification.
+  - `AppsScreen.kt` / `AppsViewModel.kt`: Application category tagging (Streaming, Social, Web, Work), byte volumes, and flow counts.
+  - `VpnScreen.kt` / `VpnViewModel.kt`: Heuristic detection of encrypted VPN/Proxy tunnels (WireGuard, OpenVPN, IPsec) and endpoint IPs.
+  - `AgentsScreen.kt` / `AgentsViewModel.kt`: Fleet monitoring of enrolled collector agents, versions, OS families, queue depths, and heartbeat status.
+  - `LogsScreen.kt` / `LogsViewModel.kt`: Real-time network flow logs (`src_ip:port -> dst_ip:port`), protocol labels, and IP search.
+  - `SettingsScreen.kt` / `SettingsViewModel.kt`: Operator profile & role, dynamic backend URL management, health monitoring, and instant security scan trigger.
+- **Session, CSRF & Network Hardening:**
+  - Added `network_security_config.xml` configured in `AndroidManifest.xml` with `<base-config cleartextTrafficPermitted="true">` to enable local LAN/Wi-Fi HTTP cleartext communication on Android 9–15.
+  - Rebuilt `CookieJar` in `NetVisorApiFactory.kt` to preserve `netvisor_session` and `csrftoken` across all requests, eliminating post-login 401 Unauthorized errors.
+  - Added automated `X-XSRF-TOKEN` / `X-CSRF-Token` header injection for all mutating POST/PUT/DELETE requests.
+  - Directed real-time WebSocket traffic in `NetVisorWebSocket.kt` to Socket.IO (`/socket.io/?EIO=4&transport=websocket`) with authenticated session cookie headers.
+- **Build Verification:** Successfully built debug APK with Gradle `./gradlew.bat assembleDebug` (`BUILD SUCCESSFUL`).
+
+**Problem found**
+
+- Initial login attempts on Android physical devices failed due to Android OS cleartext restrictions and Windows Firewall blocking inbound port 8000.
+- Subsequent authenticated requests failed with 401 Unauthorized because `Cookie.parse` dropped session cookies due to domain-path mismatches.
+- Mutation endpoints returned 403 Forbidden because CSRF tokens were missing from HTTP headers.
+
+**Solution or learning**
+
+- In modern Android versions, `usesCleartextTraffic="true"` must be paired with an explicit `network_security_config.xml`.
+- A resilient `CookieJar` must store session cookies in memory and dynamically attach them matching the target request host.
+- Background WebSocket connections must target the Socket.IO ASGI transport endpoint rather than raw `/ws`.
+
+**Evidence**
+
+- Generated `app-debug.apk` at `C:\Users\prem\Network\Android_Application\app\build\outputs\apk\debug\app-debug.apk`.
+- Confirmed server log showing `POST /api/v1/auth/login 200 OK` from mobile client `10.18.86.193`.
+
+---
+
+## 2026-08-22 - Documentation & Logbook Synchronization (Today)
+
+**Work completed**
+
+- **Logbook Update:** Formally documented the NetVisor Android native mobile application development, full web parity implementation, and network/security fixes in `docs/project-logbook.md`.
+- **System Verification:** Verified end-to-end alignment between backend services, React web frontend, and Jetpack Compose mobile client.
+
+**Evidence**
+
+- Updated `docs/project-logbook.md` and `walkthrough.md`.
 
 ---
 

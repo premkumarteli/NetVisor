@@ -9,15 +9,9 @@ from . import metadata
 from .metadata import DomainHintCache, extract_flow_hints
 
 def _extract_tls_sni(payload: bytes) -> str | None:
-    mod = sys.modules.get("collector.analysis")
-    if mod and hasattr(mod, "_extract_tls_sni") and mod._extract_tls_sni.__code__ != _extract_tls_sni.__code__:
-        return mod._extract_tls_sni(payload)
     return metadata._extract_tls_sni(payload)
 
 def _extract_http_host(payload: bytes) -> str | None:
-    mod = sys.modules.get("collector.analysis")
-    if mod and hasattr(mod, "_extract_http_host") and mod._extract_http_host.__code__ != _extract_http_host.__code__:
-        return mod._extract_http_host(payload)
     return metadata._extract_http_host(payload)
 
 
@@ -99,6 +93,7 @@ UDP_SIGNATURE_PORTS = {
     5684: ("CoAPS", "coaps"),
     443: ("QUIC", "quic"),
     8443: ("QUIC", "quic"),
+    51820: ("WireGuard", "wireguard"),
 }
 
 IP_PROTO_MAP = {
@@ -142,6 +137,7 @@ class PacketAnalysis:
     domain: Optional[str] = None
     sni: Optional[str] = None
     ja4: Optional[str] = None
+    tcp_flags: Optional[str] = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -154,6 +150,7 @@ class PacketAnalysis:
             "domain": self.domain,
             "sni": self.sni,
             "ja4": self.ja4,
+            "tcp_flags": self.tcp_flags,
         }
 
 
@@ -221,7 +218,41 @@ def _transport_protocol(packet) -> str:
     return "UNKNOWN"
 
 
-def _classify_application(packet, transport_protocol: str, src_port: int, dst_port: int, domain: str | None, sni: str | None, ja4: str | None = None) -> PacketAnalysis:
+def _extract_tcp_flags(packet) -> str | None:
+    _, _, _, _, _, _, _, TCP, _ = _load_scapy_primitives()
+    if not packet.haslayer(TCP):
+        return None
+    flags = getattr(packet[TCP], "flags", None)
+    if flags is None:
+        return None
+    if isinstance(flags, str):
+        return flags
+    try:
+        flag_val = int(flags)
+        flag_names = []
+        if flag_val & 0x01: flag_names.append("F")
+        if flag_val & 0x02: flag_names.append("S")
+        if flag_val & 0x04: flag_names.append("R")
+        if flag_val & 0x08: flag_names.append("P")
+        if flag_val & 0x10: flag_names.append("A")
+        if flag_val & 0x20: flag_names.append("U")
+        if flag_val & 0x40: flag_names.append("E")
+        if flag_val & 0x80: flag_names.append("C")
+        return "".join(flag_names) or str(flags)
+    except Exception:
+        return str(flags)
+
+
+def _classify_application(
+    packet,
+    transport_protocol: str,
+    src_port: int,
+    dst_port: int,
+    domain: str | None,
+    sni: str | None,
+    ja4: str | None = None,
+    tcp_flags: str | None = None,
+) -> PacketAnalysis:
     _, DNS, DNSQR, _, _, _, Raw, TCP, UDP = _load_scapy_primitives()
     payload = bytes(packet[Raw].load) if packet.haslayer(Raw) else b""
     signals: list[str] = []
@@ -384,6 +415,7 @@ def _classify_application(packet, transport_protocol: str, src_port: int, dst_po
         domain=domain,
         sni=sni,
         ja4=ja4,
+        tcp_flags=tcp_flags,
     )
 
 
@@ -396,13 +428,14 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
     transport_protocol = _transport_protocol(packet)
     src_port = _normalize_port(getattr(packet[TCP], "sport", 0) if packet.haslayer(TCP) else getattr(packet[UDP], "sport", 0) if packet.haslayer(UDP) else 0)
     dst_port = _normalize_port(getattr(packet[TCP], "dport", 0) if packet.haslayer(TCP) else getattr(packet[UDP], "dport", 0) if packet.haslayer(UDP) else 0)
+    tcp_flags = _extract_tcp_flags(packet)
 
     hints = extract_flow_hints(packet, domain_cache)
     domain = hints.get("domain")
     sni = hints.get("sni")
     ja4 = hints.get("ja4")
 
-    analysis = _classify_application(packet, transport_protocol, src_port, dst_port, domain, sni, ja4=ja4)
+    analysis = _classify_application(packet, transport_protocol, src_port, dst_port, domain, sni, ja4=ja4, tcp_flags=tcp_flags)
     if not analysis.domain and domain:
         analysis = PacketAnalysis(
             transport_protocol=analysis.transport_protocol,
@@ -414,6 +447,7 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
             domain=domain,
             sni=analysis.sni,
             ja4=analysis.ja4,
+            tcp_flags=analysis.tcp_flags,
         )
     if not analysis.sni and sni:
         analysis = PacketAnalysis(
@@ -426,6 +460,7 @@ def analyze_packet(packet, domain_cache: DomainHintCache | None = None) -> Packe
             domain=analysis.domain,
             sni=sni,
             ja4=analysis.ja4,
+            tcp_flags=analysis.tcp_flags,
         )
     return analysis
 

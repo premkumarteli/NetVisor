@@ -34,6 +34,13 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     refreshUser();
+
+    const handleAuthExpired = () => {
+      setUser(null);
+    };
+
+    window.addEventListener("netvisor:auth-expired", handleAuthExpired);
+    return () => window.removeEventListener("netvisor:auth-expired", handleAuthExpired);
   }, []);
 
   return (

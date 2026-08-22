@@ -1,0 +1,40 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="72"
+    android:viewportHeight="72">
+    
+    <!-- Outer Shield Glow -->
+    <path
+        android:pathData="M36,6 L60,16 L60,36 C60,52 50,62 36,68 C22,62 12,52 12,36 L12,16 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#00F3FF"
+        android:fillColor="#1A00F3FF" />
+
+    <!-- Inner Shield Accent -->
+    <path
+        android:pathData="M36,12 L54,20 L54,35 C54,47 46,55 36,60 C26,55 18,47 18,35 L18,20 Z"
+        android:strokeWidth="1.2"
+        android:strokeColor="#8B5CF6"
+        android:fillColor="#0A8B5CF6" />
+
+    <!-- Visor Slit -->
+    <path
+        android:pathData="M20,32 L52,32 L48,38 L24,38 Z"
+        android:fillColor="#00F3FF" />
+
+    <!-- Core Center Dot -->
+    <path
+        android:pathData="M36,28 L40,34 L36,40 L32,34 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Bottom Connection Line -->
+    <path
+        android:pathData="M36,46 L36,54"
+        android:strokeWidth="2"
+        android:strokeColor="#00F3FF" />
+    <path
+        android:pathData="M30,54 L42,54"
+        android:strokeWidth="2"
+        android:strokeColor="#00F3FF" />
+</vector>

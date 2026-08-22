@@ -65,7 +65,7 @@ class RiskEngine(BaseEngine):
         # 2. Parse observed_at timestamp
         last_seen = context.get("last_seen")
         if not last_seen:
-            observed_at = datetime.utcnow()
+            observed_at = datetime.now(timezone.utc)
         elif isinstance(last_seen, datetime):
             observed_at = last_seen
         else:
@@ -85,7 +85,7 @@ class RiskEngine(BaseEngine):
                 try:
                     observed_at = datetime.fromisoformat(last_seen)
                 except ValueError:
-                    observed_at = datetime.utcnow()
+                    observed_at = datetime.now(timezone.utc)
 
         # Ensure observed_at is timezone-naive UTC
         if observed_at.tzinfo is not None:

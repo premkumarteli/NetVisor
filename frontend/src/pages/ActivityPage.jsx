@@ -8,9 +8,11 @@ import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
 import TelemetryConfidence from '../components/V2/TelemetryConfidence';
+import ErrorState from '../components/V2/ErrorState';
 import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatByteCount, getRiskTone } from '../utils/presentation';
+import { translateDestination, formatRelativeTime } from '../utils/intelTranslator';
 import EvidenceDrawer from '../components/V2/EvidenceDrawer';
 
 const ActivityPage = () => {
@@ -18,6 +20,7 @@ const ActivityPage = () => {
   const [logs, setLogs] = useState([]);
   const [trafficData, setTrafficData] = useState({ labels: [], values: [] });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
 
   const updateTrafficChart = useCallback((bandwidthValue) => {
@@ -55,6 +58,7 @@ const ActivityPage = () => {
     if (!background) {
       setLoading(true);
     }
+    setError(null);
 
     try {
       const [statsRes, activityRes] = await Promise.all([
@@ -67,6 +71,9 @@ const ActivityPage = () => {
       updateTrafficChart(nextStats.bandwidth_bytes_sec ?? 0);
     } catch (err) {
       console.error('Failed to fetch traffic activity', err);
+      if (!background) {
+        setError('Failed to fetch real-time network activity. Please check gateway connection.');
+      }
     } finally {
       if (!background) {
         setLoading(false);
@@ -123,37 +130,43 @@ const ActivityPage = () => {
   const columns = [
     {
       key: 'application',
-      label: 'Application',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.application || 'Other'}</div>
-          <div className="nv-table__meta">{row.domain || row.host || row.dst_ip || '-'}</div>
-        </>
-      ),
+      label: 'Service / Application',
+      render: (row) => {
+        const dest = translateDestination(row.dst_ip, row.domain || row.host, row.port, row.protocol, row.application);
+        return (
+          <>
+            <div className="nv-table__primary">{dest.primary}</div>
+            <div className="nv-table__meta">{dest.meta}</div>
+          </>
+        );
+      },
     },
     {
       key: 'source',
-      label: 'Source',
+      label: 'Source Asset',
       render: (row) => <span className="mono">{row.src_ip || '-'}</span>,
     },
     {
       key: 'destination',
-      label: 'Destination',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{row.domain || row.host || row.dst_ip || '-'}</div>
-          <div className="nv-table__meta mono">{row.dst_ip || '-'}</div>
-        </>
-      ),
+      label: 'Target Endpoint',
+      render: (row) => {
+        const dest = translateDestination(row.dst_ip, row.domain || row.host, row.port, row.protocol, row.application);
+        return (
+          <>
+            <div className="nv-table__primary">{row.domain || row.host || dest.primary}</div>
+            <div className="nv-table__meta mono">{row.dst_ip || '-'}</div>
+          </>
+        );
+      },
     },
     {
       key: 'protocol',
       label: 'Protocol',
-      render: (row) => <span className="mono">{row.protocol || 'Unknown'}</span>,
+      render: (row) => <span className="mono">{row.protocol || 'TCP'}</span>,
     },
     {
       key: 'truth',
-      label: 'Truth',
+      label: 'Truth & Verification',
       render: (row) => (
         <TelemetryConfidence
           source={row.analysis_source}
@@ -171,15 +184,30 @@ const ActivityPage = () => {
     },
     {
       key: 'size',
-      label: 'Bytes',
+      label: 'Volume',
       render: (row) => <span className="mono">{formatByteCount(row.byte_count || row.size || 0)}</span>,
     },
     {
       key: 'time',
-      label: 'Time',
-      render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.timestamp || row.last_seen || row.time)}</span>,
+      label: 'Observed',
+      render: (row) => {
+        const ts = row.timestamp || row.last_seen || row.time;
+        return (
+          <span className="mono" title={formatUtcTimestampToLocal(ts)}>
+            {formatRelativeTime(ts)}
+          </span>
+        );
+      },
     },
   ];
+
+  if (error && !loading && logs.length === 0) {
+    return (
+      <div className="nv-page">
+        <ErrorState title="Traffic Activity Error" message={error} onRetry={() => fetchTraffic()} />
+      </div>
+    );
+  }
 
   return (
     <div className="nv-page">

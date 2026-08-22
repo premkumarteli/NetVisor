@@ -483,11 +483,24 @@ class CorrelationWorker:
                             r.xpending_range, stream_name, group_name, min="-", max="+", count=10
                         )
                         for p in pending_info:
-                            msg_id = p["message_id"]
-                            idle_ms = p["elapsed_milliseconds"]
-                            delivery_count = p["times_delivered"]
+                            if isinstance(p, dict):
+                                msg_id = p.get("message_id") or p.get("name") or p.get("id")
+                                idle_ms = p.get("time_since_delivered") or p.get("idle") or p.get("elapsed_milliseconds") or 0
+                                delivery_count = p.get("times_delivered") or p.get("delivered") or 0
+                            elif isinstance(p, (list, tuple)) and len(p) >= 4:
+                                msg_id = str(p[0]) if p[0] else None
+                                idle_ms = p[2] if isinstance(p[2], (int, float)) else 0
+                                delivery_count = p[3] if isinstance(p[3], (int, float)) else 0
+                            else:
+                                continue
                             
-                            if idle_ms > 15000:
+                            try:
+                                idle_ms = int(idle_ms)
+                                delivery_count = int(delivery_count)
+                            except (ValueError, TypeError):
+                                continue
+                            
+                            if msg_id and idle_ms > 15000:
                                 if delivery_count > 5:
                                     logger.warning(
                                         "[CORRELATION] Message %s exceeded delivery limit (%s times). Routing to DLQ.",
@@ -536,8 +549,27 @@ class CorrelationWorker:
                 for s_name, s_msgs in messages:
                     for msg_id, payload in s_msgs:
                         try:
+                            if not isinstance(payload, dict):
+                                await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                continue
+
                             flows_json = payload.get("flows")
-                            flows = json.loads(flows_json)
+                            if not flows_json:
+                                # Not a flow message or empty payload, ack and discard
+                                await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                continue
+
+                            try:
+                                flows = json.loads(flows_json)
+                            except (json.JSONDecodeError, TypeError) as parse_err:
+                                logger.warning("Corrupted flow payload in stream (%s): %s", msg_id, parse_err)
+                                await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                continue
+
+                            if not isinstance(flows, list):
+                                await asyncio.to_thread(r.xack, stream_name, group_name, msg_id)
+                                continue
+
                             org_id = payload.get("org_id") or "default-org-id"
                             
                             # Authoritative org_id context passing
@@ -567,7 +599,7 @@ class CorrelationWorker:
 
                         except Exception as inner_err:
                             logger.error("Error in correlation analyzer: %s", inner_err)
-                            # Exception occurs: do NOT ACK. It stays in PEL for retry or DLQ routing.
+                            # Exception occurs during analysis: do NOT ACK. It stays in PEL for retry or DLQ routing.
             except Exception as loop_err:
                 logger.error("Error in correlation worker loop: %s", loop_err)
                 use_redis = False

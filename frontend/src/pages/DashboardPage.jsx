@@ -7,83 +7,35 @@ import { useImmersion } from '../immersion/engine/useImmersion';
 import TrafficChart from '../components/Dashboard/TrafficChart';
 import ThreatDistributionChart from '../components/Dashboard/ThreatDistributionChart';
 import StatusBadge from '../components/V2/StatusBadge';
+import ErrorState from '../components/V2/ErrorState';
+import SectionCard from '../components/V2/SectionCard';
 import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
-import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatByteCount, getRiskTone, parseByteValue } from '../utils/presentation';
 import EvidenceDrawer from '../components/V2/EvidenceDrawer';
+import { formatCompact, resolveSeverityCount, SceneMetricCard, SeverityCard } from '../components/Dashboard/DashboardMetrics';
+import { ThreatFeedItem, SystemStatusRow } from '../components/Dashboard/DashboardThreatFeed';
+import { exportToCsv } from '../utils/exportUtils';
+import { translateDestination } from '../utils/intelTranslator';
+
+const formatEndpoint = (ip) => {
+  if (!ip) return '-';
+  const str = String(ip);
+  if (str.length > 24 && str.includes(':')) {
+    const parts = str.split(':').filter(Boolean);
+    if (parts.length > 2) {
+      return `${parts[0]}:${parts[1]}...${parts[parts.length - 1]}`;
+    }
+  }
+  return str;
+};
 
 const severityOrder = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
-
-const formatCompact = (value) => {
-  const numeric = Number(value) || 0;
-  return new Intl.NumberFormat('en', {
-    notation: numeric >= 10000 ? 'compact' : 'standard',
-    maximumFractionDigits: numeric >= 10000 ? 1 : 0,
-  }).format(numeric).toUpperCase();
-};
-
-const resolveSeverityCount = (distribution = {}, severity) => {
-  const normalized = String(severity).toUpperCase();
-  return Number(distribution[normalized] ?? distribution[normalized.toLowerCase()] ?? 0);
-};
-
-const SceneMetricCard = ({ icon, label, value, meta, tone = 'accent', signal }) => {
-  const isThreatAlert = label?.toLowerCase().includes('threat') && (
-    typeof value === 'number' ? value > 0 : parseInt(value, 10) > 0
-  );
-
-  return (
-    <article className={`cinematic-metric cinematic-metric--${tone} ${isThreatAlert ? 'is-threat-pulsing' : ''}`.trim()}>
-      <div className="cinematic-metric__art" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
-      <div className="cinematic-metric__header">
-        <span className="cinematic-metric__icon"><i className={icon}></i></span>
-        <span>{label}</span>
-      </div>
-      <strong>{value}</strong>
-      <p>{meta}</p>
-      {signal ? <small>{signal}</small> : null}
-    </article>
-  );
-};
-
-const ThreatFeedItem = ({ alert, onClick }) => {
-  const severity = String(alert.severity || 'HIGH').toUpperCase();
-  return (
-    <button type="button" className={`cinematic-threat cinematic-threat--${severity.toLowerCase()}`} onClick={onClick}>
-      <span className="cinematic-threat__icon"><i className="ri-alarm-warning-line"></i></span>
-      <span className="cinematic-threat__copy">
-        <strong>{alert.message || 'High-risk detection'}</strong>
-        <span>{alert.device_ip || alert.src_ip || 'Unknown asset'}</span>
-        <em>{severity}</em>
-      </span>
-      <span className="cinematic-threat__time">{formatUtcTimestampToLocal(alert.timestamp)}</span>
-    </button>
-  );
-};
-
-const SystemStatusRow = ({ icon, label, value, tone = 'success' }) => (
-  <div className="cinematic-status-row">
-    <span><i className={icon}></i>{label}</span>
-    <strong className={`cinematic-status-row__value cinematic-status-row__value--${tone}`}>{value}</strong>
-  </div>
-);
-
-const SeverityCard = ({ severity, count }) => (
-  <div className={`cinematic-severity cinematic-severity--${severity.toLowerCase()}`}>
-    <span>{severity}</span>
-    <strong>{count}</strong>
-    <small>{count === 1 ? 'open signal' : 'open signals'}</small>
-  </div>
-);
 
 const DashboardPage = () => {
   const navigate = useNavigate();
   const { activeTheme, themeId } = useImmersion();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({});
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -102,10 +54,13 @@ const DashboardPage = () => {
   });
   const [selectedEvent, setSelectedEvent] = useState(null);
 
+  const scene = activeTheme?.terminology || {};
+
   const fetchDashboard = useCallback(async ({ background = false } = {}) => {
     if (!background) {
       setLoading(true);
     }
+    setError(null);
 
     try {
       const [statsRes, devicesRes, alertsRes, activityRes, webRes, analyticsRes] = await Promise.all([
@@ -131,8 +86,11 @@ const DashboardPage = () => {
         uncategorized_domains: [],
         summary: {},
       });
-    } catch (error) {
-      console.error('Failed to load dashboard', error);
+    } catch (err) {
+      console.error('Failed to load dashboard data', err);
+      if (!background) {
+        setError('Failed to load dashboard telemetry. Please ensure the backend gateway service is active.');
+      }
     } finally {
       if (!background) {
         setLoading(false);
@@ -150,10 +108,13 @@ const DashboardPage = () => {
       }
       const res = await systemService.getTrafficHistory(windowSize, trafficResolution);
       setTrafficHistory(res.data || []);
-    } catch (error) {
-      console.error('Failed to fetch traffic history', error);
+    } catch (err) {
+      console.error('Failed to load traffic history', err);
     }
   }, [trafficResolution]);
+
+  useVisibilityPolling(fetchDashboard, 15000);
+  useVisibilityPolling(fetchTrafficHistory, trafficResolution === 'second' ? 2000 : 15000);
 
   useEffect(() => {
     fetchDashboard();
@@ -163,28 +124,17 @@ const DashboardPage = () => {
     fetchTrafficHistory();
   }, [fetchTrafficHistory]);
 
-
-  const trafficPollInterval = useMemo(() => {
-    return trafficResolution === 'second' ? 2000 : 15000;
-  }, [trafficResolution]);
-
-  useVisibilityPolling(
-    fetchTrafficHistory,
-    trafficPollInterval
-  );
-
-  const pollDashboardOverview = useCallback(() => {
-    fetchDashboard({ background: true });
-  }, [fetchDashboard]);
-
-  useVisibilityPolling(pollDashboardOverview, 15000);
-
   const handlePacketEvent = useCallback((event) => {
-    setActivity((current) => [event, ...current].slice(0, 18));
+    setActivity((prev) => [event, ...prev.slice(0, 17)]);
+    setStats((prev) => ({
+      ...prev,
+      flows_24h: (Number(prev.flows_24h) || 0) + 1,
+      bandwidth_bytes: (Number(prev.bandwidth_bytes) || 0) + Number(event.byte_count || event.size || 0),
+    }));
 
-    if (trafficResolution === 'second' && event.size) {
+    if (trafficResolution === 'second' && (event.size || event.byte_count)) {
       setTrafficHistory((currentHistory) => {
-        let cleanTs = event.time_str;
+        let cleanTs = event.time_str || event.timestamp;
         if (cleanTs) {
           if (!cleanTs.includes('T') && !cleanTs.includes('Z')) {
             cleanTs = cleanTs.replace(' ', 'T') + 'Z';
@@ -193,344 +143,235 @@ const DashboardPage = () => {
           d.setMilliseconds(0);
           const alignedIso = d.toISOString();
 
-          const exists = currentHistory.some((h) => h.timestamp === alignedIso);
+          const exists = currentHistory.some((h) => (h.timestamp || h.time) === alignedIso);
           if (exists) {
             return currentHistory.map((h) => {
-              if (h.timestamp === alignedIso) {
+              if ((h.timestamp || h.time) === alignedIso) {
                 return {
                   ...h,
-                  flow_count: h.flow_count + 1,
-                  byte_count: h.byte_count + (Number(event.size) || 0),
+                  total_bytes: (Number(h.total_bytes || h.bytes) || 0) + Number(event.byte_count || event.size || 0),
                 };
               }
               return h;
             });
-          } else {
-            const lastItem = currentHistory[currentHistory.length - 1];
-            if (!lastItem || new Date(alignedIso) > new Date(lastItem.timestamp)) {
-              const newItem = {
-                timestamp: alignedIso,
-                hour: alignedIso.replace('T', ' ').replace('Z', ''),
-                flow_count: 1,
-                byte_count: Number(event.size) || 0,
-              };
-              return [...currentHistory.slice(1), newItem];
-            }
           }
+          return [...currentHistory.slice(-59), { timestamp: alignedIso, total_bytes: Number(event.byte_count || event.size || 0) }];
         }
         return currentHistory;
       });
     }
   }, [trafficResolution]);
 
-  const handleDashboardUpdate = useCallback((event) => {
-    if (event.stats) {
-      setStats(event.stats);
-    }
-    if (event.recent_alerts) {
-      setAlerts(event.recent_alerts);
-    }
+  const handleAlertEvent = useCallback((alert) => {
+    setAlerts((prev) => [alert, ...prev.slice(0, 11)]);
   }, []);
 
   const { status: wsStatus } = useWebSocket('packet_event', handlePacketEvent);
-  useWebSocket('dashboard_update', handleDashboardUpdate);
-
-  const managedDevices = useMemo(
-    () => devices.filter((device) => device.management_mode === 'managed'),
-    [devices],
-  );
-
-  const agentsSummary = useMemo(() => {
-    if (stats.agents_summary && typeof stats.agents_summary === 'object') {
-      return {
-        online: Number(stats.agents_summary.online) || 0,
-        offline: Number(stats.agents_summary.offline) || 0,
-        total: Number(stats.agents_summary.total) || 0,
-        degraded: Number(stats.agents_summary.degraded) || 0,
-        queueDepth: Number(stats.agents_summary.queue_depth) || 0,
-      };
-    }
-    return {
-      online: Number(stats.active_devices) || 0,
-      offline: Math.max((Number(stats.total_devices) || 0) - (Number(stats.active_devices) || 0), 0),
-      total: Number(stats.total_devices) || 0,
-      degraded: 0,
-      queueDepth: 0,
-    };
-  }, [stats]);
-
-  const gatewaysSummary = useMemo(() => {
-    if (stats.gateways_summary && typeof stats.gateways_summary === 'object') {
-      return {
-        online: Number(stats.gateways_summary.online) || 0,
-        offline: Number(stats.gateways_summary.offline) || 0,
-        total: Number(stats.gateways_summary.total) || 0,
-        degraded: Number(stats.gateways_summary.degraded) || 0,
-        queueDepth: Number(stats.gateways_summary.queue_depth) || 0,
-      };
-    }
-    return { online: 0, offline: 0, total: 0, degraded: 0, queueDepth: 0 };
-  }, [stats]);
-
-  const fleetBufferQueue = useMemo(() => {
-    if (typeof stats.fleet_buffer_queue === 'number') {
-      return stats.fleet_buffer_queue;
-    }
-    if (typeof stats.queue_depth === 'number') {
-      return stats.queue_depth;
-    }
-    return agentsSummary.queueDepth + gatewaysSummary.queueDepth;
-  }, [stats, agentsSummary, gatewaysSummary]);
-
-  const inspectedCoverage = useMemo(() => {
-    if (managedDevices.length === 0) {
-      return 0;
-    }
-    const inspectedIps = new Set(webActivity.map((entry) => entry.device_ip).filter(Boolean));
-    const covered = managedDevices.filter((device) => inspectedIps.has(device.ip)).length;
-    return Math.round((covered / managedDevices.length) * 100);
-  }, [managedDevices, webActivity]);
+  useWebSocket('alert_event', handleAlertEvent);
 
   const trafficChartData = useMemo(() => {
-    const normalized = trafficHistory
-      .map((entry) => ({
-        label: entry.timestamp || entry.hour || '',
-        value: parseByteValue(entry.byte_count || 0),
-      }))
-      .filter((entry) => entry.label);
+    const defaultLabels = [];
+    const defaultValues = [];
+    const now = new Date();
+    const count = trafficResolution === 'second' ? 12 : trafficResolution === 'minute' ? 12 : 6;
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(now.getTime());
+      if (trafficResolution === 'second') {
+        d.setSeconds(d.getSeconds() - i * 5);
+      } else if (trafficResolution === 'minute') {
+        d.setMinutes(d.getMinutes() - i * 5);
+      } else {
+        d.setHours(d.getHours() - i * 4);
+      }
+      defaultLabels.push(d.toISOString());
+      defaultValues.push(0);
+    }
 
+    if (!trafficHistory.length) {
+      return { labels: defaultLabels, values: defaultValues };
+    }
+
+    const labels = trafficHistory.map((item) => item.timestamp || item.bucket || item.time);
+    const values = trafficHistory.map((item) => Number(item.total_bytes || item.bytes || item.bandwidth || 0));
     return {
-      labels: normalized.map((entry) => entry.label),
-      values: normalized.map((entry) => entry.value),
+      labels: labels.length ? labels : defaultLabels,
+      values: values.length ? values : defaultValues,
     };
-  }, [trafficHistory]);
+  }, [trafficHistory, trafficResolution]);
 
-  const riskDistribution = stats.risk_distribution || {};
-  const highRiskCount = typeof stats.high_risk === 'number' ? stats.high_risk : (alerts.length || 0);
-  const dominantApp = analytics.top_applications?.[0]?.application || 'Classifying';
-  const dominantAppBytes = analytics.top_applications?.[0]?.bandwidth || formatByteCount(analytics.top_applications?.[0]?.bandwidth_bytes || 0);
-  const scene = activeTheme?.scene || {};
-  const liveThreats = alerts.slice(0, 5);
-  const recentSessions = activity.slice(0, 6);
-  const topApps = (analytics.top_applications || []).slice(0, 4);
+  const topApps = useMemo(() => {
+    const list = Array.isArray(analytics?.top_applications) ? analytics.top_applications : [];
+    return list.slice(0, 5);
+  }, [analytics]);
 
-  const metricCards = [
-    {
-      icon: 'ri-macbook-line',
-      label: 'Active Devices',
-      value: formatCompact(stats.active_devices || 0),
-      meta: `${stats.total_devices || 0} visible assets`,
-      signal: `${managedDevices.length} managed endpoints`,
-      tone: 'violet',
-    },
-    {
-      icon: 'ri-shield-flash-line',
-      label: 'Active Threats',
-      value: formatCompact(highRiskCount),
-      meta: 'High and critical detections',
-      signal: alerts.length ? 'Investigation queue live' : 'Queue quiet',
-      tone: 'danger',
-    },
-    {
-      icon: 'ri-exchange-box-line',
-      label: 'Flows (24h)',
-      value: formatCompact(stats.flows_24h || 0),
-      meta: `${activity.length} recent sessions`,
-      signal: `${dominantApp} leading app`,
-      tone: 'amber',
-    },
-    {
-      icon: 'ri-navigation-line',
-      label: 'Inspection Coverage',
-      value: `${inspectedCoverage}%`,
-      meta: `${webActivity.length} inspected browser events`,
-      signal: 'Managed visibility window',
-      tone: 'cyan',
-    },
-  ];
+  const onlineDevices = useMemo(() => {
+    return devices.filter((device) => {
+      const status = String(device.status || device.state || '').toLowerCase();
+      return status === 'online' || status === 'active' || Boolean(device.is_active);
+    });
+  }, [devices]);
+
+  const riskDistribution = stats.risk_distribution || stats.severity_distribution || {};
+  const highRiskTotal = Number(stats.active_threats ?? stats.high_risk_threats ?? 0);
+  const unclassifiedCount = Number(analytics?.uncategorized_domains?.length || 0);
+
+  const totalInspected = Number(stats.flows_24h || activity.length || 0);
+  const unclassifiedTraffic = Number(stats.uncategorized_flows || unclassifiedCount);
+  const inspectedCoverage = totalInspected > 0
+    ? Math.max(0, Math.min(100, Math.round(((totalInspected - unclassifiedTraffic) / totalInspected) * 100)))
+    : 100;
+
+  const recentSessions = useMemo(() => {
+    if (activity.length) return activity.slice(0, 6);
+    return [];
+  }, [activity]);
+
+  const liveThreats = useMemo(() => {
+    return alerts.slice(0, 5);
+  }, [alerts]);
+
+  const dominantApp = topApps[0]?.application || stats.dominant_application || 'HTTPS Web';
+  const dominantAppBytes = formatByteCount(
+    topApps[0]?.bandwidth_bytes || parseByteValue(topApps[0]?.bandwidth) || 0
+  );
+
+  const activeAgentsCount = Number(stats.agent_count || stats.active_agents || devices.filter((d) => d.source_type === 'agent').length || 0);
+  const fleetBufferQueue = Number(stats.fleet_buffer_queue || stats.queue_depth || 0);
+  const agentFleetStatus = activeAgentsCount > 0 ? 'Optimal' : devices.length > 0 ? 'Standby' : 'No Agents';
+
+  const handleExportDashboard = () => {
+    const reportData = recentSessions.map((s) => ({
+      timestamp: s.timestamp || s.time,
+      application: s.application || 'Other',
+      src_ip: s.src_ip,
+      dst_ip: s.dst_ip,
+      severity: s.severity || 'LOW',
+      bytes: s.byte_count || s.size || 0,
+    }));
+    exportToCsv('netvisor-dashboard-overview', [
+      { key: 'timestamp', label: 'Timestamp' },
+      { key: 'application', label: 'Application' },
+      { key: 'src_ip', label: 'Source IP' },
+      { key: 'dst_ip', label: 'Destination IP' },
+      { key: 'severity', label: 'Severity' },
+      { key: 'bytes', label: 'Bytes' },
+    ], reportData);
+  };
+
+  if (error && !loading && devices.length === 0 && activity.length === 0) {
+    return (
+      <div className="nv-page nv-page--balanced">
+        <ErrorState title="Dashboard Connection Error" message={error} onRetry={() => fetchDashboard()} />
+      </div>
+    );
+  }
 
   return (
-    <div className="nv-page cinematic-dashboard" data-cinematic-theme={themeId}>
+    <div className={`nv-page nv-page--dashboard theme-surface--${themeId}`.trim()}>
+      {/* Cinematic Hero Section matching screenshot */}
       <section className="cinematic-hero">
-        <div className="cinematic-hero__scene" aria-hidden="true">
-          <span className="cinematic-hero__orb cinematic-hero__orb--one"></span>
-          <span className="cinematic-hero__orb cinematic-hero__orb--two"></span>
-          <span className="cinematic-hero__ring cinematic-hero__ring--one"></span>
-          <span className="cinematic-hero__ring cinematic-hero__ring--two"></span>
-          <span className="cinematic-hero__silhouette cinematic-hero__silhouette--one"></span>
-          <span className="cinematic-hero__silhouette cinematic-hero__silhouette--two"></span>
-          <span className="cinematic-hero__skyline"></span>
-          <span className="cinematic-hero__grid"></span>
-        </div>
         <div className="cinematic-hero__copy">
-          <div className="cinematic-kicker">{scene.eyebrow || 'Operational Workspace'}</div>
-          <h1>{scene.headline || 'Operational Overview'}</h1>
-          <p>{scene.description || 'Track posture, prioritize detections, and move into investigation workflows.'}</p>
+          <span className="cinematic-kicker">{scene.eyebrow || 'OPERATIONAL WORKSPACE'}</span>
+          <h1>{scene.headline || 'Command every signal from one live console'}</h1>
+          <p>{scene.description || 'A readable security workspace with cinematic depth, live telemetry, and investigation-ready posture.'}</p>
           <div className="cinematic-hero__actions">
             <StatusBadge tone={wsStatus === 'connected' ? 'success' : 'warning'} icon="ri-broadcast-line">
-              {wsStatus === 'connected' ? 'Live Feed' : 'Reconnecting'}
+              {wsStatus === 'connected' ? 'LIVE FEED' : 'RECONNECTING'}
             </StatusBadge>
-            <button type="button" className="nv-button nv-button--secondary" onClick={() => fetchDashboard()}>
+            <button
+              type="button"
+              className="nv-button nv-button--secondary"
+              onClick={() => fetchDashboard()}
+              style={{ padding: '0.4rem 0.85rem', fontSize: '0.78rem' }}
+            >
               <i className="ri-refresh-line"></i>
               Refresh
             </button>
+            <button
+              type="button"
+              className="nv-button nv-button--secondary"
+              onClick={handleExportDashboard}
+              style={{ padding: '0.4rem 0.85rem', fontSize: '0.78rem' }}
+              title="Export CSV"
+            >
+              <i className="ri-file-download-line"></i>
+              Export
+            </button>
           </div>
         </div>
+
         <div className="cinematic-hero__mode">
-          <span>{activeTheme?.label || 'NetVisor Core'}</span>
-          <strong>{scene.signature || 'Command Core'}</strong>
-          <small>{scene.mood || 'Live security workspace'}</small>
+          <span>{activeTheme?.label || 'NETVISOR CORE'}</span>
+          <strong>{activeTheme?.name || 'NetVisor Core'}</strong>
+          <small>{scene.mood || 'CALM COMMAND CORE'}</small>
           <div className="cinematic-hero__mode-meter">
             <span></span>
             <span></span>
             <span></span>
           </div>
         </div>
-      </section>
 
-      {loading ? (
-        <StatGridSkeleton count={4} />
-      ) : (
-        <div className="cinematic-metrics-grid">
-          {metricCards.map((card) => (
-            <SceneMetricCard key={card.label} {...card} />
-          ))}
-        </div>
-      )}
-
-      {/* Fleet Observability Section */}
-      <section className="cinematic-panel cinematic-panel--fleet" style={{ marginBottom: '1.5rem' }}>
-        <div className="cinematic-panel__header">
-          <div>
-            <div className="cinematic-kicker">Fleet Observability</div>
-            <h2>Agent &amp; Gateway Status</h2>
-          </div>
-          <button
-            type="button"
-            className="nv-button nv-button--ghost"
-            onClick={() => navigate('/agents')}
-            title="Navigate to Agent Monitoring Page"
-          >
-            View Fleet Details <i className="ri-arrow-right-line"></i>
-          </button>
-        </div>
-
-        <div
-          className="cinematic-fleet-grid"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: '1rem',
-            marginTop: '1rem',
-          }}
-        >
-          {/* Agents Card */}
-          <div
-            className="cinematic-fleet-card"
-            onClick={() => navigate('/agents')}
-            style={{
-              cursor: 'pointer',
-              padding: '1.25rem',
-              borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              transition: 'all 0.2s ease',
-            }}
-            title="Click to open Agent Monitoring"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
-                <i className="ri-radar-line" style={{ marginRight: '0.4rem', color: '#54c8e8' }}></i> Agents
-              </span>
-              <StatusBadge
-                tone={agentsSummary.degraded > 0 ? 'danger' : (agentsSummary.offline > 0 ? 'warning' : 'success')}
-                icon={agentsSummary.degraded > 0 ? 'ri-error-warning-line' : (agentsSummary.offline > 0 ? 'ri-alert-line' : 'ri-checkbox-circle-line')}
-              >
-                {agentsSummary.degraded > 0
-                  ? `${agentsSummary.degraded} Degraded`
-                  : (agentsSummary.offline > 0 ? `${agentsSummary.offline} Offline` : 'Optimal')}
-              </StatusBadge>
-            </div>
-            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
-              {agentsSummary.online} <span style={{ fontSize: '1rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>/ {agentsSummary.total} Online</span>
-            </strong>
-            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
-              Click to view detailed agent fleet telemetry
-            </small>
-          </div>
-
-          {/* Gateways Card */}
-          <div
-            className="cinematic-fleet-card"
-            onClick={() => navigate('/agents')}
-            style={{
-              cursor: 'pointer',
-              padding: '1.25rem',
-              borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              transition: 'all 0.2s ease',
-            }}
-            title="Click to open Agent Monitoring"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
-                <i className="ri-router-line" style={{ marginRight: '0.4rem', color: '#60a5fa' }}></i> Gateways
-              </span>
-              <StatusBadge
-                tone={gatewaysSummary.degraded > 0 ? 'danger' : (gatewaysSummary.offline > 0 ? 'warning' : 'success')}
-                icon={gatewaysSummary.degraded > 0 ? 'ri-error-warning-line' : (gatewaysSummary.offline > 0 ? 'ri-alert-line' : 'ri-checkbox-circle-line')}
-              >
-                {gatewaysSummary.degraded > 0
-                  ? `${gatewaysSummary.degraded} Degraded`
-                  : (gatewaysSummary.offline > 0 ? `${gatewaysSummary.offline} Offline` : 'Optimal')}
-              </StatusBadge>
-            </div>
-            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
-              {gatewaysSummary.online} <span style={{ fontSize: '1rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>/ {gatewaysSummary.total} Online</span>
-            </strong>
-            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
-              Click to view edge gateway nodes
-            </small>
-          </div>
-
-          {/* Fleet Buffer / Queue Card */}
-          <div
-            className="cinematic-fleet-card"
-            onClick={() => navigate('/agents')}
-            style={{
-              cursor: 'pointer',
-              padding: '1.25rem',
-              borderRadius: '12px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              transition: 'all 0.2s ease',
-            }}
-            title="Click to open Agent Monitoring"
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 600 }}>
-                <i className="ri-inbox-archive-line" style={{ marginRight: '0.4rem', color: '#f59e0b' }}></i> Fleet Buffer / Queue
-              </span>
-              <StatusBadge
-                tone={fleetBufferQueue > 0 ? 'warning' : 'success'}
-                icon={fleetBufferQueue > 0 ? 'ri-time-line' : 'ri-check-line'}
-              >
-                {fleetBufferQueue > 0 ? 'Events Buffered' : 'Queue Clear'}
-              </StatusBadge>
-            </div>
-            <strong style={{ fontSize: '1.75rem', fontWeight: 700, display: 'block', margin: '0.25rem 0' }}>
-              {formatCompact(fleetBufferQueue)} <span style={{ fontSize: '0.85rem', color: 'var(--nv-text-muted)', fontWeight: 400 }}>events</span>
-            </strong>
-            <small style={{ color: 'var(--nv-text-muted)', fontSize: '0.75rem' }}>
-              Aggregated upload queue depth across fleet
-            </small>
-          </div>
+        <div className="cinematic-hero__scene" aria-hidden="true">
+          <div className="cinematic-hero__orb cinematic-hero__orb--one"></div>
+          <div className="cinematic-hero__orb cinematic-hero__orb--two"></div>
+          <div className="cinematic-hero__ring cinematic-hero__ring--one"></div>
+          <div className="cinematic-hero__ring cinematic-hero__ring--two"></div>
+          <div className="cinematic-hero__silhouette cinematic-hero__silhouette--one"></div>
+          <div className="cinematic-hero__silhouette cinematic-hero__silhouette--two"></div>
+          <div className="cinematic-hero__skyline"></div>
+          <div className="cinematic-hero__grid"></div>
         </div>
       </section>
 
+      {/* 4-Card Hero Metric Grid matching screenshot */}
+      <div className="cinematic-metrics-grid">
+        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/devices')}>
+          <SceneMetricCard
+            icon="ri-macbook-line"
+            label="Active Devices"
+            value={formatCompact(stats.total_devices || devices.length || 0)}
+            meta={`${onlineDevices.length} visible assets`}
+            signal={`${stats.active_devices || 0} managed endpoints`}
+            tone="cyan"
+          />
+        </div>
+        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/threats')}>
+          <SceneMetricCard
+            icon="ri-shield-flash-line"
+            label="Active Threats"
+            value={formatCompact(highRiskTotal)}
+            meta="High and critical detections"
+            signal="Investigation queue live"
+            tone="danger"
+          />
+        </div>
+        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/activity')}>
+          <SceneMetricCard
+            icon="ri-pulse-line"
+            label="Flows (24h)"
+            value={formatCompact(stats.flows_24h || 0)}
+            meta={`${recentSessions.length} recent sessions`}
+            signal="Classifying leading app"
+            tone="amber"
+          />
+        </div>
+        <div style={{ cursor: 'pointer' }} onClick={() => navigate('/dpi')}>
+          <SceneMetricCard
+            icon="ri-fingerprint-line"
+            label="Inspection Coverage"
+            value={`${inspectedCoverage}%`}
+            meta={`${totalInspected - unclassifiedTraffic} inspected browser events`}
+            signal="Managed visibility window"
+            tone="cyan"
+          />
+        </div>
+      </div>
+
+      {/* Main Command Grid */}
       <div className="cinematic-command-grid">
+        {/* Left Column: Upgraded Graph Version & Live Streams */}
         <main className="cinematic-command-grid__main">
+          {/* Upgraded Traffic Pressure Section */}
           <section className="cinematic-panel cinematic-panel--traffic">
             <div className="cinematic-panel__watermark" aria-hidden="true">
               <i className="ri-pulse-line"></i>
@@ -545,39 +386,27 @@ const DashboardPage = () => {
                    'Daily network throughput (last 24h).'}
                 </p>
               </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <div className="nv-tabs" style={{ display: 'inline-flex', padding: 2, background: 'rgba(0,0,0,0.2)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.05)' }}>
-                  {[
-                    { label: 'Real-time', value: 'second' },
-                    { label: 'Hourly', value: 'minute' },
-                    { label: 'Daily', value: 'hour' }
-                  ].map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      className={`nv-tab ${trafficResolution === opt.value ? 'is-active' : ''}`}
-                      style={{
-                        padding: '4px 10px',
-                        fontSize: 11,
-                        background: trafficResolution === opt.value ? 'var(--nv-accent, #f97316)' : 'transparent',
-                        color: trafficResolution === opt.value ? '#000' : 'var(--nv-text-muted, #94a3b8)',
-                        border: 'none',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        fontWeight: trafficResolution === opt.value ? '600' : 'normal',
-                        transition: 'all 0.2s ease',
-                      }}
-                      onClick={() => setTrafficResolution(opt.value)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
+              <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                {[
+                  { label: 'Real-time', value: 'second' },
+                  { label: 'Hourly', value: 'minute' },
+                  { label: 'Daily', value: 'hour' }
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`nv-button nv-button--xs ${trafficResolution === opt.value ? 'nv-button--primary' : 'nv-button--secondary'}`}
+                    onClick={() => setTrafficResolution(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
             <TrafficChart data={trafficChartData} resolution={trafficResolution} height={250} />
           </section>
 
+          {/* Lower Grid: Threat Composition & Response Breakdown */}
           <div className="cinematic-lower-grid">
             <section className="cinematic-panel">
               <div className="cinematic-panel__header">
@@ -585,6 +414,9 @@ const DashboardPage = () => {
                   <div className="cinematic-kicker">Threat Composition</div>
                   <h2>Threat Distribution</h2>
                 </div>
+                <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/threats')}>
+                  Triage &rarr;
+                </button>
               </div>
               {loading ? (
                 <TableSkeleton rows={4} />
@@ -599,15 +431,21 @@ const DashboardPage = () => {
                   <div className="cinematic-kicker">Severity Lanes</div>
                   <h2>Response Breakdown</h2>
                 </div>
+                <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/threats')}>
+                  All &rarr;
+                </button>
               </div>
               <div className="cinematic-severity-grid">
                 {severityOrder.map((severity) => (
-                  <SeverityCard key={severity} severity={severity} count={resolveSeverityCount(riskDistribution, severity)} />
+                  <div key={severity} style={{ cursor: 'pointer' }} onClick={() => navigate('/threats')}>
+                    <SeverityCard severity={severity} count={resolveSeverityCount(riskDistribution, severity)} />
+                  </div>
                 ))}
               </div>
             </section>
           </div>
 
+          {/* Live Network Sessions */}
           <section className="cinematic-panel cinematic-panel--sessions">
             <div className="cinematic-panel__watermark" aria-hidden="true">
               <i className="ri-route-line"></i>
@@ -617,28 +455,38 @@ const DashboardPage = () => {
                 <div className="cinematic-kicker">Session Stream</div>
                 <h2>Live Network Sessions</h2>
               </div>
-              <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/activity')}>Open Traffic Feed</button>
+              <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/activity')}>
+                Open Traffic Feed &rarr;
+              </button>
             </div>
             {loading ? (
               <TableSkeleton rows={5} />
             ) : (
               <div className="cinematic-session-list">
-                {recentSessions.length ? recentSessions.map((row, index) => (
-                  <button
-                    type="button"
-                    className="cinematic-session"
-                    key={row.id || `${row.timestamp || row.time}-${index}`}
-                    onClick={() => setSelectedEvent(row)}
-                  >
-                    <span>
-                      <strong>{row.application || 'Other'}</strong>
-                      <small>{row.domain || row.host || row.dst_ip || '-'}</small>
-                    </span>
-                    <span className="mono">{row.src_ip || '-'} -&gt; {row.dst_ip || '-'}</span>
-                    <StatusBadge tone={getRiskTone(row.severity)}>{row.severity || 'LOW'}</StatusBadge>
-                    <span className="mono">{formatByteCount(row.byte_count || row.size || 0)}</span>
-                  </button>
-                )) : (
+                {recentSessions.length ? recentSessions.map((row, index) => {
+                  const targetHost = row.domain || row.host;
+                  const translated = translateDestination(row.dst_ip, targetHost, row.dst_port, row.protocol, row.application);
+                  const displayEntity = targetHost && targetHost !== '-' ? targetHost : translated?.entity || row.application || 'HTTPS Endpoint';
+
+                  return (
+                    <button
+                      type="button"
+                      className="cinematic-session"
+                      key={row.id || `${row.timestamp || row.time}-${index}`}
+                      onClick={() => setSelectedEvent(row)}
+                    >
+                      <span>
+                        <strong>{row.application || 'Other'}</strong>
+                        <small title={targetHost || row.dst_ip}>{displayEntity}</small>
+                      </span>
+                      <span className="mono" title={`${row.src_ip || '-'} -> ${row.dst_ip || '-'}`}>
+                        {formatEndpoint(row.src_ip)} -&gt; {formatEndpoint(row.dst_ip)}
+                      </span>
+                      <StatusBadge tone={getRiskTone(row.severity)}>{row.severity || 'LOW'}</StatusBadge>
+                      <span className="mono">{formatByteCount(row.byte_count || row.size || 0)}</span>
+                    </button>
+                  );
+                }) : (
                   <div className="cinematic-empty">No session activity yet. Start the agent or gateway to populate the live stream.</div>
                 )}
               </div>
@@ -646,7 +494,9 @@ const DashboardPage = () => {
           </section>
         </main>
 
+        {/* Right Rail: Priority Queue, System Health, and Top Products */}
         <aside className="cinematic-command-grid__rail">
+          {/* Priority Queue Threat Feed */}
           <section className="cinematic-panel cinematic-panel--rail">
             <div className="cinematic-rail-summary" aria-label="Threat summary">
               <span>{formatCompact(liveThreats.length)}</span>
@@ -658,7 +508,7 @@ const DashboardPage = () => {
                 <h2>Priority Queue</h2>
               </div>
               <StatusBadge tone={liveThreats.length ? 'danger' : 'success'} icon="ri-pulse-line">
-                {liveThreats.length ? 'Live' : 'Quiet'}
+                {liveThreats.length ? `${liveThreats.length} Live` : 'Quiet'}
               </StatusBadge>
             </div>
             <div className="cinematic-threat-list">
@@ -674,6 +524,7 @@ const DashboardPage = () => {
             </div>
           </section>
 
+          {/* Workspace Health */}
           <section className="cinematic-panel cinematic-panel--rail">
             <div className="cinematic-panel__header">
               <div>
@@ -689,12 +540,16 @@ const DashboardPage = () => {
             </div>
           </section>
 
+          {/* Top Products */}
           <section className="cinematic-panel cinematic-panel--rail">
             <div className="cinematic-panel__header">
               <div>
                 <div className="cinematic-kicker">Application Signal</div>
                 <h2>Top Products</h2>
               </div>
+              <button type="button" className="nv-button nv-button--ghost" onClick={() => navigate('/apps')}>
+                Apps &rarr;
+              </button>
             </div>
             <div className="cinematic-app-list">
               {topApps.length ? topApps.map((app, index) => (
@@ -711,6 +566,7 @@ const DashboardPage = () => {
         </aside>
       </div>
 
+      {/* Theme Status Strip */}
       <section className="cinematic-strip">
         <div>
           <span>{activeTheme?.label || 'Workspace'}</span>

@@ -9,10 +9,14 @@ import Tabs from '../components/V2/Tabs';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
 import WebEvidenceDrawer from '../components/DPI/WebEvidenceDrawer';
+import ErrorState from '../components/V2/ErrorState';
+import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, getRiskTone } from '../utils/presentation';
 import { getWebEvidencePrimaryLabel, getWebEvidenceScopeLabel, normalizeWebRiskLevel } from '../utils/webEvidence';
 import { beautifyDpiUrl, isDpiNoise } from '../utils/webNoise';
+import { formatRelativeTime } from '../utils/intelTranslator';
+import { exportToCsv, exportToJson } from '../utils/exportUtils';
 
 const DpiActivityPage = () => {
   const { deviceIp } = useParams();
@@ -21,12 +25,17 @@ const DpiActivityPage = () => {
   const [events, setEvents] = useState([]);
   const [evidenceGroups, setEvidenceGroups] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [filter, setFilter] = useState('all');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [hideNoise, setHideNoise] = useState(true);
 
-  const fetchActivity = useCallback(async () => {
+  const fetchActivity = useCallback(async ({ background = false } = {}) => {
+    if (!background) {
+      setLoading(true);
+    }
+    setError(null);
     try {
       const [activityRes, groupsRes] = await Promise.all([
         systemService.getDeviceWebActivity(decodedIp),
@@ -40,8 +49,13 @@ const DpiActivityPage = () => {
       setDeviceInfo(device || null);
     } catch (err) {
       console.error('Failed to fetch activity', err);
+      if (!background) {
+        setError(`Failed to fetch web activity for device ${decodedIp}.`);
+      }
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, [decodedIp]);
 
@@ -51,7 +65,7 @@ const DpiActivityPage = () => {
 
   const handleDpiEvent = useCallback((event) => {
     if (event.device_ip === decodedIp) {
-      setEvents((prev) => [event, ...prev].slice(0, 100));
+      setEvents((prev) => [{ ...event, isNew: true }, ...prev].slice(0, 100));
     }
   }, [decodedIp]);
 
@@ -66,6 +80,15 @@ const DpiActivityPage = () => {
     if (filter === 'threats') {
       return result.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
     }
+    if (filter === 'streaming') {
+      return result.filter((entry) => {
+        const url = String(entry.page_url || entry.domain || '').toLowerCase();
+        return url.includes('youtube') || url.includes('youtu.be') || url.includes('video') || entry.content_category === 'streaming';
+      });
+    }
+    if (filter === 'search') {
+      return result.filter((entry) => Boolean(entry.search_query || entry.query));
+    }
     return result.filter((entry) => entry.content_category === filter);
   }, [events, filter, hideNoise]);
 
@@ -76,20 +99,47 @@ const DpiActivityPage = () => {
     }
     if (filter === 'all') return result;
     if (filter === 'threats') return result.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
+    if (filter === 'streaming') {
+      return result.filter((entry) => {
+        const url = String(entry.page_url || entry.base_domain || '').toLowerCase();
+        return url.includes('youtube') || url.includes('youtu.be') || url.includes('video') || entry.content_category === 'streaming';
+      });
+    }
+    if (filter === 'search') {
+      return result.filter((entry) => Boolean(entry.search_query || entry.search_queries?.length));
+    }
     return result.filter((entry) => entry.content_category === filter);
   }, [evidenceGroups, filter, hideNoise]);
 
   const stats = useMemo(() => {
     const total = events.length;
     const threats = events.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe').length;
-    const streaming = events.filter((entry) => entry.content_category === 'streaming').length;
+    const streaming = events.filter((entry) => {
+      const url = String(entry.page_url || entry.domain || '').toLowerCase();
+      return url.includes('youtube') || url.includes('video') || entry.content_category === 'streaming';
+    }).length;
     return { total, threats, streaming };
   }, [events]);
+
+  const handleExportCsv = () => {
+    const exportCols = [
+      { key: 'page_title', label: 'Activity' },
+      { key: 'page_url', label: 'URL' },
+      { key: 'content_category', label: 'Category' },
+      { key: 'risk_level', label: 'Security' },
+      { key: 'last_seen', label: 'Timestamp' },
+    ];
+    exportToCsv(`device-${decodedIp}-dpi`, exportCols, filteredEvents);
+  };
+
+  const handleExportJson = () => {
+    exportToJson(`device-${decodedIp}-dpi`, filteredEvents);
+  };
 
   const groupedColumns = [
     {
       key: 'activity',
-      label: 'Activity',
+      label: 'Inspected Activity',
       render: (row) => (
         <>
           <div className="nv-table__primary">{getWebEvidencePrimaryLabel(row)}</div>
@@ -100,17 +150,17 @@ const DpiActivityPage = () => {
     },
     {
       key: 'browser',
-      label: 'Browser',
+      label: 'Client Browser',
       render: (row) => (
         <>
           <div className="nv-table__primary">{formatBrowserLabel(row.browser_name, row.process_name)}</div>
-          <div className="nv-table__meta">{row.process_name || '-'}</div>
+          <div className="nv-table__meta mono">{row.process_name || '-'}</div>
         </>
       ),
     },
     {
       key: 'scope',
-      label: 'Scope',
+      label: 'Evidence Scope',
       render: (row) => (
         <>
           <div className="nv-table__primary">{getWebEvidenceScopeLabel(row).eventCount} event{getWebEvidenceScopeLabel(row).eventCount === 1 ? '' : 's'}</div>
@@ -120,33 +170,40 @@ const DpiActivityPage = () => {
     },
     {
       key: 'risk',
-      label: 'Security',
+      label: 'Security Posture',
       render: (row) => {
         const riskLevel = normalizeWebRiskLevel(row.risk_level);
-        return <StatusBadge tone={getRiskTone(riskLevel)}>{riskLevel}</StatusBadge>;
+        return <StatusBadge tone={getRiskTone(riskLevel)}>{riskLevel.toUpperCase()}</StatusBadge>;
       },
     },
     {
       key: 'time',
-      label: 'Last Seen',
-      render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen || row.timestamp)}</span>,
+      label: 'Observed',
+      render: (row) => {
+        const ts = row.last_seen || row.timestamp;
+        return (
+          <span className="mono" title={formatUtcTimestampToLocal(ts)}>
+            {formatRelativeTime(ts)}
+          </span>
+        );
+      },
     },
   ];
 
   const rawColumns = [
     {
       key: 'activity',
-      label: 'Activity',
+      label: 'Page & Intent',
       render: (row) => (
         <>
-          <div className="nv-table__primary">{row.page_title || 'Untitled page'}</div>
+          <div className="nv-table__primary">{row.page_title || 'Untitled Session'}</div>
           <div className="nv-table__meta" title={row.page_url}>{beautifyDpiUrl(row.page_url || row.base_domain)}</div>
         </>
       ),
     },
     {
       key: 'domain',
-      label: 'Domain',
+      label: 'Domain / Host',
       render: (row) => (
         <>
           <div className="nv-table__primary">{row.base_domain || row.domain || '-'}</div>
@@ -156,122 +213,108 @@ const DpiActivityPage = () => {
     },
     {
       key: 'category',
-      label: 'Category',
+      label: 'Decoded Content',
       render: (row) => (
         <>
-          <div className="nv-table__primary">{row.content_category || 'web'}</div>
+          <div className="nv-table__primary">{row.content_category || 'Web'}</div>
           <div className="nv-table__meta">{row.search_query || row.content_id || '-'}</div>
         </>
       ),
     },
     {
       key: 'time',
-      label: 'Time',
-      render: (row) => <span className="mono">{formatUtcTimestampToLocal(row.last_seen || row.timestamp)}</span>,
+      label: 'Observed',
+      render: (row) => {
+        const ts = row.last_seen || row.timestamp;
+        return (
+          <span className="mono" title={formatUtcTimestampToLocal(ts)}>
+            {formatRelativeTime(ts)}
+          </span>
+        );
+      },
     },
     {
       key: 'risk',
-      label: 'Security',
+      label: 'Security Posture',
       render: (row) => {
         const riskLevel = normalizeWebRiskLevel(row.risk_level);
-        return <StatusBadge tone={getRiskTone(riskLevel)}>{riskLevel}</StatusBadge>;
+        return <StatusBadge tone={getRiskTone(riskLevel)}>{riskLevel.toUpperCase()}</StatusBadge>;
       },
     },
   ];
 
+  const filterTabs = [
+    { value: 'all', label: 'All Activities', count: events.length },
+    { value: 'streaming', label: 'YouTube & Media', count: stats.streaming },
+    { value: 'search', label: 'Search Queries' },
+    { value: 'threats', label: 'Security Threats', count: stats.threats },
+  ];
+
+  if (error && !loading && events.length === 0) {
+    return (
+      <div className="nv-page nv-page--balanced">
+        <ErrorState title="Device Inspection Error" message={error} onRetry={() => fetchActivity()} />
+      </div>
+    );
+  }
+
   return (
     <div className="nv-page nv-page--balanced">
       <PageHeader
-        eyebrow="Investigation"
-        title={`Browser Activity - ${deviceInfo?.hostname || decodedIp}`}
-        description="Drill into one device's inspected browser sessions with category filtering, security context, and redacted evidence on demand."
+        eyebrow="Device Deep Dive"
+        title={`Browser Inspection - ${deviceInfo?.hostname || decodedIp}`}
+        description={`Investigate decrypted sessions, search queries, and streaming activity originating from ${decodedIp}.`}
         actions={(
           <>
             <Link className="nv-button nv-button--secondary" to={`/user/${encodeURIComponent(decodedIp)}`}>
               <i className="ri-arrow-left-line"></i>
-              Back
+              Device Profile
             </Link>
-            <button type="button" className="nv-button nv-button--secondary" onClick={fetchActivity}>
+            <button type="button" className="nv-button nv-button--secondary" onClick={handleExportCsv} title="Export device logs to CSV">
+              <i className="ri-file-download-line"></i>
+              Export CSV
+            </button>
+            <button type="button" className="nv-button nv-button--secondary" onClick={handleExportJson} title="Export device logs to JSON">
+              <i className="ri-code-line"></i>
+              JSON
+            </button>
+            <button type="button" className="nv-button nv-button--secondary" onClick={() => fetchActivity()}>
               <i className="ri-refresh-line"></i>
               Refresh
+            </button>
+            <button type="button" className="nv-button nv-button--secondary" onClick={() => setHideNoise((c) => !c)}>
+              <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
+              {hideNoise ? 'Noise Filtered' : 'Showing Raw'}
             </button>
           </>
         )}
       />
 
-      <div className="nv-metric-grid">
-        <MetricCard icon="ri-navigation-line" label="Total Requests" value={stats.total} meta="Captured in current session view" accent="#54c8e8" />
-        <MetricCard icon="ri-shield-flash-line" label="Threats" value={stats.threats} meta="Blacklist or suspicious matches" accent="#fb7185" />
-        <MetricCard icon="ri-video-line" label="Streaming" value={stats.streaming} meta="Video and media browsing sessions" accent="#60a5fa" />
-        <MetricCard icon="ri-macbook-line" label="Device" value={deviceInfo?.ip || decodedIp} meta={deviceInfo?.hostname || 'Unknown host'} accent="#2dd4bf" />
+      <div className="nv-metric-grid" style={{ marginBottom: '1.5rem' }}>
+        <MetricCard icon="ri-radar-line" label="Inspected Sessions" value={stats.total} meta="Captured from active browser tabs" accent="#54c8e8" />
+        <MetricCard icon="ri-youtube-line" label="Media & Streaming" value={stats.streaming} meta="Video playback & audio feeds" accent="#ef4444" />
+        <MetricCard icon="ri-shield-flash-line" label="Security Incidents" value={stats.threats} meta="Flagged non-safe URLs" accent="#fb7185" />
+        <MetricCard icon="ri-macbook-line" label="Client Host" value={deviceInfo?.hostname || 'Unknown'} meta={`IP: ${decodedIp}`} accent="#2dd4bf" />
       </div>
 
-      <SectionCard
-        title="Evidence Groups"
-        caption="Device Deep Dive"
-        className="nv-section--balanced"
-        aside={(
-          <button
-            type="button"
-            className="nv-button nv-button--secondary"
-            onClick={() => setHideNoise(!hideNoise)}
-            style={{ minHeight: '1.95rem', padding: '0 0.65rem', borderRadius: '10px', fontSize: '0.78rem', gap: '0.35rem' }}
-          >
-            <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
-            {hideNoise ? 'Noise Hidden' : 'Showing Raw'}
-          </button>
-        )}
-      >
-        <Tabs
-          value={filter}
-          onChange={setFilter}
-          items={[
-            { value: 'all', label: 'All Traffic', icon: 'ri-apps-line' },
-            { value: 'streaming', label: 'Streaming', icon: 'ri-movie-line' },
-            { value: 'search', label: 'Search', icon: 'ri-search-line' },
-            { value: 'ai', label: 'AI', icon: 'ri-robot-2-line' },
-            { value: 'dev', label: 'Dev Tools', icon: 'ri-code-s-slash-line' },
-            { value: 'threats', label: 'Threats', icon: 'ri-shield-flash-line' },
-          ]}
-        />
+      <div style={{ marginBottom: '1.5rem' }}>
+        <Tabs value={filter} onChange={setFilter} items={filterTabs} />
+      </div>
 
+      <SectionCard title="Inspected Session Timeline" caption={`Showing ${filteredEvents.length} records`} className="nv-section--balanced">
         <div className="nv-scroll-region nv-scroll-region--xl">
-          <DataTable
-            columns={groupedColumns}
-            rows={loading ? [] : filteredGroups}
-            rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
-            onRowClick={(row) => setSelectedEvent(row)}
-            emptyTitle={loading ? 'Loading browser activity' : 'No grouped evidence matches this filter'}
-            emptyDescription={loading ? 'Collecting the current inspection window.' : 'Change the filter or wait for new inspected sessions to arrive.'}
-          />
-        </div>
-      </SectionCard>
-
-      <SectionCard
-        title="Raw Sessions"
-        caption="Device Deep Dive"
-        className="nv-section--balanced"
-        aside={(
-          <button
-            type="button"
-            className="nv-button nv-button--secondary"
-            onClick={() => setHideNoise(!hideNoise)}
-            style={{ minHeight: '1.95rem', padding: '0 0.65rem', borderRadius: '10px', fontSize: '0.78rem', gap: '0.35rem' }}
-          >
-            <i className={hideNoise ? 'ri-filter-2-line' : 'ri-filter-2-fill'}></i>
-            {hideNoise ? 'Noise Hidden' : 'Showing Raw'}
-          </button>
-        )}
-      >
-        <div className="nv-scroll-region nv-scroll-region--xl">
-          <DataTable
-            columns={rawColumns}
-            rows={loading ? [] : filteredEvents}
-            rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
-            onRowClick={(row) => setSelectedEvent(row)}
-            emptyTitle={loading ? 'Loading browser activity' : 'No activity matches this filter'}
-            emptyDescription={loading ? 'Collecting the current inspection window.' : 'Change the filter or wait for new inspected sessions to arrive.'}
-          />
+          {loading ? (
+            <TableSkeleton rows={6} />
+          ) : (
+            <DataTable
+              columns={rawColumns}
+              rows={filteredEvents}
+              rowKey={(row, index) => row.id || `${row.page_url || row.base_domain}-${index}`}
+              onRowClick={(row) => setSelectedEvent(row)}
+              emptyTitle="No inspected web activity for this filter"
+              emptyDescription="Change the filter category or browse through the client proxy launcher."
+            />
+          )}
         </div>
       </SectionCard>
 
@@ -279,21 +322,9 @@ const DpiActivityPage = () => {
         open={Boolean(selectedEvent)}
         item={selectedEvent}
         onClose={() => setSelectedEvent(null)}
-        footer={selectedEvent?.device_ip ? (
-          <div className="nv-inline-actions">
-            <button
-              type="button"
-              className="nv-button nv-button--secondary"
-              onClick={() => navigate(`/user/${encodeURIComponent(selectedEvent.device_ip)}`)}
-            >
-              Open Device Workspace
-            </button>
-          </div>
-        ) : null}
       />
     </div>
   );
 };
 
 export default DpiActivityPage;
-

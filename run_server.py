@@ -48,7 +48,8 @@ def perform_health_check() -> int:
                 ready_response = requests.get(f"{base_url}/api/v1/health/ready", timeout=2)
                 if ping_response.status_code == 200 and ready_response.status_code == 200:
                     break
-            except Exception:
+            except Exception as e:
+                print(f"Startup probe failed: {e}")
                 time.sleep(1)
         if not ping_response or not ready_response:
             raise RuntimeError("Server did not become healthy in time.")
@@ -121,14 +122,24 @@ if __name__ == "__main__":
         raise SystemExit(perform_health_check())
 
     local_ip = get_local_ip()
+    public_hostname = os.getenv("NETVISOR_PUBLIC_HOSTNAME") or os.getenv("PUBLIC_HOSTNAME")
     reload_enabled = os.getenv("NETVISOR_RELOAD", "false").lower() == "true"
     trust_proxy_headers = os.getenv("NETVISOR_TRUST_PROXY_HEADERS", "false").lower() == "true"
     forwarded_allow_ips = os.getenv("NETVISOR_FORWARDED_ALLOW_IPS", "127.0.0.1")
-    public_hostname = (os.getenv("NETVISOR_PUBLIC_HOSTNAME", "") or "").strip()
+    workers_env = os.getenv("NETVISOR_WORKERS")
+    workers_count = int(workers_env) if workers_env and workers_env.isdigit() else 1
+    if reload_enabled:
+        workers_count = 1
+
+    limit_concurrency = int(os.getenv("NETVISOR_LIMIT_CONCURRENCY", "1000"))
+    backlog = int(os.getenv("NETVISOR_SERVER_BACKLOG", "2048"))
+    timeout_keep_alive = int(os.getenv("NETVISOR_TIMEOUT_KEEP_ALIVE", "30"))
+
     print("[*] Netvisor Server Starting...")
     print("[*] Local Access:   http://127.0.0.1:8000")
     print(f"[*] Network Access: http://{local_ip}:8000")
     print(f"[*] Auto Reload:    {'enabled' if reload_enabled else 'disabled'}")
+    print(f"[*] Workers:        {workers_count}")
     if public_hostname:
         print(f"[*] Public Host:    https://{public_hostname}")
     print(f"[*] Proxy Headers:  {'enabled' if trust_proxy_headers else 'disabled'}")
@@ -138,8 +149,14 @@ if __name__ == "__main__":
             host="0.0.0.0",
             port=8000,
             reload=reload_enabled,
+            workers=workers_count if not reload_enabled else None,
             proxy_headers=trust_proxy_headers,
             forwarded_allow_ips=forwarded_allow_ips,
+            limit_concurrency=limit_concurrency,
+            backlog=backlog,
+            timeout_keep_alive=timeout_keep_alive,
+            http="auto",
+            loop="auto",
         )
     finally:
         cleanup_runtime_on_process_exit()

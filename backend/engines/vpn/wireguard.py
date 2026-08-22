@@ -47,7 +47,7 @@ class WireGuardHeuristicDetector:
         # Resolve timestamp
         last_seen = flow.get("last_seen")
         if not last_seen:
-            observed_at = datetime.utcnow()
+            observed_at = datetime.now(timezone.utc)
         elif isinstance(last_seen, datetime):
             observed_at = last_seen
         else:
@@ -56,7 +56,7 @@ class WireGuardHeuristicDetector:
                 if observed_at.tzinfo is not None:
                     observed_at = observed_at.astimezone(timezone.utc).replace(tzinfo=None)
             except Exception:
-                observed_at = datetime.utcnow()
+                observed_at = datetime.now(timezone.utc)
 
         with self._lock:
             # Prune old keys in history (TTL = 300s)

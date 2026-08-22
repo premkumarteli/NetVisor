@@ -39,7 +39,8 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-g
 # Copy application code
 COPY gateway/ ./gateway/
 COPY config/ ./config/
-COPY shared/ ./shared/
+COPY packet_engine/ ./packet_engine/
+COPY security/ ./security/
 COPY run_gateway.py .
 
 # Create non-root user

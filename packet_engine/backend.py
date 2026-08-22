@@ -28,11 +28,13 @@ class CaptureBackend(ABC):
         interface: str | None = None,
         requested_backend: str = "auto",
         promiscuous: bool = True,
+        bpf_filter: str | None = None,
     ) -> None:
         self.role = str(role or "capture")
         self.interface = str(interface or "").strip() or None
         self.requested_backend = str(requested_backend or "auto").strip().lower() or "auto"
         self.promiscuous = bool(promiscuous)
+        self.bpf_filter = str(bpf_filter or "").strip() or None
         self._running = False
         self._stop_event = threading.Event()
         self._metrics_lock = threading.Lock()
@@ -220,13 +222,17 @@ class ScapyCaptureBackend(CaptureBackend):
                     else:
                         self._record_drop("filtered")
 
-                sniff(
-                    iface=self.interface,
-                    store=False,
-                    promisc=self.promiscuous,
-                    timeout=slice_timeout,
-                    prn=_dispatch,
-                )
+                sniff_kwargs = {
+                    "iface": self.interface,
+                    "store": False,
+                    "promisc": self.promiscuous,
+                    "timeout": slice_timeout,
+                    "prn": _dispatch,
+                }
+                if self.bpf_filter:
+                    sniff_kwargs["filter"] = self.bpf_filter
+
+                sniff(**sniff_kwargs)
         except Exception as exc:
             self._record_drop(str(exc))
             self._mark_stopped()
@@ -312,6 +318,7 @@ def build_capture_backend(
     interface: str | None,
     requested_backend: str = "auto",
     promiscuous: bool = True,
+    bpf_filter: str | None = None,
 ) -> CaptureBackend:
     backend_name = str(requested_backend or "auto").strip().lower() or "auto"
     if backend_name in {"linux", "linux_raw", "native"}:
@@ -320,6 +327,7 @@ def build_capture_backend(
             interface=interface,
             requested_backend=backend_name,
             promiscuous=promiscuous,
+            bpf_filter=bpf_filter,
         )
     if backend_name in {"scapy", "python"}:
         return ScapyCaptureBackend(
@@ -327,6 +335,7 @@ def build_capture_backend(
             interface=interface,
             requested_backend=backend_name,
             promiscuous=promiscuous,
+            bpf_filter=bpf_filter,
         )
 
     if platform.system().lower() == "linux":
@@ -335,6 +344,7 @@ def build_capture_backend(
             interface=interface,
             requested_backend=backend_name,
             promiscuous=promiscuous,
+            bpf_filter=bpf_filter,
         )
 
     return ScapyCaptureBackend(
@@ -342,4 +352,5 @@ def build_capture_backend(
         interface=interface,
         requested_backend=backend_name,
         promiscuous=promiscuous,
+        bpf_filter=bpf_filter,
     )

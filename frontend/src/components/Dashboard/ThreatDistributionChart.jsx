@@ -31,10 +31,11 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
     .filter(([, value]) => Number.isFinite(value) && value > 0);
   const labels = entries.map(([label]) => label);
   const values = entries.map(([, value]) => value);
+  const total = values.reduce((sum, v) => sum + v, 0);
 
   if (labels.length === 0) {
     return (
-      <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px` }}>
+      <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="nv-chart-shell__empty">
           <EmptyState
             icon="ri-pie-chart-line"
@@ -46,21 +47,26 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
     );
   }
 
+  const surface = palette?.surface || '#0c1524';
+  const text = palette?.text || '#ffffff';
+  const textMuted = palette?.textMuted || '#94a3b8';
+  const grid = palette?.grid || 'rgba(255,255,255,0.08)';
+
   const severityColors = {
-    LOW: palette.success,
-    MEDIUM: palette.warning,
+    LOW: palette?.success || '#00ff9d',
+    MEDIUM: palette?.warning || '#ffbf00',
     HIGH: '#ff8a00',
-    CRITICAL: palette.danger || '#ff1744',
+    CRITICAL: palette?.danger || '#ff2a2a',
   };
 
-  const colors = labels.map((label) => severityColors[String(label).toUpperCase()] || palette.accent);
+  const colors = labels.map((label) => severityColors[String(label).toUpperCase()] || palette?.accent || '#54c8e8');
 
   const data = {
     labels: labels,
     datasets: [
       {
         data: values,
-        backgroundColor: colors.map((color) => withAlpha(color, 0.34)),
+        backgroundColor: colors.map((color) => withAlpha(color, 0.35)),
         borderColor: colors,
         borderWidth: 1.5,
         hoverOffset: 6,
@@ -71,35 +77,42 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
   const options = {
     responsive: true,
     maintainAspectRatio: false,
-    cutout: '62%',
+    cutout: '68%',
     layout: {
-      padding: 8,
+      padding: 6,
     },
     plugins: {
       legend: {
         position: legendPosition,
         labels: {
-          color: palette.textMuted,
-          font: { size: 10, weight: 'bold' },
+          color: textMuted,
+          font: { size: 11, weight: '600' },
           usePointStyle: true,
-          padding: 12,
+          padding: 10,
         },
       },
       tooltip: {
-        backgroundColor: palette.surface,
-        titleColor: palette.text,
-        bodyColor: palette.textMuted,
-        borderColor: palette.grid,
+        backgroundColor: surface,
+        titleColor: text,
+        bodyColor: textMuted,
+        borderColor: grid,
         borderWidth: 1,
         padding: 10,
         displayColors: true,
-      }
-    }
+        callbacks: {
+          label: (context) => {
+            const val = context.raw || 0;
+            const pct = total > 0 ? Math.round((val / total) * 100) : 0;
+            return ` ${context.label}: ${val} (${pct}%)`;
+          },
+        },
+      },
+    },
   };
 
   return (
-    <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px` }}>
-      <div className="nv-chart-shell__canvas">
+    <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px`, position: 'relative', width: '100%' }}>
+      <div className="nv-chart-shell__canvas" style={{ position: 'relative', height: `${height}px` }}>
         <Doughnut data={data} options={options} />
       </div>
     </div>
