@@ -407,33 +407,38 @@ class SystemService:
         }
 
     def clear_runtime_data(self, db_conn, organization_id: Optional[str] = None) -> dict:
-        cursor = db_conn.cursor(dictionary=True)
         auto_increment_tables = {"flow_logs", "alerts", "devices", "device_ip_history", "device_aliases", "web_events", "audit_logs"}
-        try:
-            cleared_counts = {}
-            for table_name in self.OPERATIONAL_TABLES:
-                if not self._table_exists(cursor, table_name):
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            cursor = db_conn.cursor(dictionary=True)
+            try:
+                cleared_counts = {}
+                for table_name in self.OPERATIONAL_TABLES:
+                    if not self._table_exists(cursor, table_name):
+                        continue
+                    row_count = self._table_count(cursor, table_name, organization_id)
+                    if row_count == 0:
+                        continue
+                    self._validate_table_name(table_name)
+                    if organization_id:
+                        cursor.execute("DELETE FROM {} WHERE organization_id = %s".format(table_name), (organization_id,))
+                    else:
+                        cursor.execute("DELETE FROM {}".format(table_name))
+                    cleared_counts[table_name] = row_count
+                    if not organization_id and table_name in auto_increment_tables:
+                        cursor.execute("ALTER TABLE {} AUTO_INCREMENT = 1".format(table_name))
+                db_conn.commit()
+                if not organization_id:
+                    self._clear_runtime_files()
+                return cleared_counts
+            except Exception as exc:
+                db_conn.rollback()
+                if getattr(exc, "errno", None) == 1213 and attempt < max_attempts - 1:
+                    time.sleep(0.1 * (attempt + 1))
                     continue
-                row_count = self._table_count(cursor, table_name, organization_id)
-                if row_count == 0:
-                    continue
-                self._validate_table_name(table_name)
-                if organization_id:
-                    cursor.execute("DELETE FROM {} WHERE organization_id = %s".format(table_name), (organization_id,))
-                else:
-                    cursor.execute("DELETE FROM {}".format(table_name))
-                cleared_counts[table_name] = row_count
-                if not organization_id and table_name in auto_increment_tables:
-                    cursor.execute("ALTER TABLE {} AUTO_INCREMENT = 1".format(table_name))
-            db_conn.commit()
-            if not organization_id:
-                self._clear_runtime_files()
-            return cleared_counts
-        except Exception:
-            db_conn.rollback()
-            raise
-        finally:
-            cursor.close()
+                raise
+            finally:
+                cursor.close()
 
     def _clear_runtime_files(self) -> None:
         for path in self._volatile_runtime_files:

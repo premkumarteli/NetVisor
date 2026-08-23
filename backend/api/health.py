@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from ..db.session import get_db_connection, runtime_schema_status, security_schema_status
+from ..db.session import get_db, runtime_schema_status, security_schema_status
 from ..core.config import settings
 from ..services.agent_service import agent_service
 from ..services.agent_auth_service import agent_auth_service
@@ -15,20 +15,15 @@ router = APIRouter()
 
 
 @router.get("/status")
-async def get_status():
+def get_status(conn = Depends(get_db)):
     active_pins = agent_auth_service.transport_pins()
     schema = security_schema_status()
     runtime_schema = runtime_schema_status()
     inspection_observability = {}
-    conn = None
     try:
-        conn = get_db_connection()
         inspection_observability = agent_service.get_inspection_observability(conn)
     except Exception:
         inspection_observability = {}
-    finally:
-        if conn:
-            conn.close()
     return {
         "status": "healthy" if schema["ready"] and runtime_schema["ready"] else "degraded",
         "service": "NetVisor",
@@ -57,7 +52,7 @@ async def get_status():
 
 
 @router.get("/ready")
-async def readiness_check():
+def readiness_check(conn = Depends(get_db)):
     """Readiness check that verifies critical system components are ready."""
     checks = {
         "database": False,
@@ -69,9 +64,7 @@ async def readiness_check():
         "gateway_tls_pins_configured": False,
     }
     
-    conn = None
     try:
-        conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
         cursor.fetchone()
@@ -87,9 +80,6 @@ async def readiness_check():
         advisories["gateway_tls_pins_configured"] = bool(gateway_auth_service.transport_pins())
     except Exception:
         pass
-    finally:
-        if conn:
-            conn.close()
 
     all_ready = all(checks.values())
     if not all_ready:

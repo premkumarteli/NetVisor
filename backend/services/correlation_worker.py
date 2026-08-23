@@ -601,8 +601,11 @@ class CorrelationWorker:
                             logger.error("Error in correlation analyzer: %s", inner_err)
                             # Exception occurs during analysis: do NOT ACK. It stays in PEL for retry or DLQ routing.
             except Exception as loop_err:
-                logger.error("Error in correlation worker loop: %s", loop_err)
-                use_redis = False
-                await asyncio.sleep(2.0)
+                if "Timeout reading from socket" in str(loop_err):
+                    logger.debug("Redis correlation stream idle timeout: %s", loop_err)
+                else:
+                    logger.error("Error in correlation worker loop: %s", loop_err)
+                    use_redis = False
+                await asyncio.sleep(0.5)
 
 correlation_worker = CorrelationWorker()

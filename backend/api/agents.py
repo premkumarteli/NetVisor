@@ -81,17 +81,29 @@ async def validate_agent_bootstrap_key(request: Request):
 
 
 async def validate_agent_key(request: Request):
-    conn = get_db_connection()
+    from starlette.requests import ClientDisconnect
     try:
         body = await request.body()
-        context = agent_auth_service.authenticate_request(conn, request, body)
-        conn.commit()
-        return context
+    except ClientDisconnect:
+        raise HTTPException(status_code=400, detail="Client disconnected")
+
+    def _authenticate():
+        conn = get_db_connection()
+        try:
+            context = agent_auth_service.authenticate_request(conn, request, body)
+            conn.commit()
+            return context
+        except AgentAuthenticationError:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    try:
+        import anyio
+        return await anyio.to_thread.run_sync(_authenticate)
     except AgentAuthenticationError as exc:
-        conn.rollback()
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    finally:
-        conn.close()
 
 
 def _require_authenticated_agent_id(auth_context: dict, claimed_agent_id: str | None, *, source: str) -> str:
@@ -571,9 +583,11 @@ async def receive_devices(
                     create_if_missing=True,
                 ):
                     count += 1
-                await p_sio.emit("device_event", {"data": dev})
 
             conn.commit()
+            for dev in devices:
+                await p_sio.emit("device_event", {"data": dev})
+
             logger.info("Upserted %s device(s) from agent scan.", count)
             return _collect_response(auth_context=auth_context, count=count)
         except mysql.connector.Error as exc:

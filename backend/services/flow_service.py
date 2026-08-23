@@ -1167,8 +1167,11 @@ class FlowService:
                                     metrics_service.increment("flow_failed_batches_total")
                                     # Don't ACK. It will stay in PEL (Pending Entries List) and be retried or reclaimed.
                     except Exception as redis_loop_exc:
-                        logger.error("Redis stream worker loop error: %s", redis_loop_exc)
-                        await asyncio.sleep(1.0)
+                        if "Timeout reading from socket" in str(redis_loop_exc):
+                            logger.debug("Redis stream idle socket timeout (normal): %s", redis_loop_exc)
+                        else:
+                            logger.error("Redis stream worker loop error: %s", redis_loop_exc)
+                        await asyncio.sleep(0.5)
 
                 else:
                     # --- FALLBACK: MYSQL DATABASE QUEUE PATH ---

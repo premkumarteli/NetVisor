@@ -54,7 +54,7 @@ class AnalyticsService:
     def _fetch_device_rollup(self, db_conn, organization_id: Optional[str], hours: int, limit: int) -> list[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = []
+            params: list = [hours, hours]
             query = """
                 SELECT
                     COALESCE(NULLIF(internal_device_ip, ''), src_ip) AS device_ip,
@@ -63,9 +63,9 @@ class AnalyticsService:
                     COUNT(DISTINCT COALESCE(NULLIF(sni, ''), NULLIF(domain, ''), dst_ip)) AS distinct_targets,
                     MAX(COALESCE(last_seen, created_at)) AS last_seen
                 FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                   OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
             """
-            params.append(hours)
             if organization_id:
                 query += " AND organization_id = %s"
                 params.append(organization_id)
@@ -83,28 +83,38 @@ class AnalyticsService:
     def _fetch_device_application_rollup(self, db_conn, organization_id: Optional[str], hours: int) -> dict[str, dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = [hours]
-            query = """
-                SELECT
-                    COALESCE(NULLIF(internal_device_ip, ''), src_ip) AS device_ip,
-                    COALESCE(NULLIF(application, ''), 'Other') AS application,
-                    COALESCE(SUM(byte_count), 0) AS bandwidth_bytes,
-                    COUNT(*) AS flow_count
-                FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
-            """
+            params: list = [hours, hours]
+            org_filter = ""
             if organization_id:
-                query += " AND organization_id = %s"
+                org_filter = "AND organization_id = %s"
                 params.append(organization_id)
-            query += """
-                GROUP BY COALESCE(NULLIF(internal_device_ip, ''), src_ip), COALESCE(NULLIF(application, ''), 'Other')
-                ORDER BY bandwidth_bytes DESC, flow_count DESC
+
+            query = f"""
+                WITH ranked_apps AS (
+                    SELECT
+                        COALESCE(NULLIF(internal_device_ip, ''), src_ip) AS device_ip,
+                        COALESCE(NULLIF(application, ''), 'Other') AS application,
+                        COALESCE(SUM(byte_count), 0) AS bandwidth_bytes,
+                        COUNT(*) AS flow_count,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY COALESCE(NULLIF(internal_device_ip, ''), src_ip)
+                            ORDER BY COALESCE(SUM(byte_count), 0) DESC, COUNT(*) DESC
+                        ) AS rn
+                    FROM flow_logs
+                    WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                       OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
+                      {org_filter}
+                    GROUP BY COALESCE(NULLIF(internal_device_ip, ''), src_ip), COALESCE(NULLIF(application, ''), 'Other')
+                )
+                SELECT device_ip, application, bandwidth_bytes, flow_count
+                FROM ranked_apps
+                WHERE rn = 1
             """
             cursor.execute(query, tuple(params))
             top_application_by_device: dict[str, dict] = {}
             for row in cursor.fetchall():
                 device_ip = str(row.get("device_ip") or "").strip()
-                if not device_ip or device_ip in top_application_by_device:
+                if not device_ip:
                     continue
                 top_application_by_device[device_ip] = {
                     "application": row.get("application") or "Other",
@@ -118,7 +128,7 @@ class AnalyticsService:
     def _fetch_conversation_rollup(self, db_conn, organization_id: Optional[str], hours: int, limit: int) -> list[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = [hours]
+            params: list = [hours, hours]
             query = """
                 SELECT
                     src_ip,
@@ -130,7 +140,8 @@ class AnalyticsService:
                     COALESCE(SUM(byte_count), 0) AS bandwidth_bytes,
                     MAX(COALESCE(last_seen, created_at)) AS last_seen
                 FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                   OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
             """
             if organization_id:
                 query += " AND organization_id = %s"
@@ -149,7 +160,7 @@ class AnalyticsService:
     def _fetch_scope_rollup(self, db_conn, organization_id: Optional[str], hours: int, limit: int) -> list[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = [hours]
+            params: list = [hours, hours]
             query = """
                 SELECT
                     COALESCE(NULLIF(network_scope, ''), 'unknown') AS network_scope,
@@ -158,7 +169,8 @@ class AnalyticsService:
                     COALESCE(SUM(byte_count), 0) AS bandwidth_bytes,
                     MAX(COALESCE(last_seen, created_at)) AS last_seen
                 FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                   OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
             """
             if organization_id:
                 query += " AND organization_id = %s"
@@ -177,7 +189,7 @@ class AnalyticsService:
     def _fetch_trend_rollup(self, db_conn, organization_id: Optional[str], hours: int) -> list[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = [hours]
+            params: list = [hours, hours]
             query = """
                 SELECT
                     DATE_FORMAT(COALESCE(last_seen, created_at), '%%Y-%%m-%%d %%H:00:00') AS bucket,
@@ -185,7 +197,8 @@ class AnalyticsService:
                     COUNT(DISTINCT COALESCE(NULLIF(internal_device_ip, ''), src_ip)) AS device_count,
                     COALESCE(SUM(byte_count), 0) AS bandwidth_bytes
                 FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                   OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
             """
             if organization_id:
                 query += " AND organization_id = %s"
@@ -202,7 +215,7 @@ class AnalyticsService:
     def _fetch_window_summary(self, db_conn, organization_id: Optional[str], hours: int) -> dict:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            params: list = [hours]
+            params: list = [hours, hours]
             query = """
                 SELECT
                     COUNT(*) AS flow_count,
@@ -210,7 +223,8 @@ class AnalyticsService:
                     COUNT(DISTINCT COALESCE(NULLIF(sni, ''), NULLIF(domain, ''), dst_ip)) AS host_count,
                     COALESCE(SUM(byte_count), 0) AS bandwidth_bytes
                 FROM flow_logs
-                WHERE COALESCE(last_seen, created_at) >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                WHERE (last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                   OR (last_seen IS NULL AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)))
             """
             if organization_id:
                 query += " AND organization_id = %s"

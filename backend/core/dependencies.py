@@ -93,6 +93,18 @@ def get_current_user(
                 detail="Could not validate credentials",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+    except (JWTError, ValidationError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    owned_conn = False
+    if not hasattr(conn, "cursor"):
+        conn = get_db_connection()
+        owned_conn = True
+    try:
         user = auth_service.get_user_by_id(conn, user_id)
         if not user:
             raise HTTPException(
@@ -136,6 +148,9 @@ def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    finally:
+        if owned_conn and conn:
+            conn.close()
 
 def require_org_scoped_role(*roles: str):
     """FastAPI dependency factory enforcing role requirements and providing organization context."""

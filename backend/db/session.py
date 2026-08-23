@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 import uuid
 
 import mysql.connector
@@ -483,7 +484,22 @@ def ensure_security_schema(conn=None) -> dict:
             conn.close()
 
 
-def security_schema_status(conn=None) -> dict:
+_security_schema_cache: dict | None = None
+_security_schema_cache_time: float = 0.0
+_runtime_schema_cache: dict | None = None
+_runtime_schema_cache_time: float = 0.0
+_schema_cache_lock = threading.Lock()
+_SCHEMA_CACHE_TTL = 30.0  # seconds
+
+
+def security_schema_status(conn=None, force: bool = False) -> dict:
+    global _security_schema_cache, _security_schema_cache_time
+    now = time.monotonic()
+    if not force and conn is None:
+        with _schema_cache_lock:
+            if _security_schema_cache is not None and (now - _security_schema_cache_time) < _SCHEMA_CACHE_TTL:
+                return _security_schema_cache
+
     owned_conn = conn is None
     conn = conn or get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -499,18 +515,30 @@ def security_schema_status(conn=None) -> dict:
                 if not _column_exists(cursor, table_name, column_name):
                     missing_columns.append(f"{table_name}.{column_name}")
 
-        return {
+        result = {
             "ready": not missing_tables and not missing_columns,
             "missing_tables": missing_tables,
             "missing_columns": missing_columns,
         }
+        if owned_conn:
+            with _schema_cache_lock:
+                _security_schema_cache = result
+                _security_schema_cache_time = now
+        return result
     finally:
         cursor.close()
         if owned_conn:
             conn.close()
 
 
-def runtime_schema_status(conn=None) -> dict:
+def runtime_schema_status(conn=None, force: bool = False) -> dict:
+    global _runtime_schema_cache, _runtime_schema_cache_time
+    now = time.monotonic()
+    if not force and conn is None:
+        with _schema_cache_lock:
+            if _runtime_schema_cache is not None and (now - _runtime_schema_cache_time) < _SCHEMA_CACHE_TTL:
+                return _runtime_schema_cache
+
     owned_conn = conn is None
     conn = conn or get_db_connection()
     cursor = conn.cursor(dictionary=True)
@@ -536,12 +564,17 @@ def runtime_schema_status(conn=None) -> dict:
                 if not _index_exists(cursor, table_name, index_name):
                     missing_indexes.append(f"{table_name}.{index_name}")
 
-        return {
+        result = {
             "ready": not missing_tables and not missing_columns and not missing_indexes,
             "missing_tables": missing_tables,
             "missing_columns": missing_columns,
             "missing_indexes": missing_indexes,
         }
+        if owned_conn:
+            with _schema_cache_lock:
+                _runtime_schema_cache = result
+                _runtime_schema_cache_time = now
+        return result
     finally:
         cursor.close()
         if owned_conn:
@@ -553,9 +586,12 @@ _runtime_schema_lock = threading.Lock()
 
 
 def reset_schema_verification_cache():
-    global _runtime_schema_verified
+    global _runtime_schema_verified, _security_schema_cache, _runtime_schema_cache
     with _runtime_schema_lock:
         _runtime_schema_verified = False
+    with _schema_cache_lock:
+        _security_schema_cache = None
+        _runtime_schema_cache = None
 
 
 def require_runtime_schema(conn=None, force: bool = False) -> dict:
