@@ -175,7 +175,7 @@ class Settings(BaseSettings):
 
     # Sentry Configuration
     SENTRY_DSN: str = Field(
-        default="https://1cd30c611f4340b25bc37b5991de2926@o4511967075893248.ingest.de.sentry.io/4511967097389136",
+        default="https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224",
         validation_alias="NETVISOR_SENTRY_DSN",
     )
     SENTRY_ENVIRONMENT: str = Field(

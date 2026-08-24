@@ -1909,6 +1909,22 @@ This project provided deep, hands-on experience in networking, systems security,
 - Verified sample event transmission: `Sent event to Sentry! Event ID: 0d040bde09b44929b53dffd151a083d0`.
 - Server health check log: `INFO:netvisor.sentry:[*] Sentry Error Monitoring initialized (env: production)`.
 
+## 2026-08-24 - Sentry Project DSN Update & ZeroDivisionError Verification
+
+**Work completed**
+- Updated Sentry DSN across `backend/core/sentry.py`, `backend/core/config.py`, `.env`, and `.env.example` to `https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224`.
+- Updated test event helper `capture_sample_event` in `backend/core/sentry.py` to trigger intentional `ZeroDivisionError` (`1 / 0`) per Sentry verification guidelines.
+- Dispatched verification error event (`fdca3395a63642418520e5615a332248`) to Sentry ingest endpoint.
+
+**Problem found**
+- Sentry project DSN was updated on Sentry dashboard requiring updated credentials and a verification test error.
+
+**Solution or learning**
+- Updated active `.env` configuration and dispatched explicit `ZeroDivisionError` stack trace to confirm end-to-end data ingestion on the updated Sentry project dashboard.
+
+**Evidence**
+- Dispatched event ID: `fdca3395a63642418520e5615a332248`.
+
 ---
 
 ## Template for Future Daily Entries
