@@ -111,6 +111,8 @@ import asyncio
 async def lifespan(app: FastAPI):
     # Startup logic
     logger.info("NetVisor Backend Starting Up...")
+    from .core.sentry import init_sentry
+    init_sentry(settings.SENTRY_DSN, settings.SENTRY_ENVIRONMENT)
     _validate_runtime_config()
     ensure_bootstrap_state()
     startup_conn = None

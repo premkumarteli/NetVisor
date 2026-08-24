@@ -138,3 +138,15 @@ async def prometheus_metrics():
         if isinstance(value, (int, float)):
             lines.append(f"{metric_name} {value}")
     return "\n".join(line for line in lines if line) + "\n"
+
+
+@router.api_route("/sentry-test", methods=["GET", "POST"])
+def trigger_sentry_test():
+    """Trigger an intentional sample error to verify Sentry event capturing."""
+    from ..core.sentry import capture_sample_event
+    event_id = capture_sample_event("Manual Sentry Test Trigger from NetVisor Health API")
+    return {
+        "status": "success",
+        "message": "Sentry sample error event captured and dispatched.",
+        "sentry_event_id": event_id,
+    }

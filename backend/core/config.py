@@ -173,6 +173,20 @@ class Settings(BaseSettings):
 
     NETVISOR_LARGE_UPLOAD_THRESHOLD_BYTES: int = 5000000
 
+    # Sentry Configuration
+    SENTRY_DSN: str = Field(
+        default="https://1cd30c611f4340b25bc37b5991de2926@o4511967075893248.ingest.de.sentry.io/4511967097389136",
+        validation_alias="NETVISOR_SENTRY_DSN",
+    )
+    SENTRY_ENVIRONMENT: str = Field(
+        default="production",
+        validation_alias="NETVISOR_SENTRY_ENVIRONMENT",
+    )
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(
+        default=1.0,
+        validation_alias="NETVISOR_SENTRY_TRACES_SAMPLE_RATE",
+    )
+
     model_config = SettingsConfigDict(
         case_sensitive=True,
         env_file=str(PROJECT_ROOT / ".env"),

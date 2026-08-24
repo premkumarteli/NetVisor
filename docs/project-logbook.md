@@ -1889,6 +1889,26 @@ This project provided deep, hands-on experience in networking, systems security,
 - Commit `1fafcb1` pushed to `origin/master`: `10803ba..1fafcb1 master -> master`.
 - Clean status output: `nothing to commit, working tree clean`.
 
+## 2026-08-24 - Sentry Error Monitoring & Tracing SDK Integration
+
+**Work completed**
+- Installed `sentry-sdk[fastapi]` v2.68.1 in python environment and updated `requirements/base.txt`.
+- Created Sentry initialization core module `backend/core/sentry.py` with FastAPI & Starlette tracing integrations.
+- Configured `NETVISOR_SENTRY_DSN` in `backend/core/config.py`, `.env`, and `.env.example` with project DSN `https://1cd30c611f4340b25bc37b5991de2926@o4511967075893248.ingest.de.sentry.io/4511967097389136`.
+- Hooked `init_sentry` into backend startup lifespan (`backend/main.py`).
+- Added test endpoint `/api/v1/health/sentry-test` to trigger manual test exception events.
+- Dispatched initial test event (`0d040bde09b44929b53dffd151a083d0`) to complete Sentry onboarding.
+
+**Problem found**
+- Backend application errors were logged locally to file/console without centralized cloud exception tracking or real-time error telemetry.
+
+**Solution or learning**
+- Integrating `sentry-sdk` with FastAPI middleware enables automatic capture of unhandled 500 exceptions, performance tracing, and error reporting on Sentry's dashboard.
+
+**Evidence**
+- Verified sample event transmission: `Sent event to Sentry! Event ID: 0d040bde09b44929b53dffd151a083d0`.
+- Server health check log: `INFO:netvisor.sentry:[*] Sentry Error Monitoring initialized (env: production)`.
+
 ---
 
 ## Template for Future Daily Entries
