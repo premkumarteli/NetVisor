@@ -33,10 +33,11 @@ from packet_engine import (
     serialize_preflight_results,
 )
 try:
-    from agent.dpi import WebInspectionController
+    from agent.dpi import WebInspectionController, QuicGuard
 except ImportError as e:
     logging.warning(f"DPI module failed to import: {e}. Running in degraded mode without DPI.")
     WebInspectionController = None
+    QuicGuard = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -213,6 +214,13 @@ class NetworkAgent:
         # Queues and Thread Pools
         self.upload_q = queue.Queue(maxsize=10000)
         self.discovery_pool = ThreadPoolExecutor(max_workers=5)
+
+        # Cleanup any orphaned QUIC block firewall rules from previous crashes
+        if QuicGuard is not None:
+            try:
+                QuicGuard().cleanup_orphaned_rules()
+            except Exception as exc:
+                logger.debug("Failed to run QUIC guard startup cleanup: %s", exc)
 
         if self._background_workers_enabled:
             self._register_agent(force_reenroll=not self.api_client.has_credentials())

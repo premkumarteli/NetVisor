@@ -79,11 +79,34 @@ class InspectionPolicy:
     snippet_max_bytes: int = DEFAULT_SNIPPET_MAX_BYTES
     privacy_guard_enabled: bool = True
     sensitive_destination_bypass_enabled: bool = True
+    enable_quic_block: bool = False
     updated_at: Optional[str] = None
 
     @classmethod
     def from_payload(cls, payload: Optional[dict], *, agent_id: Optional[str], device_ip: str) -> "InspectionPolicy":
+        import os
+        raw_payload = payload
         payload = payload or {}
+        env_quic_block = os.getenv("NETVISOR_DPI_ENABLE_QUIC_BLOCK", "").strip().lower()
+        if env_quic_block in {"1", "true", "yes", "on"}:
+            enable_quic_block = True
+        elif env_quic_block in {"0", "false", "no", "off"}:
+            enable_quic_block = False
+        elif raw_payload is not None:
+            enable_quic_block = bool(raw_payload.get("enable_quic_block", False))
+        else:
+            try:
+                import json
+                from pathlib import Path
+                cfg_path = Path(__file__).resolve().parent.parent.parent / "config" / "agent.json"
+                if cfg_path.exists():
+                    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                    enable_quic_block = bool(cfg.get("enable_quic_block", False))
+                else:
+                    enable_quic_block = False
+            except Exception:
+                enable_quic_block = False
+
         return cls(
             agent_id=payload.get("agent_id") or agent_id,
             device_ip=payload.get("device_ip") or device_ip,
@@ -96,6 +119,7 @@ class InspectionPolicy:
             ),
             privacy_guard_enabled=bool(payload.get("privacy_guard_enabled", True)),
             sensitive_destination_bypass_enabled=bool(payload.get("sensitive_destination_bypass_enabled", True)),
+            enable_quic_block=enable_quic_block,
             updated_at=payload.get("updated_at"),
         )
 
@@ -132,5 +156,6 @@ class InspectionPolicy:
             "snippet_max_bytes": self.snippet_max_bytes,
             "privacy_guard_enabled": self.privacy_guard_enabled,
             "sensitive_destination_bypass_enabled": self.sensitive_destination_bypass_enabled,
+            "enable_quic_block": self.enable_quic_block,
             "updated_at": self.updated_at,
         }

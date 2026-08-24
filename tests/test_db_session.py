@@ -105,6 +105,27 @@ class _SchemaCursor:
         if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_expires_at"):
             self.conn.columns.setdefault("agents", set()).add("cert_expires_at")
             return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS organizations"):
+            self.conn.tables.add("organizations")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS risk_events"):
+            self.conn.tables.add("risk_events")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS device_ip_history"):
+            self.conn.tables.add("device_ip_history")
+            return
+        if normalized.startswith("ALTER TABLE alerts ADD COLUMN alert_type"):
+            self.conn.columns.setdefault("alerts", set()).add("alert_type")
+            return
+        if normalized.startswith("ALTER TABLE organizations ADD COLUMN slug"):
+            self.conn.columns.setdefault("organizations", set()).add("slug")
+            return
+        if normalized.startswith("ALTER TABLE organizations ADD COLUMN max_devices"):
+            self.conn.columns.setdefault("organizations", set()).add("max_devices")
+            return
+        if normalized.startswith("ALTER TABLE organizations ADD COLUMN data_retention_days"):
+            self.conn.columns.setdefault("organizations", set()).add("data_retention_days")
+            return
         if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_status"):
             self.conn.columns.setdefault("agents", set()).add("cert_status")
             return

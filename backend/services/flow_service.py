@@ -88,6 +88,14 @@ class FlowService:
             return await loop.run_in_executor(executor, partial(func, *args, **kwargs))
         return await loop.run_in_executor(executor, func, *args)
 
+    def shutdown(self) -> None:
+        """Gracefully shut down the DB worker ThreadPoolExecutor."""
+        try:
+            self._db_executor.shutdown(wait=False, cancel_futures=True)
+            logger.info("FlowService db executor shut down.")
+        except Exception as e:
+            logger.warning("Error shutting down flow_service db_executor: %s", e)
+
     @property
     def registry(self):
         if not hasattr(self, "_registry"):

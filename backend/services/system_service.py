@@ -35,6 +35,28 @@ class SystemService:
         "audit_logs",
     )
 
+    ALL_KNOWN_TABLES = frozenset(OPERATIONAL_TABLES + (
+        "users",
+        "organizations",
+        "agents",
+        "agent_configs",
+        "agent_credentials",
+        "agent_request_nonces",
+        "gateways",
+        "gateway_credentials",
+        "gateway_request_nonces",
+        "user_refresh_tokens",
+        "certificate_revocations",
+        "device_baselines",
+        "flow_ingest_batches",
+        "system_settings",
+        "worker_heartbeats",
+        "inspection_policies",
+        "telemetry_logs",
+        "enrollment_events",
+        "enrollment_state_tracking",
+    ))
+
     _ALLOWED_TABLES = frozenset(OPERATIONAL_TABLES)
 
     def _validate_table_name(self, table_name: str) -> str:
@@ -672,7 +694,7 @@ class SystemService:
         for table in tables:
             # Validate table name to prevent SQL injection
             # Only export tables that are in our allowed list or system tables
-            if table not in self._ALLOWED_TABLES and not table.startswith("system_"):
+            if table not in self.ALL_KNOWN_TABLES and not table.startswith("system_"):
                 logger.warning("SystemService: Skipping export of non-standard table '%s'", table)
                 continue
                 

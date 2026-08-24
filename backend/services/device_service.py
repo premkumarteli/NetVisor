@@ -568,6 +568,90 @@ class DeviceService:
         finally:
             cursor.close()
 
+    def calculate_rolling_device_risk(
+        self,
+        db_conn,
+        device_id: str,
+        organization_id: str,
+        window_hours: int = 24,
+    ) -> dict:
+        """
+        Calculates rolling decayed risk score for a device from active risk_events within the last 24h.
+        Applies exponential time decay: weight = exp(-elapsed_hours / 12.0).
+        Caps score at 100 and updates device_risks.
+        """
+        import math
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            cursor.execute(
+                """
+                SELECT id, risk_type, confidence, score, timestamp,
+                       TIMESTAMPDIFF(SECOND, timestamp, UTC_TIMESTAMP()) AS elapsed_seconds
+                FROM risk_events
+                WHERE organization_id = %s
+                  AND (device_id = %s OR device_id = (SELECT ip FROM devices WHERE (id = %s OR mac = %s) AND organization_id = %s LIMIT 1))
+                  AND timestamp >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s HOUR)
+                ORDER BY timestamp DESC
+                """,
+                (organization_id, device_id, device_id, device_id, organization_id, window_hours),
+            )
+            events = cursor.fetchall()
+            if not events:
+                return {"current_score": 0.0, "risk_level": "LOW", "reasons": []}
+
+            total_weighted_score = 0.0
+            reasons = []
+            seen_types = set()
+
+            for ev in events:
+                elapsed_hours = max(0.0, float(ev.get("elapsed_seconds") or 0.0) / 3600.0)
+                decay_factor = math.exp(-elapsed_hours / 12.0)
+                event_score = float(ev.get("score") or 0.0) * float(ev.get("confidence") or 1.0)
+                total_weighted_score += event_score * decay_factor
+                
+                rtype = ev.get("risk_type")
+                if rtype and rtype not in seen_types:
+                    seen_types.add(rtype)
+                    reasons.append(rtype)
+
+            final_score = min(100.0, max(0.0, round(total_weighted_score, 1)))
+            if final_score >= 75.0:
+                risk_level = "CRITICAL"
+            elif final_score >= 50.0:
+                risk_level = "HIGH"
+            elif final_score >= 25.0:
+                risk_level = "MEDIUM"
+            else:
+                risk_level = "LOW"
+
+            import json
+            reasons_json = json.dumps(reasons[:5])
+            cursor.execute(
+                """
+                INSERT INTO device_risks (device_id, organization_id, current_score, risk_level, reasons)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    current_score = VALUES(current_score),
+                    risk_level = VALUES(risk_level),
+                    reasons = VALUES(reasons)
+                """,
+                (device_id, organization_id, final_score, risk_level, reasons_json),
+            )
+            db_conn.commit()
+
+            return {
+                "device_id": device_id,
+                "organization_id": organization_id,
+                "current_score": final_score,
+                "risk_level": risk_level,
+                "reasons": reasons,
+            }
+        except Exception as exc:
+            logger.warning("Failed to calculate rolling device risk: %s", exc)
+            return {"current_score": 0.0, "risk_level": "LOW", "reasons": []}
+        finally:
+            cursor.close()
+
     def mark_stale_devices_offline(self, db_conn, stale_minutes: int = 5):
         """Compatibility sync for the legacy is_online flag."""
         self.ensure_schema(db_conn)

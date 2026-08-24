@@ -10,6 +10,7 @@ from .cert_manager import CertificateManager
 from .event_buffer import EventBuffer
 from .policy import InspectionPolicy
 from .proxy_manager import ProxyManager
+from .quic_guard import QuicGuard
 from ..security import AgentApiClient
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,9 @@ class WebInspectionController:
             "inspection_enabled": False,
             "privacy_guard_enabled": bool(self.current_policy.privacy_guard_enabled),
             "sensitive_destination_bypass_enabled": bool(self.current_policy.sensitive_destination_bypass_enabled),
+            "enable_quic_block": bool(self.current_policy.enable_quic_block),
+            "quic_block_status": "disabled",
+            "quic_block_error": None,
             "status": "disabled",
             "proxy_running": False,
             "ca_installed": False,
@@ -80,6 +84,7 @@ class WebInspectionController:
         self._running = False
 
         self.cert_manager = CertificateManager(self.runtime_dir)
+        self.quic_guard = QuicGuard()
         self.event_buffer = EventBuffer(
             runtime_dir=self.runtime_dir,
             upload_url=self.upload_url,
@@ -132,6 +137,7 @@ class WebInspectionController:
 
     def stop(self) -> None:
         self._running = False
+        self.quic_guard.remove_block()
         self.proxy_manager.stop()
         self.event_buffer.stop()
 
@@ -164,9 +170,15 @@ class WebInspectionController:
         proxy_status = self.proxy_manager.status()
         buffer_metrics = self.event_buffer.metrics_snapshot()
         cert_status = self.cert_manager.status()
+        quic_status = self.quic_guard.status()
         return {
             "privacy_guard_enabled": bool(self.current_policy.privacy_guard_enabled),
             "sensitive_destination_bypass_enabled": bool(self.current_policy.sensitive_destination_bypass_enabled),
+            "enable_quic_block": bool(self.current_policy.enable_quic_block),
+            "quic_block_active": quic_status.get("quic_block_active", False),
+            "quic_block_supported": quic_status.get("quic_block_supported", False),
+            "quic_block_is_admin": quic_status.get("quic_block_is_admin", False),
+            "quic_block_last_error": quic_status.get("quic_block_last_error"),
             "proxy_running": proxy_status.get("proxy_running", False),
             "proxy_pid": proxy_status.get("proxy_pid"),
             "proxy_port": proxy_status.get("proxy_port", self.proxy_port),
@@ -195,6 +207,9 @@ class WebInspectionController:
             "upload_failures": buffer_metrics.get("upload_failures", 0),
             "last_drop_reason": buffer_metrics.get("last_drop_reason"),
             "drop_reasons": buffer_metrics.get("drop_reasons", {}),
+            "upstream_tls_healed_domains": proxy_status.get("upstream_tls_healed_domains", []),
+            "upstream_tls_recovering_domains": proxy_status.get("upstream_tls_recovering_domains", []),
+            "upstream_tls_persistently_failing_domains": proxy_status.get("upstream_tls_persistently_failing_domains", []),
         }
 
     def _apply_policy(self) -> None:
@@ -206,6 +221,30 @@ class WebInspectionController:
         proxy_running = False
         status = "disabled"
         capture_mode = self.proxy_manager.mode
+
+        quic_block_status = "disabled"
+        quic_block_error = None
+        if self.current_policy.inspection_enabled and self.current_policy.enable_quic_block:
+            if not self.quic_guard.is_admin():
+                quic_block_status = "elevation_required"
+                quic_block_error = "Administrator privileges required to configure Windows Firewall"
+                logger.warning("[QUIC Guard] %s. QUIC traffic may bypass DPI.", quic_block_error)
+            else:
+                browser_paths = []
+                for proc in self.current_policy.allowed_processes:
+                    p = self.browser_launcher._find_executable(proc)
+                    if p and p.exists():
+                        browser_paths.append(str(p))
+
+                success, err = self.quic_guard.apply_block(processes=browser_paths if browser_paths else None)
+                if success:
+                    quic_block_status = "active"
+                else:
+                    quic_block_status = "error"
+                    quic_block_error = err
+        else:
+            self.quic_guard.remove_block()
+            quic_block_status = "disabled"
 
         if self.current_policy.inspection_enabled:
             # Check privilege requirements for Local Capture modes
@@ -256,6 +295,9 @@ class WebInspectionController:
             inspection_enabled=self.current_policy.inspection_enabled,
             privacy_guard_enabled=self.current_policy.privacy_guard_enabled,
             sensitive_destination_bypass_enabled=self.current_policy.sensitive_destination_bypass_enabled,
+            enable_quic_block=self.current_policy.enable_quic_block,
+            quic_block_status=quic_block_status,
+            quic_block_error=quic_block_error,
             proxy_running=proxy_running,
             ca_installed=ca_installed,
             ca_status=ca_status,
@@ -312,6 +354,10 @@ class WebInspectionController:
                 "ca_status": live_metrics.get("ca_status", snapshot.get("ca_status")),
                 "privacy_guard_enabled": live_metrics.get("privacy_guard_enabled"),
                 "sensitive_destination_bypass_enabled": live_metrics.get("sensitive_destination_bypass_enabled"),
+                "enable_quic_block": live_metrics.get("enable_quic_block"),
+                "quic_block_active": live_metrics.get("quic_block_active", False),
+                "quic_block_status": snapshot.get("quic_block_status", "disabled"),
+                "quic_block_error": snapshot.get("quic_block_error"),
                 "thumbprint_sha256": live_metrics.get("thumbprint_sha256"),
                 "issued_at": live_metrics.get("issued_at"),
                 "expires_at": live_metrics.get("expires_at"),
@@ -332,6 +378,9 @@ class WebInspectionController:
                 "upload_failures": live_metrics.get("upload_failures"),
                 "last_drop_reason": live_metrics.get("last_drop_reason"),
                 "drop_reasons": live_metrics.get("drop_reasons"),
+                "upstream_tls_healed_domains": live_metrics.get("upstream_tls_healed_domains", []),
+                "upstream_tls_recovering_domains": live_metrics.get("upstream_tls_recovering_domains", []),
+                "upstream_tls_persistently_failing_domains": live_metrics.get("upstream_tls_persistently_failing_domains", []),
             }
         )
         snapshot["browser_support"] = list(snapshot.get("browser_support") or [])
@@ -361,6 +410,13 @@ class WebInspectionController:
             "drop_reasons": snapshot.get("drop_reasons") or {},
             "privacy_guard_enabled": snapshot.get("privacy_guard_enabled"),
             "sensitive_destination_bypass_enabled": snapshot.get("sensitive_destination_bypass_enabled"),
+            "enable_quic_block": snapshot.get("enable_quic_block"),
+            "quic_block_active": bool(snapshot.get("quic_block_active")),
+            "quic_block_status": snapshot.get("quic_block_status"),
+            "quic_block_error": snapshot.get("quic_block_error"),
             "browser_launcher_deprecated": bool(snapshot.get("browser_launcher_deprecated")),
+            "upstream_tls_healed_domains": snapshot.get("upstream_tls_healed_domains", []),
+            "upstream_tls_recovering_domains": snapshot.get("upstream_tls_recovering_domains", []),
+            "upstream_tls_persistently_failing_domains": snapshot.get("upstream_tls_persistently_failing_domains", []),
         }
         return snapshot

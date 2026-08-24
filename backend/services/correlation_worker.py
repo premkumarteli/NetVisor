@@ -54,6 +54,7 @@ class CorrelationWorker:
         self.tenant_states: dict[str, TenantState] = defaultdict(TenantState)
         
         self.last_cleanup = time.time()
+        self._running = False
 
         # Cache variables for parsed configuration settings
         self._cached_cidrs_raw = ""
@@ -61,6 +62,11 @@ class CorrelationWorker:
         self._cached_assets_raw = ""
         self._cached_assets_ips = {}
         self._cached_assets_nets = {}
+
+    def stop(self) -> None:
+        """Stops the correlation worker loop."""
+        self._running = False
+        logger.info("Correlation Worker stopped.")
 
     def _get_org_cidrs(self, org_id: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
         raw = settings.NETVISOR_ORGANIZATION_CIDRS
@@ -458,7 +464,8 @@ class CorrelationWorker:
         logger.info("Starting Correlation Worker...")
         
         use_redis = False
-        while True:
+        self._running = True
+        while self._running:
             if not use_redis:
                 try:
                     r = get_redis_connection()
@@ -470,9 +477,14 @@ class CorrelationWorker:
                         if "BUSYGROUP" not in str(e):
                             raise
                     logger.info("Connected to Redis Stream '%s' for correlation analysis.", stream_name)
+                except asyncio.CancelledError:
+                    break
                 except Exception as e:
                     logger.warning("Redis not available for correlation worker, retrying: %s", e)
-                    await asyncio.sleep(5.0)
+                    try:
+                        await asyncio.sleep(5.0)
+                    except asyncio.CancelledError:
+                        break
                     continue
 
             try:
@@ -580,11 +592,42 @@ class CorrelationWorker:
                                 INCIDENTS_CREATED.inc()
                                 ALERTS_GENERATED.labels(severity=inc["severity"]).inc()
                                 
+                                alert_type = str(inc.get("type") or "LATERAL_MOVEMENT").upper()
+                                score_val = int(float(inc.get("confidence_score") or 0.5) * 50)
+                                src_ip = inc.get("src_ip")
+
+                                # Async database persistence for UEBA risk_events & rolling risk calculation
+                                try:
+                                    from backend.db.session import get_db_connection
+                                    from backend.services.alert_service import alert_service
+                                    from backend.services.device_service import device_service
+                                    
+                                    def _persist_risk():
+                                        conn = get_db_connection()
+                                        try:
+                                            alert_service.record_risk_event(
+                                                conn,
+                                                organization_id=org_id,
+                                                device_id=src_ip,
+                                                risk_type=alert_type,
+                                                score=score_val,
+                                                confidence=float(inc.get("confidence_score") or 1.0),
+                                                evidence_json={"chain": inc.get("chain"), "message": inc.get("message")}
+                                            )
+                                            device_service.calculate_rolling_device_risk(conn, src_ip, org_id)
+                                        finally:
+                                            conn.close()
+
+                                    await asyncio.to_thread(_persist_risk)
+                                except Exception as persist_err:
+                                    logger.warning("Failed to persist correlation risk event: %s", persist_err)
+
                                 await emit_event(
                                     "alert_event",
                                     {
                                         "organization_id": org_id,
                                         "id": f"corr-{time.time_ns()}",
+                                        "alert_type": alert_type,
                                         "severity": inc["severity"],
                                         "score": inc["confidence_score"],
                                         "confidence_level": inc["confidence_level"],
@@ -600,6 +643,8 @@ class CorrelationWorker:
                         except Exception as inner_err:
                             logger.error("Error in correlation analyzer: %s", inner_err)
                             # Exception occurs during analysis: do NOT ACK. It stays in PEL for retry or DLQ routing.
+            except asyncio.CancelledError:
+                break
             except Exception as loop_err:
                 if "Timeout reading from socket" in str(loop_err):
                     logger.debug("Redis correlation stream idle timeout: %s", loop_err)

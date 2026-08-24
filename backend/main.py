@@ -155,35 +155,77 @@ async def lifespan(app: FastAPI):
     # Shutdown logic
     logger.info("NetVisor Backend Shutting Down...")
     
-    # Stop BroadcastScheduler and EventDispatcher
+    # 1. Stop schedulers and background tasks first
     broadcast_scheduler.stop()
     event_dispatcher.stop()
-
-    # Export all database tables to db_dump unconditionally on shutdown
-    shutdown_export_conn = None
     try:
-        shutdown_export_conn = get_db_connection()
-        system_service.export_all_tables_to_db_dump(shutdown_export_conn)
-        logger.info("Shutdown full database export to db_dump complete.")
-    except Exception as e:
-        logger.error("Shutdown full database export failed: %s", e)
-    finally:
-        if shutdown_export_conn:
-            shutdown_export_conn.close()
-
-    shutdown_conn = None
-    if settings.BACKUP_AND_RESET_ON_SHUTDOWN:
-        try:
-            shutdown_conn = get_db_connection()
-            runtime_result = system_service.backup_and_reset_runtime_data(shutdown_conn, reason="shutdown")
-            logger.info("Shutdown runtime backup/reset complete: %s", runtime_result["message"])
-        finally:
-            if shutdown_conn:
-                shutdown_conn.close()
+        from .services.correlation_worker import correlation_worker
+        correlation_worker.stop()
+    except Exception:
+        pass
 
     for task in (flow_writer_task, correlation_task):
         if task:
             task.cancel()
+
+    # Allow brief window for task cancellation
+    tasks_to_wait = [t for t in (flow_writer_task, correlation_task) if t is not None]
+    if tasks_to_wait:
+        try:
+            await asyncio.wait(tasks_to_wait, timeout=1.0)
+        except Exception:
+            pass
+
+    # 2. Shut down thread executors and background threads
+    try:
+        from .services.vpn_detector import vpn_detector
+        vpn_detector.shutdown()
+    except Exception as e:
+        logger.warning("Error shutting down vpn_detector: %s", e)
+
+    try:
+        flow_service.shutdown()
+    except Exception as e:
+        logger.warning("Error shutting down flow_service: %s", e)
+
+    # 3. Export all database tables to db_dump unconditionally on shutdown (non-blocking thread with timeout)
+    def _do_shutdown_export():
+        conn = None
+        try:
+            conn = get_db_connection()
+            system_service.export_all_tables_to_db_dump(conn)
+        finally:
+            if conn:
+                conn.close()
+
+    try:
+        await asyncio.wait_for(asyncio.to_thread(_do_shutdown_export), timeout=10.0)
+        logger.info("Shutdown full database export to db_dump complete.")
+    except asyncio.TimeoutError:
+        logger.warning("Shutdown database export timed out after 10s.")
+    except Exception as e:
+        logger.error("Shutdown full database export failed: %s", e)
+
+    # 4. Backup and reset runtime data if configured
+    if settings.BACKUP_AND_RESET_ON_SHUTDOWN:
+        def _do_shutdown_backup():
+            conn = None
+            try:
+                conn = get_db_connection()
+                return system_service.backup_and_reset_runtime_data(conn, reason="shutdown")
+            finally:
+                if conn:
+                    conn.close()
+
+        try:
+            runtime_result = await asyncio.wait_for(asyncio.to_thread(_do_shutdown_backup), timeout=10.0)
+            logger.info("Shutdown runtime backup/reset complete: %s", runtime_result.get("message") if isinstance(runtime_result, dict) else runtime_result)
+        except asyncio.TimeoutError:
+            logger.warning("Shutdown runtime backup/reset timed out after 10s.")
+        except Exception as e:
+            logger.error("Shutdown runtime backup/reset failed: %s", e)
+
+    os.environ["NETVISOR_LIFESPAN_CLEANUP_DONE"] = "true"
 
 
 app = FastAPI(

@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 
 from ..core.dependencies import get_current_user, require_org_admin
-from ..db.session import get_db
+from ..db.session import get_db, get_db_connection
 from ..services.dashboard_service import dashboard_service
 from ..services.live_telemetry_store import live_telemetry_store
 

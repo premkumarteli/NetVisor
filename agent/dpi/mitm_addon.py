@@ -1,27 +1,41 @@
-import sys
-from pathlib import Path
 import json
+import logging
 import os
 import re
-from html import unescape
-from urllib.parse import parse_qs, urlsplit
+import sys
+import threading
+import time
 from datetime import datetime, timezone
+from html import unescape
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
-# Add project root to sys.path to allow importing from 'app'
+# Add project root to sys.path
 root = Path(__file__).resolve().parent.parent.parent
 if str(root) not in sys.path:
     sys.path.insert(0, str(root))
 
-from packet_engine import DpiObservation
+from cryptography import x509
 from intel import get_base_domain, get_service_info, is_sensitive_destination, normalize_host
+from packet_engine import DpiObservation
+from agent.dpi.aia_chaser import AiaChaser
+
+logger = logging.getLogger("NetVisorMitmAddon")
 
 EVENT_PREFIX = "__NETVISOR_WEB_EVENT__"
+STATUS_PREFIX = "__NETVISOR_DPI_STATUS__"
+ALERT_PREFIX = "__NETVISOR_DPI_ALERT__"
+
 ALLOWED_DOMAINS = {
     item
     for item in json.loads(os.getenv("NETVISOR_ALLOWED_DOMAINS_JSON", "[]") or "[]")
     if str(item).strip()
 }
 SNIPPET_MAX_BYTES = min(max(int(os.getenv("NETVISOR_SNIPPET_MAX_BYTES", "256")), 0), 256)
+
+# Backoff intervals in seconds: 5m, 15m, 30m, max 60m
+BACKOFF_INTERVALS = [300, 900, 1800, 3600]
+PERSISTENT_FAILURE_THRESHOLD = 3
 
 
 def _find_header(headers, name: str) -> str:
@@ -118,206 +132,53 @@ def extract_site_details(url: str, page_title: str | None) -> tuple[str, str | N
     if category == "search":
         q = (
             query.get("q")
+            or query.get("query")
             or query.get("p")
-            or query.get("query")
             or query.get("text")
-            or [None]
-        )[0]
-        return category, None, q, service_name
+            or []
+        )
+        search_query = q[0] if q else None
+        return "search", None, search_query, service_name
 
-    if service_name == "YouTube":
-        v_id = (query.get("v") or [None])[0]
-        playlist_id = (query.get("list") or [None])[0]
-        return "video", v_id or playlist_id, None, service_name
+    if "youtube.com" in base_domain or "youtu.be" in base_domain:
+        v = query.get("v", [])
+        content_id = v[0] if v else None
+        if not content_id and "/shorts/" in split.path:
+            parts = split.path.strip("/").split("/")
+            if len(parts) >= 2 and parts[0] == "shorts":
+                content_id = parts[1]
+        return "streaming_media", content_id, None, "YouTube"
 
-    if service_name == "YouTube Video":
-        # Video stream chunks
-        v_id = (query.get("id") or [None])[0]
-        return category, v_id, None, service_name
+    if "claude.ai" in base_domain:
+        parts = split.path.strip("/").split("/")
+        chat_id = parts[1] if len(parts) >= 2 and parts[0] == "chat" else None
+        return "ai_assistant", chat_id, None, "Claude"
 
-    if category == "dev" and base_domain == "github.com":
-        path = split.path.strip("/").split("/")
-        if len(path) >= 2:
-            repo = "/".join(path[:2])
-            if len(path) >= 4 and path[2] in {"issues", "pull"}:
-                return category, f"{repo}#{path[3]}", None, service_name
-            return category, repo, None, service_name
+    if "chatgpt.com" in base_domain or "openai.com" in base_domain:
+        parts = split.path.strip("/").split("/")
+        chat_id = parts[1] if len(parts) >= 2 and parts[0] == "c" else None
+        return "ai_assistant", chat_id, None, "ChatGPT"
 
-    if category == "ai":
-        segments = [segment for segment in split.path.strip("/").split("/") if segment]
-        if segments:
-            return category, "/".join(segments[:3]), None, service_name
-        prompt_hint = (
-            query.get("q")
-            or query.get("prompt")
-            or query.get("query")
-            or [None]
-        )[0]
-        if prompt_hint:
-            return category, None, prompt_hint, service_name
+    if "github.com" in base_domain:
+        parts = [p for p in split.path.strip("/").split("/") if p]
+        repo_id = "/".join(parts[:2]) if len(parts) >= 2 else None
+        return "developer_tools", repo_id, None, "GitHub"
 
     return category, None, None, service_name
 
 
-def extract_site_metadata(url: str, page_title: str | None) -> tuple[str, str | None]:
-    category, content_id, _, _ = extract_site_details(url, page_title)
-    return category, content_id
+def sanitize_snippet(snippet: str) -> str:
+    """Redacts obvious tokens/passwords in snippets before streaming."""
+    if not snippet:
+        return ""
+    token_pattern = r"(bearer\s+[\w\-\.]+)|(password\s*[:=]\s*[\w\-\.@!#]+)|(api[_\-]?key\s*[:=]\s*[\w\-]+)"
+    return re.sub(token_pattern, "[REDACTED_SECRET]", snippet, flags=re.IGNORECASE)[:SNIPPET_MAX_BYTES]
 
 
 def redact_url_secrets(url: str) -> str:
     if not url:
         return ""
-    try:
-        split = urlsplit(url)
-        if not split.query:
-            return url
-        
-        query = parse_qs(split.query, keep_blank_values=True)
-        sensitive_keys = {
-            "token", "auth", "key", "signature", "code", "state", "session",
-            "password", "secret", "access_token", "api_key", "sid", "ticket",
-            "id_token", "client_secret", "jwt", "authorization"
-        }
-        
-        redacted_params = []
-        for k, vals in query.items():
-            k_lower = k.lower()
-            if any(s in k_lower for s in sensitive_keys):
-                redacted_params.append(f"{k}=[REDACTED]")
-            else:
-                for val in vals:
-                    redacted_params.append(f"{k}={val}")
-                    
-        new_query = "&".join(redacted_params)
-        scheme = f"{split.scheme}://" if split.scheme else ""
-        return f"{scheme}{split.netloc}{split.path}?{new_query}"
-    except Exception:
-        return url
-
-
-def sanitize_string_value(val: str) -> str:
-    if not val:
-        return ""
-    # Regex for Fernet tokens
-    fernet_pattern = r"\bgAAAAA[A-Za-z0-9_-]{30,}\b"
-    # Regex for JWT tokens
-    jwt_pattern = r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"
-    
-    val = re.sub(fernet_pattern, "[REDACTED_FERNET_TOKEN]", val)
-    val = re.sub(jwt_pattern, "[REDACTED_JWT_TOKEN]", val)
-    
-    # Generic credential patterns in key-value format (e.g. token=xyz)
-    sensitive_kv_pattern = r"(?i)\b(token|auth|key|password|secret|access_token|api_key|sid|ticket)\s*[:=]\s*\"?[A-Za-z0-9_-]{6,}\b"
-    val = re.sub(sensitive_kv_pattern, r"\1=[REDACTED]", val)
-    
-    return val
-
-
-def sanitize_snippet(text: str) -> str:
-    if not text:
-        return ""
-        
-    sensitive_keys = {
-        "token", "auth", "key", "signature", "code", "state", "session",
-        "password", "secret", "access_token", "api_key", "sid", "ticket",
-        "id_token", "client_secret", "jwt", "authorization", "cookie"
-    }
-
-    try:
-        data = json.loads(text)
-        
-        def sanitize_node(node):
-            if isinstance(node, dict):
-                sanitized = {}
-                for k, v in node.items():
-                    k_lower = k.lower()
-                    if any(s in k_lower for s in sensitive_keys):
-                        sanitized[k] = "[REDACTED]"
-                    else:
-                        sanitized[k] = sanitize_node(v)
-                return sanitized
-            elif isinstance(node, list):
-                return [sanitize_node(item) for item in node]
-            elif isinstance(node, str):
-                return sanitize_string_value(node)
-            else:
-                return node
-                
-        sanitized_data = sanitize_node(data)
-        return json.dumps(sanitized_data, ensure_ascii=False)
-    except Exception:
-        return sanitize_string_value(text)
-
-
-def build_event(flow) -> dict | None:
-    request = getattr(flow, "request", None)
-    response = getattr(flow, "response", None)
-    if not request or not response:
-        return None
-
-    host = normalize_host(getattr(request, "pretty_host", None) or getattr(request, "host", None))
-    base_domain = _preferred_domain_label(host)
-    if not base_domain:
-        return None
-    if is_sensitive_destination(base_domain):
-        return None
-    if ALLOWED_DOMAINS and not any(
-        base_domain == allowed or host == allowed or host.endswith(f".{allowed}")
-        for allowed in ALLOWED_DOMAINS
-    ):
-        return None
-
-    content_type = ""
-    headers = getattr(response, "headers", {}) or {}
-    for key, value in headers.items():
-        if str(key).lower() == "content-type":
-            content_type = str(value)
-            break
-
-    raw_content = getattr(response, "content", None) or getattr(response, "raw_content", None) or b""
-    is_textual = content_type.startswith("text/") or "json" in content_type or "javascript" in content_type
-    snippet = None
-    page_title = None
-    if is_textual:
-        body = raw_content[:SNIPPET_MAX_BYTES]
-        decoded = body.decode("utf-8", errors="replace")
-        snippet = sanitize_snippet(decoded)
-        page_title = extract_page_title(raw_content[:32768])
-
-    raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
-    url = redact_url_secrets(raw_url)
-    content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
-    
-    # Use Service Name for better visibility
-    if not page_title:
-        if content_id:
-            page_title = f"{service_name}: {content_id}"
-        elif search_query:
-            page_title = f"Search: {search_query}"
-        else:
-            page_title = service_name if service_name != base_domain else split_url_label(url)
-
-    request_headers = getattr(request, "headers", {}) or {}
-    browser_name, process_name = infer_browser_identity(request_headers)
-
-    return DpiObservation(
-        browser_name=browser_name,
-        process_name=process_name,
-        page_url=url,
-        base_domain=base_domain,
-        page_title=page_title or "Untitled",
-        content_category=content_category,
-        content_id=content_id,
-        search_query=search_query,
-        http_method=getattr(request, "method", "GET"),
-        status_code=getattr(response, "status_code", None),
-        content_type=content_type or None,
-        request_bytes=len(getattr(request, "raw_content", None) or b""),
-        response_bytes=len(raw_content),
-        snippet_redacted=snippet,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        app=browser_name,
-    ).to_payload()
+    return re.sub(r"(key|token|auth|password|secret|apikey)=[^&#]+", r"\1=[REDACTED]", url, flags=re.IGNORECASE)
 
 
 def split_url_label(url: str) -> str:
@@ -327,7 +188,290 @@ def split_url_label(url: str) -> str:
     return split.netloc or "Untitled"
 
 
-def response(flow):
-    event = build_event(flow)
-    if event:
+class NetVisorDpiAddon:
+    """Mitmproxy Addon providing L7 DPI event extraction, dynamic AIA intermediate chain
+
+    healing, domain-scoped certificate verification, and resilient TTL fail-open tracking.
+    """
+
+    def __init__(self):
+        self.aia_chaser = AiaChaser()
+        self._lock = threading.Lock()
+        # Fail-open tracker structure:
+        # { domain: { "error": str, "failed_at": float, "expires_at": float, "consecutive_failures": int, "status": str } }
+        self._upstream_fail_open_tracker: dict[str, dict] = {}
+        self._last_telemetry_emit = 0.0
+
+    def _get_backoff_ttl(self, consecutive_failures: int) -> float:
+        idx = min(max(consecutive_failures - 1, 0), len(BACKOFF_INTERVALS) - 1)
+        return float(BACKOFF_INTERVALS[idx])
+
+    def _emit_telemetry_snapshot(self):
+        now = time.time()
+        with self._lock:
+            healed = self.aia_chaser.get_cached_domains()
+            recovering = []
+            persistently_failing = []
+
+            # Clean expired entries and categorize
+            expired_keys = []
+            for domain, data in list(self._upstream_fail_open_tracker.items()):
+                if now >= data["expires_at"]:
+                    expired_keys.append(domain)
+                    continue
+
+                item = {
+                    "domain": domain,
+                    "error": data["error"],
+                    "consecutive_failures": data["consecutive_failures"],
+                    "expires_in_seconds": max(int(data["expires_at"] - now), 0),
+                    "failed_at": datetime.fromtimestamp(data["failed_at"], timezone.utc).isoformat(),
+                }
+                if data["status"] == "persistently_failing":
+                    persistently_failing.append(item)
+                else:
+                    recovering.append(item)
+
+            for k in expired_keys:
+                del self._upstream_fail_open_tracker[k]
+
+        snapshot = {
+            "type": "upstream_tls_status",
+            "healed_domains": healed,
+            "recovering_domains": recovering,
+            "persistently_failing_domains": persistently_failing,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        print(f"{STATUS_PREFIX}{json.dumps(snapshot, ensure_ascii=False)}", flush=True)
+
+    # --- MITMPROXY HOOKS ---
+
+    def tls_clienthello(self, data):
+        """Called when a client initiates TLS handshake.
+
+        If the SNI host is currently in a non-expired fail-open state, ignore connection
+        to stream raw TCP without hard-failing to a 502 Bad Gateway.
+        """
+        sni = str(getattr(getattr(data, "client_hello", None), "sni", None) or "").strip().lower()
+        if not sni:
+            return
+
+        now = time.time()
+        should_ignore = False
+        with self._lock:
+            tracker = self._upstream_fail_open_tracker.get(sni)
+            if tracker:
+                if now < tracker["expires_at"]:
+                    should_ignore = True
+                else:
+                    # TTL expired: evict to re-attempt full upstream verification
+                    del self._upstream_fail_open_tracker[sni]
+
+        if should_ignore:
+            logger.debug("[TLS Fail-Open] Bypassing interception for %s (active fail-open TTL)", sni)
+            data.ignore_connection = True
+
+    def tls_failed_server(self, tls_data):
+        """Called when upstream TLS handshake with server fails."""
+        conn = getattr(tls_data, "conn", None)
+        if not conn:
+            return
+
+        sni = str(getattr(conn, "sni", None) or getattr(conn, "peername", [None])[0] or "").strip().lower()
+        error_msg = str(getattr(conn, "error", None) or "Unknown TLS handshake failure")
+        if not sni:
+            return
+
+        now = time.time()
+        with self._lock:
+            prev = self._upstream_fail_open_tracker.get(sni, {})
+            consecutive = prev.get("consecutive_failures", 0) + 1
+            status = "persistently_failing" if consecutive >= PERSISTENT_FAILURE_THRESHOLD else "recovering"
+            ttl = self._get_backoff_ttl(consecutive)
+
+            self._upstream_fail_open_tracker[sni] = {
+                "error": error_msg,
+                "failed_at": now,
+                "expires_at": now + ttl,
+                "consecutive_failures": consecutive,
+                "status": status,
+            }
+
+        logger.warning(
+            "[Upstream TLS Failure] %s failed verification (%s). Fail-open TTL: %ds, Consecutive: %d, Status: %s",
+            sni,
+            error_msg,
+            int(ttl),
+            consecutive,
+            status,
+        )
+
+        # Emit telemetry event
+        event = {
+            "type": "upstream_tls_verify_failed",
+            "domain": sni,
+            "error": error_msg,
+            "consecutive_failures": consecutive,
+            "status": status,
+            "ttl_seconds": int(ttl),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
         print(f"{EVENT_PREFIX}{json.dumps(event, ensure_ascii=False)}", flush=True)
+
+        if status == "persistently_failing":
+            alert = {
+                "type": "upstream_tls_persistent_blind_spot",
+                "domain": sni,
+                "error": error_msg,
+                "consecutive_failures": consecutive,
+                "severity": "WARNING",
+                "message": f"Domain {sni} has failed TLS verification {consecutive} consecutive times. Traffic is passing uninspected.",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            print(f"{ALERT_PREFIX}{json.dumps(alert, ensure_ascii=False)}", flush=True)
+
+        # If failure was missing intermediate certificate, trigger background AIA chasing
+        if "unable to get local issuer certificate" in error_msg.lower():
+            threading.Thread(target=self._async_chase_aia, args=(sni,), daemon=True).start()
+
+        self._emit_telemetry_snapshot()
+
+    def server_connect_error(self, data):
+        """Called on Layer 4 / TCP-level connection failures to upstream server."""
+        server = getattr(data, "server", None)
+        if not server:
+            return
+        address = getattr(server, "address", None)
+        sni = str(address[0] if address else "").strip().lower()
+        error_msg = str(getattr(server, "error", None) or "Upstream connection error")
+        if not sni:
+            return
+
+        now = time.time()
+        with self._lock:
+            prev = self._upstream_fail_open_tracker.get(sni, {})
+            consecutive = prev.get("consecutive_failures", 0) + 1
+            status = "persistently_failing" if consecutive >= PERSISTENT_FAILURE_THRESHOLD else "recovering"
+            ttl = self._get_backoff_ttl(consecutive)
+
+            self._upstream_fail_open_tracker[sni] = {
+                "error": error_msg,
+                "failed_at": now,
+                "expires_at": now + ttl,
+                "consecutive_failures": consecutive,
+                "status": status,
+            }
+
+        self._emit_telemetry_snapshot()
+
+    def _async_chase_aia(self, domain: str):
+        """Background thread worker that fetches leaf cert directly, validates AIA intermediate
+
+        cryptographically, and caches it scoped to domain.
+        """
+        import socket
+        import ssl
+
+        logger.info("[AIA Chase Worker] Starting background AIA chase for %s", domain)
+        try:
+            # Connect directly with unverified SSL to fetch leaf certificate
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            with socket.create_connection((domain, 443), timeout=8) as sock:
+                with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                    leaf_der = ssock.getpeercert(binary_form=True)
+
+            if not leaf_der:
+                logger.warning("[AIA Chase Worker] No leaf certificate returned by %s", domain)
+                return
+
+            leaf_cert = x509.load_der_x509_certificate(leaf_der)
+            result = self.aia_chaser.resolve_and_cache_for_domain(domain, leaf_cert)
+
+            if result.success:
+                with self._lock:
+                    # Immediately evict from fail-open so next flow uses healed chain!
+                    if domain in self._upstream_fail_open_tracker:
+                        del self._upstream_fail_open_tracker[domain]
+                logger.info("[AIA Chase Worker] Healed intermediate chain for %s! Evicted from fail-open.", domain)
+                self._emit_telemetry_snapshot()
+            else:
+                logger.warning("[AIA Chase Worker] AIA chase could not heal chain for %s: %s", domain, result.error)
+        except Exception as exc:
+            logger.warning("[AIA Chase Worker] Background AIA chase error for %s: %s", domain, exc)
+
+    def response(self, flow):
+        request = getattr(flow, "request", None)
+        response = getattr(flow, "response", None)
+        if not request or not response:
+            return
+
+        host = normalize_host(getattr(request, "pretty_host", None) or getattr(request, "host", None))
+        base_domain = _preferred_domain_label(host)
+        if not base_domain:
+            return
+        if is_sensitive_destination(base_domain):
+            return
+        if ALLOWED_DOMAINS and not any(
+            base_domain == allowed or host == allowed or host.endswith(f".{allowed}")
+            for allowed in ALLOWED_DOMAINS
+        ):
+            return
+
+        content_type = ""
+        headers = getattr(response, "headers", {}) or {}
+        for key, value in headers.items():
+            if str(key).lower() == "content-type":
+                content_type = str(value)
+                break
+
+        raw_content = getattr(response, "content", None) or getattr(response, "raw_content", None) or b""
+        is_textual = content_type.startswith("text/") or "json" in content_type or "javascript" in content_type
+        snippet = None
+        page_title = None
+        if is_textual:
+            body = raw_content[:SNIPPET_MAX_BYTES]
+            decoded = body.decode("utf-8", errors="replace")
+            snippet = sanitize_snippet(decoded)
+            page_title = extract_page_title(raw_content[:32768])
+
+        raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
+        url = redact_url_secrets(raw_url)
+        content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
+
+        if not page_title:
+            if content_id:
+                page_title = f"{service_name}: {content_id}"
+            elif search_query:
+                page_title = f"Search: {search_query}"
+            else:
+                page_title = service_name if service_name != base_domain else split_url_label(url)
+
+        request_headers = getattr(request, "headers", {}) or {}
+        browser_name, process_name = infer_browser_identity(request_headers)
+
+        event = DpiObservation(
+            browser_name=browser_name,
+            process_name=process_name,
+            page_url=url,
+            base_domain=base_domain,
+            page_title=page_title or "Untitled",
+            content_category=content_category,
+            content_id=content_id,
+            search_query=search_query,
+            http_method=getattr(request, "method", "GET"),
+            status_code=getattr(response, "status_code", None),
+            content_type=content_type or None,
+            request_bytes=len(getattr(request, "raw_content", None) or b""),
+            response_bytes=len(raw_content),
+            snippet_redacted=snippet,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            app=browser_name,
+        ).to_payload()
+
+        print(f"{EVENT_PREFIX}{json.dumps(event, ensure_ascii=False)}", flush=True)
+
+
+addons = [NetVisorDpiAddon()]

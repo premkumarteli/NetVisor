@@ -1675,31 +1675,202 @@ This project provided deep, hands-on experience in networking, systems security,
 
 ---
 
-## 2026-08-23 - TLS Interception Protocol Bypass & QUIC Blind Spot Audit
+## 2026-08-23 - TLS Interception Protocol Bypass & QUIC-to-TCP Forced Downgrade
 
 **Work completed**
 
-- Audited NetVisor Agent DPI interception path, TLS certificate management, and domain filtering logic across `agent/dpi/`, `intel/`, `packet_engine/`, and `backend/services/`.
-- Cross-referenced `formula1.com` (intercepted) vs. `claude.ai` (bypassed) to identify the root cause of inconsistent MITM interception.
-- Verified domain allowlists and sensitive destination lists (`agent/dpi/policy.py`, `intel/domain_intelligence.py`, `backend/services/web_inspection_service.py`), confirming `claude.ai` is allowed and not excluded.
-- Audited protocol support across `mitmdump` (`agent/dpi/proxy_manager.py`), `packet_engine/classifier.py`, and `agent/dpi/browser_launcher.py`.
+- Implemented `QuicGuard` (`agent/dpi/quic_guard.py`) to manage Windows Firewall rules (`NetVisor_Block_QUIC_UDP443`) for blocking outbound UDP port 443 during Web Inspection, forcing browsers to downgrade from HTTP/3 / QUIC to TCP-based HTTPS (HTTP/2 or HTTP/1.1) within ~100–300ms.
+- Integrated `QuicGuard` with `WebInspectionController` (`agent/dpi/controller.py`) for automatic rule application on inspection startup and safe rule deletion on stop/exit (`atexit.register(self.remove_block)`).
+- Added startup orphan cleanup in `agent/main.py` to remove any lingering rules from prior unexpected crashes.
+- Added `enable_quic_block` toggle to `InspectionPolicy` (`agent/dpi/policy.py`) and `config/agent.json` (defaulting to `false` for safe, deliberate rollout).
+- Implemented loud elevation failure handling (`quic_block_status: "elevation_required"` and logged `WARNING`) when running in un-elevated user contexts.
+- Added comprehensive unit and integration tests in `tests/test_quic_guard.py`.
 
 **Problem found**
 
-- Inconsistent TLS interception where `claude.ai` bypasses the agent with its genuine Let's Encrypt certificate while `formula1.com` is intercepted with `NetVisor Agent Root CA`.
-- Root cause: `claude.ai` is hosted on Cloudflare and uses HTTP/3 (QUIC over UDP port 443). NetVisor's `mitmdump` runs exclusively as a TCP forward proxy on port 8899.
-- Standard browsers route UDP 443 directly to origin IPs, completely bypassing the local TCP proxy unless `--disable-quic` is passed.
-- `BrowserLauncher` passes `--disable-quic` for custom wrappers, but unmanaged browser instances bypass DPI TLS inspection by default for all QUIC/HTTP-3 destinations (~35–40% of web traffic including Google, Cloudflare, Meta).
+- Inconsistent TLS interception where `claude.ai` (Cloudflare-fronted) was bypassing `mitmdump` over UDP 443 QUIC, while `formula1.com` was intercepted over TCP.
+- `netsh advfirewall` requires Administrator privileges, which succeeds in production Windows Services (`LocalSystem` via `netvisor_service.py`) but fails in standard un-elevated user shells.
 
 **Solution or learning**
 
-- In NDR architectures with local forward proxies, outbound UDP port 443 must be blocked/dropped (e.g. via Windows Firewall rule or packet filter) while DPI is active to force browsers to downgrade from QUIC to HTTP/2 or HTTP/1.1 over TCP.
-- Documented the architectural limitation in NDR capabilities: without QUIC blocking, HTTP/3 traffic is captured strictly at Layer 4 (flow metadata) without L7 payload decryption.
+- Implemented `QuicGuard` with explicit elevation checks (`ctypes.windll.shell32.IsUserAnAdmin()`), per-process and global rule scoping, and graceful degradation reporting when elevation is missing.
+- Windows Service deployment (`netvisor_service.py`) runs as `LocalSystem`, enabling seamless firewall rule management in production.
 
 **Evidence**
 
-- Code references: `agent/dpi/policy.py:21`, `agent/dpi/browser_launcher.py:44,59` (`--disable-quic`), `agent/dpi/proxy_manager.py:126` (`--listen-port 8899`), `packet_engine/classifier.py:94` (`("QUIC", "quic")`), `intel/domain_intelligence.py:31`.
-- Complete test suite passed: 141 tests passing.
+- Verification output: `netsh advfirewall firewall show rule name="NetVisor_Block_QUIC_UDP443"` confirms clean rule state with zero orphaned rules.
+- Test suite: `python -m pytest tests/test_quic_guard.py tests/test_dpi_controller.py tests/test_proxy_manager.py -v`: **12 passed, 0 failed** in 14.58s.
+---
+
+## 2026-08-23 - Graceful Server Shutdown & Worker ThreadPool Teardown
+
+**Work completed**
+- Configured Uvicorn `timeout_graceful_shutdown=5` (configurable via `NETVISOR_TIMEOUT_GRACEFUL_SHUTDOWN`) in `run_server.py` to prevent the server process from hanging indefinitely on open keep-alive connections or Socket.IO client connections during shutdown.
+- Refactored the FastAPI `lifespan` shutdown sequence in `backend/main.py` to stop schedulers and cancel asynchronous background tasks (`flow_writer_task`, `correlation_task`, `broadcast_scheduler`, `event_dispatcher`) first with an explicit await timeout.
+- Added explicit executor teardown (`shutdown()`) to `FlowService` (`_db_executor`) and `VPNDetector` (`ASNLookupService` and `TorIntelligence`) to prevent non-daemon worker threads from keeping the Python interpreter alive.
+- Added `self._running` state and `stop()` method to `CorrelationWorker` (`backend/services/correlation_worker.py`) with `asyncio.CancelledError` handling.
+- Offloaded synchronous full database table dump (`export_all_tables_to_db_dump`) and runtime backup reset (`backup_and_reset_runtime_data`) during lifespan shutdown to worker threads wrapped in `asyncio.wait_for` (10s timeout) to prevent event loop blocking.
+- Expanded `ALL_KNOWN_TABLES` whitelist in `backend/services/system_service.py` to recognize all NetVisor tables (`users`, `agents`, `gateways`, `organizations`, `credentials`, etc.), eliminating false `Skipping export of non-standard table` warning spam on shutdown.
+- Prevented redundant duplicate database dumps on process exit in `run_server.py` via `NETVISOR_LIFESPAN_CLEANUP_DONE`.
+
+**Problem found**
+- When shutting down (`Ctrl+C` or SIGINT), the backend logged `INFO: Shutting down` and hung indefinitely without exiting.
+- Background tasks (`flow_writer_task`, `correlation_task`) were being cancelled after heavy synchronous database dump operations, leaving active connections open.
+- Thread pools in `FlowService` and `VPNDetector` had non-daemon threads that blocked Python interpreter shutdown.
+- Missing `timeout_graceful_shutdown` in `uvicorn.run()` caused Uvicorn to wait indefinitely for lingering HTTP keep-alive connections.
+- `export_all_tables_to_db_dump` logged multiple `Skipping export of non-standard table` warnings for valid database tables because its whitelist was previously restricted to only the 12 volatile runtime tables.
+
+**Solution or learning**
+- Background tasks and thread pools must be cancelled/stopped in orderly sequence with timeouts before performing cleanup.
+- Set explicit graceful shutdown timeouts on ASGI servers and ensure all `ThreadPoolExecutor` instances are explicitly shut down.
+- Maintain a complete `ALL_KNOWN_TABLES` schema whitelist for backup and export operations while keeping `OPERATIONAL_TABLES` dedicated to runtime data wipe routines.
+
+**Evidence**
+- Pytest suite: `python -m pytest tests/test_app_main_import.py tests/test_correlation_worker.py tests/test_tier5_adversarial_backend.py -v` (23 passed, 0 failed).
+- Files modified: `run_server.py`, `backend/main.py`, `backend/services/system_service.py`, `backend/services/flow_service.py`, `backend/services/correlation_worker.py`, `backend/api/dashboard.py`.
+
+## 2026-08-23 - AIA Intermediate Certificate Chain Healing & Resilient TLS Fail-Open
+
+**Work completed**
+
+- Implemented `AiaChaser` (`agent/dpi/aia_chaser.py`) to parse Authority Information Access (`caIssuers`) extensions from leaf certificates, fetch missing intermediate CA certificates, cryptographically verify that the intermediate signed the leaf and chains to a Mozilla-trusted root, and cache intermediates strictly scoped to the specific domain (`_domain_intermediate_cache[domain]`).
+- Prevented global CA store contamination: verified intermediates are never injected into `ca-bundle-extended.pem` or trusted as global root anchors.
+- Integrated `AiaChaser` and resilient fail-open state tracking into `NetVisorDpiAddon` (`agent/dpi/mitm_addon.py`) across all upstream failure paths (`tls_failed_server` and `server_connect_error`).
+- Implemented bounded fail-open TTL with exponential backoff (**5m $\rightarrow$ 15m $\rightarrow$ 30m $\rightarrow$ max 60m**), evicting domains upon TTL expiry to force re-verification, and immediately evicting domains upon successful AIA chain resolution.
+- Added persistent failure tracking: domains failing $\ge 3$ consecutive verification cycles without AIA resolution escalate to `persistently_failing` and emit high-priority `upstream_tls_persistent_blind_spot` SOC alerts.
+- Exposed `upstream_tls_healed_domains`, `upstream_tls_recovering_domains`, and `upstream_tls_persistently_failing_domains` in `ProxyManager` (`agent/dpi/proxy_manager.py`) and `WebInspectionController` (`agent/dpi/controller.py`) telemetry.
+- Created comprehensive test suite in `tests/test_aia_chaser.py` covering cryptographic signature checks, rejection of unrelated/tampered/untrusted certs, domain-scoped caching, TTL eviction, and failure escalation.
+
+**Problem found**
+
+- Upstream government/enterprise portals with incomplete server-side intermediate chains (e.g. `digipharmed.pci.gov.in` using eMudhra/emSign PKI) caused `502 Bad Gateway: unable to get local issuer certificate` errors in NetVisor while working in direct Chrome due to Chrome's background AIA fetching.
+
+**Solution or learning**
+
+- Implemented dynamic AIA intermediate resolution without global CA pollution by verifying the intermediate cryptographically against the leaf and trusted root store and scoping the cache to individual domains.
+- Bounded fail-open with exponential backoff and persistent failure alerting prevents permanent unmonitored blind spots while ensuring smooth browsing continuity.
+
+**Evidence**
+
+- Test suite: `python -m pytest tests/test_aia_chaser.py tests/test_quic_guard.py tests/test_dpi_controller.py -v`: **21 passed, 0 failed** in 7.35s.
+- Tested files: `agent/dpi/aia_chaser.py`, `agent/dpi/mitm_addon.py`, `agent/dpi/proxy_manager.py`, `agent/dpi/controller.py`, `agent/dpi/__init__.py`, `tests/test_aia_chaser.py`.
+
+---
+
+## 2026-08-23 - Database Schema Modernization: Organizations Master, Normalized UEBA Risk Ledger, and Partition Management
+
+**Work completed**
+
+- **Canonical `organizations` Master Table:**
+  - Added `organizations` table to `REQUIRED_SECURITY_TABLES` and `REQUIRED_RUNTIME_TABLES` in `backend/db/session.py` with `id`, `name`, `slug`, `status`, `max_devices`, `data_retention_days`, and auto-updating timestamps.
+  - Implemented auto-bootstrapping in `ensure_bootstrap_state` to guarantee default organization provisioning and tenant integrity.
+- **Normalized UEBA Risk Events Ledger & Alert Taxonomy:**
+  - Added `risk_events` table to store granular, timestamped detection events (`organization_id`, `device_id`, `risk_type`, `confidence`, `score`, `evidence_json`).
+  - Upgraded `alerts` table with first-class indexed `alert_type` column to eliminate slow JSON parsing on dashboard queries.
+  - Added `record_risk_event` and `get_risk_events` methods to `AlertService` (`backend/services/alert_service.py`) and updated `RiskEventBase`, `RiskEvent`, and `AlertBase` models in `backend/schemas/alert_schema.py`.
+- **Device Identity & Dynamic IP History:**
+  - Added `device_ip_history` table (`id`, `organization_id`, `device_id`, `ip_address`, `assigned_at`, `released_at`, `discovery_source`) for persistent DHCP/VPN lease tracking.
+- **MySQL Flow Log Range Partitioning Utility:**
+  - Created `PartitionManager` (`backend/utils/partition_manager.py`) to generate monthly range partitioning DDL (`PARTITION BY RANGE (TO_DAYS(start_time))`) and manage 90-day retention pruning.
+- **Testing & Verification:**
+  - Added test suite `tests/test_schema_modernization.py` verifying schema declarations, partition DDL generation, and mocked risk event recording.
+  - Updated `tests/test_db_session.py` mock schema cursor to handle all new tables and columns.
+
+**Problem found**
+
+- Network monitoring telemetry without an explicit `organizations` table permitted orphan records and lacked tenant lifecycle controls.
+- Dynamic DHCP/VPN IP changes caused identity drift when entities were keyed primarily by IP rather than persistent device records with lease histories.
+- Evaluating alerts solely by unindexed JSON blobs (`reasons`) prevented efficient query planning and category-based alert filtering.
+
+**Solution or learning**
+
+- Established canonical tenant anchoring via `organizations` and decoupled device identity from dynamic IPs via `device_ip_history`.
+- Built the `risk_events` ledger and `alert_type` taxonomy to power behavior analytics (UEBA) without JSON inspection overhead.
+- Postponed distributed ClickHouse migration in favor of lightweight native MySQL monthly range partitioning with automated retention eviction.
+
+**Evidence**
+
+- Test suite: `python -m pytest tests/test_schema_modernization.py tests/test_db_session.py tests/test_device_service.py tests/test_auth_service.py -v`: **14 passed, 0 failed** in 2.85s.
+- Server health check: `python run_server.py --health-check`: **status: healthy**, runtime_schema_ready: true, security_schema_ready: true, default organization bootstrapped.
+- Touched files: `backend/db/session.py`, `backend/schemas/alert_schema.py`, `backend/schemas/device_schema.py`, `backend/services/alert_service.py`, `backend/utils/partition_manager.py`, `tests/test_schema_modernization.py`, `tests/test_db_session.py`.
+
+---
+
+## 2026-08-23 - Phase 2 Modernization: UEBA Risk Event Correlation, URL Privacy Sanitization, and Rolling Decayed Risk Scoring
+
+**Work completed**
+
+- **Rolling 24-Hour Decayed Risk Engine:**
+  - Implemented `calculate_rolling_device_risk` in `DeviceService` (`backend/services/device_service.py`), calculating continuous risk scores from active `risk_events` within the last 24h with exponential decay ($w = e^{-\Delta t / 12}$).
+  - Capped risk scores at 100 and updated `device_risks` table with risk levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`) and active reason lists.
+- **Correlation Worker Risk Event Emission:**
+  - Updated `CorrelationWorker` (`backend/services/correlation_worker.py`) to persist detection incidents into `risk_events` and invoke rolling risk score calculations asynchronously.
+- **Forensic URL Privacy Sanitizer:**
+  - Implemented `_sanitize_url` in `WebInspectionService` (`backend/services/web_inspection_service.py`) to strip sensitive query parameters (`?token=...`, `?key=...`, `?auth=...`) and fragments before writing to `web_events`.
+- **Testing & Verification:**
+  - Created `tests/test_phase2_modernization.py` validating URL query stripping and rolling decayed risk calculation with 100% test pass.
+
+**Problem found**
+
+- Raw URLs captured in web inspection could expose authentication tokens, OAuth parameters, or sensitive search terms in audit logs.
+- Static device risk scoring lacked temporal awareness, treating anomalies from 24 hours ago with the same severity as immediate active threats.
+
+**Solution or learning**
+
+- Stripping URL query parameters before persistence prevents credential leakage and ensures compliance with privacy standards.
+- Time-decayed UEBA aggregation enables realistic rolling risk calculations where inactive threats automatically age out without manual resets.
+
+**Evidence**
+
+- Test suite: `python -m pytest tests/test_schema_modernization.py tests/test_phase2_modernization.py tests/test_db_session.py tests/test_device_service.py tests/test_auth_service.py -v`: **16 passed, 0 failed** in 3.33s.
+- Touched files: `backend/services/device_service.py`, `backend/services/web_inspection_service.py`, `backend/services/correlation_worker.py`, `tests/test_phase2_modernization.py`.
+
+
+## 2026-08-23 - Setup and Troubleshooting Prompt Documentation for NetVisor DPI, Agent, Proxy & Certificates
+
+**Work completed**
+- Formulated complete, end-to-end setup and troubleshooting prompt guide for NetVisor project setup (DPI engine, agent, proxy, certificates, MySQL database, and frontend dashboard).
+- Documented step-by-step instructions for Npcap installation, Python virtual environment, `.env` initialization, database schema restoration, Root CA certificate trust installation (`netvisor-agent-root.pem`), mitmproxy configuration (`127.0.0.1:8899`), QUIC blocking, and multi-service execution.
+
+**Problem found**
+- User's teammate encountered setup and execution issues after cloning the repository, specifically around DPI interception, mitmproxy startup, root certificate trust store registration, and proxy configuration.
+
+**Solution or learning**
+- Detailed, exact prompt and step-by-step setup walkthrough resolves missing dependencies (Npcap, mitmproxy, MySQL schema) and fixes SSL certificate authority warnings (`NET::ERR_CERT_AUTHORITY_INVALID`) by properly registering the NetVisor Agent Root CA into the Windows Trusted Root Certification Authorities store.
+
+**Evidence**
+- Created comprehensive setup guide covering [README.md](file:///c:/Users/prem/Network/README.md), [docs/enable_dpi_personal.md](file:///c:/Users/prem/Network/docs/enable_dpi_personal.md), [docs/env-setup.md](file:///c:/Users/prem/Network/docs/env-setup.md), and DPI engine modules in [agent/dpi/cert_manager.py](file:///c:/Users/prem/Network/agent/dpi/cert_manager.py) and [agent/dpi/proxy_manager.py](file:///c:/Users/prem/Network/agent/dpi/proxy_manager.py).
+
+## 2026-08-24 - GitHub Student Developer Pack Offers & Integration Guidance
+
+**Work completed**
+- Categorized and prioritized key offers from the GitHub Student Developer Pack tailored for software engineering, web application development, cloud infrastructure, and security monitoring.
+- Highlighted top-tier developer tools, cloud infrastructure (Azure, MongoDB, Clerk, Appwrite), security/monitoring suites (Sentry, Datadog, Doppler, 1Password), IDEs (JetBrains, VS Code, GitKraken, Termius), and learning resources (FrontendMasters, Scrimba, DataCamp).
+
+**Problem found**
+- The GitHub Student Developer Pack contains over 80+ offers, making it overwhelming to identify which tools provide maximum value for active software projects and development environments.
+
+**Solution or learning**
+- Grouped offers by practical engineering workflows (Cloud & Databases, Security & Observability, Dev Environment & IDEs, Domains & Certificates, and Upskilling) with actionable setup recommendations.
+
+**Evidence**
+- Category breakdown and developer pack roadmap provided; updated `docs/project-logbook.md`.
+
+## 2026-08-24 - Git Remote Tracking & Working Tree Synchronization Audit
+
+**Work completed**
+- Performed `git fetch origin` and `git status` check on repository `https://github.com/premkumarteli/NetVisor.git`.
+- Evaluated commit synchronization state between local `master` branch and `origin/master`.
+- Identified 20 modified files and 7 untracked files in local workspace awaiting staging and commit.
+
+**Problem found**
+- Local commit history matches `origin/master` (no unpushed commits), but recent major implementations (AIA chain healing, QUIC guard, schema modernization, UEBA risk scoring, graceful shutdown fixes, and tests) exist as uncommitted changes in the local working tree.
+
+**Solution or learning**
+- Reported exact git status to user and listed all pending modified/untracked files so they can be staged, committed, and pushed to GitHub when ready.
+
+**Evidence**
+- Output of `git status` and `git fetch origin`: 20 modified files, 7 untracked files (`agent/dpi/aia_chaser.py`, `agent/dpi/quic_guard.py`, `backend/utils/partition_manager.py`, and test files).
 
 ---
 

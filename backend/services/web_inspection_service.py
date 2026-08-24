@@ -672,6 +672,20 @@ class WebInspectionService:
         finally:
             cursor.close()
 
+    def _sanitize_url(self, raw_url: str) -> str:
+        if not raw_url:
+            return ""
+        from urllib.parse import urlparse, urlunparse
+        try:
+            parsed = urlparse(raw_url)
+            if not parsed.scheme and not parsed.netloc:
+                return raw_url.split("?")[0][:512]
+            # Strip query strings and fragment to prevent PII and token leaks
+            clean_url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+            return clean_url[:512]
+        except Exception:
+            return raw_url.split("?")[0][:512]
+
     def _coerce_event(self, event: dict) -> Optional[dict]:
         device_ip = str(event.get("device_ip") or "").strip()
         agent_id = str(event.get("agent_id") or "").strip()
@@ -689,6 +703,7 @@ class WebInspectionService:
         first_seen = self._parse_timestamp(event.get("first_seen")) or datetime.now(timezone.utc)
         last_seen = self._parse_timestamp(event.get("last_seen")) or first_seen
         organization_id = event.get("organization_id")
+        sanitized_url = self._sanitize_url(str(event.get("page_url") or ""))
         
         return (
             organization_id,
@@ -696,7 +711,7 @@ class WebInspectionService:
             device_ip,
             str(event.get("process_name") or "unknown"),
             str(event.get("browser_name") or "Unknown"),
-            str(event.get("page_url") or ""),
+            sanitized_url,
             base_domain,
             str(event.get("page_title") or "Untitled")[:255],
             content_category,

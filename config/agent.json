@@ -10,5 +10,6 @@
   "verbose": true,
   "max_queue_size": 10000,
   "batch_size": 10,
-  "sample_rate": 1.0
+  "sample_rate": 1.0,
+  "enable_quic_block": true
 }

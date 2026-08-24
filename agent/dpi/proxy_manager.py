@@ -210,6 +210,26 @@ class ProxyManager:
             if any(p in line_str for p in ("Proxy server listening", "Local redirector started", "Windows proxy successfully initialized")):
                 self.ready_event.set()
 
+            if line.startswith("__NETVISOR_DPI_STATUS__"):
+                payload_str = line[len("__NETVISOR_DPI_STATUS__") :].strip()
+                try:
+                    status_data = json.loads(payload_str)
+                    with self._metrics_lock:
+                        self._upstream_tls_status = status_data
+                except Exception:
+                    pass
+                continue
+
+            if line.startswith("__NETVISOR_DPI_ALERT__"):
+                payload_str = line[len("__NETVISOR_DPI_ALERT__") :].strip()
+                try:
+                    alert_data = json.loads(payload_str)
+                    logger.warning("[DPI Alert] %s", alert_data.get("message"))
+                    self.on_event(alert_data)
+                except Exception:
+                    pass
+                continue
+
             if not line.startswith(EVENT_PREFIX):
                 continue
             payload = line[len(EVENT_PREFIX) :].strip()
@@ -248,6 +268,7 @@ class ProxyManager:
             last_event_at = self._last_event_at
             last_stderr_at = self._last_stderr_at
             captured_event_count = self._captured_event_count
+            upstream_tls = dict(getattr(self, "_upstream_tls_status", {}))
         return {
             "proxy_running": self.is_running(),
             "proxy_port": self.port,
@@ -258,4 +279,7 @@ class ProxyManager:
             "last_stderr_at": last_stderr_at,
             "captured_event_count": captured_event_count,
             "last_error": self.last_error,
+            "upstream_tls_healed_domains": upstream_tls.get("healed_domains", []),
+            "upstream_tls_recovering_domains": upstream_tls.get("recovering_domains", []),
+            "upstream_tls_persistently_failing_domains": upstream_tls.get("persistently_failing_domains", []),
         }

@@ -85,6 +85,46 @@ REQUIRED_SECURITY_TABLES = {
             INDEX idx_user_refresh_tokens_user (user_id)
         )
     """,
+    "organizations": """
+        CREATE TABLE IF NOT EXISTS organizations (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            slug VARCHAR(100) NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            max_devices INT UNSIGNED NOT NULL DEFAULT 500,
+            data_retention_days INT UNSIGNED NOT NULL DEFAULT 90,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_organizations_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "risk_events": """
+        CREATE TABLE IF NOT EXISTS risk_events (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            organization_id VARCHAR(64) NOT NULL,
+            device_id VARCHAR(64) NOT NULL,
+            risk_type VARCHAR(64) NOT NULL,
+            confidence FLOAT NOT NULL DEFAULT 1.0,
+            score INT NOT NULL,
+            evidence_json JSON NULL,
+            timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_risk_events_org_device_time (organization_id, device_id, timestamp),
+            INDEX idx_risk_events_type_time (risk_type, timestamp)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "device_ip_history": """
+        CREATE TABLE IF NOT EXISTS device_ip_history (
+            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+            organization_id VARCHAR(64) NOT NULL,
+            device_id VARCHAR(64) NOT NULL,
+            ip_address VARCHAR(45) NOT NULL,
+            assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            released_at DATETIME NULL,
+            discovery_source VARCHAR(32) NOT NULL DEFAULT 'agent',
+            INDEX idx_diph_lookup (organization_id, ip_address, assigned_at, released_at),
+            INDEX idx_diph_device (organization_id, device_id, assigned_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
     "certificate_revocations": """
         CREATE TABLE IF NOT EXISTS certificate_revocations (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -122,9 +162,18 @@ REQUIRED_SECURITY_COLUMNS = {
         "cert_expires_at": "ALTER TABLE agents ADD COLUMN cert_expires_at DATETIME NULL",
         "cert_status": "ALTER TABLE agents ADD COLUMN cert_status VARCHAR(20) DEFAULT 'none'",
     },
+    "alerts": {
+        "alert_type": "ALTER TABLE alerts ADD COLUMN alert_type VARCHAR(64) NOT NULL DEFAULT 'ANOMALY'",
+    },
+    "organizations": {
+        "slug": "ALTER TABLE organizations ADD COLUMN slug VARCHAR(100) NULL",
+        "max_devices": "ALTER TABLE organizations ADD COLUMN max_devices INT UNSIGNED NOT NULL DEFAULT 500",
+        "data_retention_days": "ALTER TABLE organizations ADD COLUMN data_retention_days INT UNSIGNED NOT NULL DEFAULT 90",
+    },
 }
 
 REQUIRED_RUNTIME_TABLES = (
+    "organizations",
     "agents",
     "agent_enrollment_requests",
     "devices",
@@ -135,6 +184,7 @@ REQUIRED_RUNTIME_TABLES = (
     "worker_heartbeats",
     "flow_logs",
     "alerts",
+    "risk_events",
     "device_baselines",
     "inspection_policies",
     "web_events",
@@ -634,8 +684,8 @@ def ensure_bootstrap_state():
         org = cursor.fetchone()
         if not org:
             cursor.execute(
-                "INSERT INTO organizations (id, name, status) VALUES (%s, %s, %s)",
-                (default_org_id, "Default Organization", "active"),
+                "INSERT INTO organizations (id, name, slug, status) VALUES (%s, %s, %s, %s)",
+                (default_org_id, "Default Organization", "default-org", "active"),
             )
         else:
             default_org_id = org["id"]

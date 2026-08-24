@@ -78,6 +78,8 @@ def perform_health_check() -> int:
 def cleanup_runtime_on_process_exit():
     if os.getenv("NETVISOR_RELOAD", "false").lower() == "true":
         return
+    if os.getenv("NETVISOR_LIFESPAN_CLEANUP_DONE", "false").lower() == "true":
+        return
 
     try:
         from backend.db.session import get_db_connection
@@ -134,6 +136,7 @@ if __name__ == "__main__":
     limit_concurrency = int(os.getenv("NETVISOR_LIMIT_CONCURRENCY", "1000"))
     backlog = int(os.getenv("NETVISOR_SERVER_BACKLOG", "2048"))
     timeout_keep_alive = int(os.getenv("NETVISOR_TIMEOUT_KEEP_ALIVE", "30"))
+    timeout_graceful_shutdown = int(os.getenv("NETVISOR_TIMEOUT_GRACEFUL_SHUTDOWN", "5"))
 
     print("[*] Netvisor Server Starting...")
     print("[*] Local Access:   http://127.0.0.1:8000")
@@ -155,6 +158,7 @@ if __name__ == "__main__":
             limit_concurrency=limit_concurrency,
             backlog=backlog,
             timeout_keep_alive=timeout_keep_alive,
+            timeout_graceful_shutdown=timeout_graceful_shutdown,
             http="auto",
             loop="auto",
         )
