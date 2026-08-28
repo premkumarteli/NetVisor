@@ -64,6 +64,7 @@ class ProxyManager:
             return discovered
 
         candidate_dirs = [
+            Path(sys.executable).resolve().parent,
             Path(sys.executable).resolve().parent / "Scripts",
             Path.home() / "AppData/Roaming/Python/Python313/Scripts",
             Path.home() / "AppData/Roaming/Python/Python312/Scripts",

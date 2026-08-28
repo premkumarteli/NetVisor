@@ -217,8 +217,12 @@ def _extract_tls_sni(payload: bytes) -> str | None:
     return None
 
 
+import re
+
+_HTTP_HOST_REGEX = re.compile(rb"(?i)\r?\nHost:\s*([^\r\n]+)")
+
 def _extract_http_host(payload: bytes) -> str | None:
-    if not payload or len(payload) < 4:
+    if not payload or len(payload) < 10:
         return None
 
     prefix = payload[:8]
@@ -235,30 +239,14 @@ def _extract_http_host(payload: bytes) -> str | None:
     ):
         return None
 
-    try:
-        text = payload.decode("utf-8", errors="ignore")
-    except Exception:
-        return None
+    # Limit header search window to first 1,024 bytes to avoid CPU DoS on large payloads
+    header_chunk = payload[:1024]
+    match = _HTTP_HOST_REGEX.search(header_chunk)
+    if match:
+        raw_host = match.group(1).decode("utf-8", errors="ignore").strip()
+        return _normalize_domain(raw_host)
 
-    lines = text.splitlines()
-    if not lines:
-        return None
-
-    request_line = lines[0].strip()
-    if not (
-        request_line.startswith(("GET ", "POST ", "PUT ", "PATCH ", "DELETE ", "HEAD ", "OPTIONS ", "CONNECT "))
-        or request_line.startswith("HTTP/")
-    ):
-        return None
-
-    for line in lines[1:16]:
-        if not line:
-            break
-        header_name, sep, header_value = line.partition(":")
-        if not sep:
-            continue
-        if header_name.strip().lower() == "host":
-            return _normalize_domain(header_value)
+    return None
 
 import hashlib
 

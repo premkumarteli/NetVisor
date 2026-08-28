@@ -213,8 +213,45 @@ class CertificateManager:
             return False
         return self._is_store_match(thumbprint, self.trust_scope)
 
+    def cleanup_stale_certificates(self) -> None:
+        powershell = self._find_powershell()
+        if not powershell:
+            return
+        active_thumbprint = self.certificate_thumbprint_sha256() or ""
+        script = (
+            f"$expected='{active_thumbprint}'; "
+            f"$stores = @('Cert:\\CurrentUser\\Root'); "
+            f"if ('{self.trust_scope}' -eq 'LocalMachine') {{ $stores += 'Cert:\\LocalMachine\\Root' }}; "
+            "Get-ChildItem -Path $stores -ErrorAction SilentlyContinue | ForEach-Object {{ "
+            "  try {{ "
+            "    if ($_.Subject -like '*NetVisor Agent Root CA*') {{ "
+            "      $sha = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($_.RawData)).Replace('-', ''); "
+            "      if ($sha -ne $expected) {{ "
+            "        $thumb = $_.Thumbprint; "
+            "        if ($_.PSParentPath -like '*LocalMachine*') {{ "
+            "          Start-Process certutil -ArgumentList ('-delstore Root ' + $thumb) -NoNewWindow -Wait -ErrorAction SilentlyContinue; "
+            "        }} else {{ "
+            "          Start-Process certutil -ArgumentList ('-user -delstore Root ' + $thumb) -NoNewWindow -Wait -ErrorAction SilentlyContinue; "
+            "        }} "
+            "      }} "
+            "    }} "
+            "  }} catch {{}} "
+            "}}"
+        )
+        try:
+            subprocess.run(
+                [powershell, "-NoProfile", "-Command", script],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+
     def install_if_needed(self) -> tuple[bool, str | None]:
         self.ensure_ca_files()
+        self.cleanup_stale_certificates()
         if self.is_installed():
             metadata = self._load_metadata()
             if metadata:

@@ -1,13 +1,13 @@
-from __future__ import annotations
-
 import time
+import socket
+import dpkt
 from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .classifier import analyze_packet
-from .metadata import DomainHintCache
+from .classifier import analyze_packet, TCP_SIGNATURE_PORTS, UDP_SIGNATURE_PORTS
+from .metadata import DomainHintCache, _extract_tls_sni, _extract_http_host, extract_ja4_fingerprint
 
 
 @lru_cache(maxsize=1)
@@ -43,6 +43,7 @@ class FlowObservation:
     service_name: Optional[str] = None
     analysis_source: str = "transport_fallback"
     analysis_confidence: float = 0.0
+    protocol_confidence: float = 1.0
     analysis_signals: tuple[str, ...] = ()
     vlan_id: int = 0
     fwd_bytes: int = 0
@@ -86,6 +87,7 @@ class FlowObservation:
             service_name=observation.service_name,
             analysis_source=observation.analysis_source,
             analysis_confidence=observation.analysis_confidence,
+            protocol_confidence=observation.protocol_confidence,
             analysis_signals=observation.analysis_signals,
             vlan_id=observation.vlan_id,
             fwd_bytes=observation.packet_size,
@@ -121,6 +123,7 @@ class FlowObservation:
             "service_name": self.service_name,
             "analysis_source": self.analysis_source,
             "analysis_confidence": self.analysis_confidence,
+            "protocol_confidence": self.protocol_confidence,
             "analysis_signals": list(self.analysis_signals),
             "vlan_id": self.vlan_id,
             "fwd_bytes": self.fwd_bytes,
@@ -154,6 +157,7 @@ class PacketObservation:
     service_name: Optional[str] = None
     analysis_source: str = "transport_fallback"
     analysis_confidence: float = 0.0
+    protocol_confidence: float = 1.0
     analysis_signals: tuple[str, ...] = ()
     vlan_id: int = 0
     tcp_flags: Optional[str] = None
@@ -216,6 +220,140 @@ class PacketObservation:
         )
 
     @classmethod
+    def from_raw_bytes(
+        cls,
+        raw_bytes: bytes,
+        *,
+        source_type: str = "agent",
+        metadata_only: bool = False,
+        domain_cache: DomainHintCache | None = None,
+        observed_at: float | None = None,
+    ) -> "PacketObservation | None":
+        if not raw_bytes or len(raw_bytes) < 14:
+            return None
+
+        src_mac = None
+        dst_mac = None
+        vlan_id = 0
+        src_ip = None
+        dst_ip = None
+        proto = "UNKNOWN"
+        src_port = 0
+        dst_port = 0
+        tcp_flags = None
+        payload = b""
+
+        try:
+            eth = dpkt.ethernet.Ethernet(raw_bytes)
+            if eth.type in (0x0800, 0x86DD, 0x8100, 0x0806) and isinstance(eth.data, (dpkt.ip.IP, dpkt.ip6.IP6)):
+                src_mac = ":".join(f"{b:02x}" for b in eth.src)
+                dst_mac = ":".join(f"{b:02x}" for b in eth.dst)
+                vlan_id = getattr(eth, "vlanid", 0)
+                ip_layer = eth.data
+            if isinstance(ip_layer, dpkt.ip.IP):
+                src_ip = socket.inet_ntop(socket.AF_INET, ip_layer.src)
+                dst_ip = socket.inet_ntop(socket.AF_INET, ip_layer.dst)
+                transport = ip_layer.data
+                proto_num = ip_layer.p
+            elif isinstance(ip_layer, dpkt.ip6.IP6):
+                src_ip = socket.inet_ntop(socket.AF_INET6, ip_layer.src)
+                dst_ip = socket.inet_ntop(socket.AF_INET6, ip_layer.dst)
+                transport = ip_layer.data
+                proto_num = ip_layer.nxt
+            else:
+                return None
+        except Exception:
+            return None
+
+        if isinstance(transport, dpkt.tcp.TCP):
+            proto = "TCP"
+            src_port = transport.sport
+            dst_port = transport.dport
+            flags = []
+            if transport.flags & dpkt.tcp.TH_SYN: flags.append("SYN")
+            if transport.flags & dpkt.tcp.TH_ACK: flags.append("ACK")
+            if transport.flags & dpkt.tcp.TH_FIN: flags.append("FIN")
+            if transport.flags & dpkt.tcp.TH_RST: flags.append("RST")
+            if transport.flags & dpkt.tcp.TH_PUSH: flags.append("PSH")
+            if transport.flags & dpkt.tcp.TH_URG: flags.append("URG")
+            tcp_flags = ",".join(flags) if flags else None
+            payload = transport.data
+        elif isinstance(transport, dpkt.udp.UDP):
+            proto = "UDP"
+            src_port = transport.sport
+            dst_port = transport.dport
+            payload = transport.data
+        elif isinstance(transport, bytes):
+            payload = transport
+            proto = str(proto_num)
+
+        domain = None
+        sni = None
+        ja4 = None
+        app_proto = proto
+        service_name = None
+        confidence = 0.60
+        signals = [proto.lower()]
+
+        if proto == "TCP":
+            port = dst_port if dst_port in TCP_SIGNATURE_PORTS else src_port
+            if port in TCP_SIGNATURE_PORTS:
+                app_proto, service_name = TCP_SIGNATURE_PORTS[port]
+                confidence = 0.90
+                signals.append(f"port_{port}")
+
+            if port in (80, 8080, 8000, 5000):
+                host = _extract_http_host(payload)
+                if host:
+                    domain = host
+                    app_proto = "HTTP"
+                    confidence = 1.00
+                    signals.append("http_host")
+            elif port in (443, 8443, 4433):
+                extracted_sni = _extract_tls_sni(payload)
+                if extracted_sni:
+                    sni = extracted_sni
+                    domain = extracted_sni
+                    app_proto = "TLS"
+                    confidence = 1.00
+                    signals.append("tls_sni")
+                ja4 = extract_ja4_fingerprint(raw_bytes, transport_protocol="TCP")
+                if ja4:
+                    signals.append("ja4_fingerprint")
+
+        elif proto == "UDP":
+            port = dst_port if dst_port in UDP_SIGNATURE_PORTS else src_port
+            if port in UDP_SIGNATURE_PORTS:
+                app_proto, service_name = UDP_SIGNATURE_PORTS[port]
+                confidence = 0.90
+                signals.append(f"port_{port}")
+
+        return cls(
+            observed_at=observed_at if observed_at is not None else time.time(),
+            source_type=str(source_type or "agent"),
+            metadata_only=bool(metadata_only),
+            src_ip=src_ip,
+            dst_ip=dst_ip,
+            src_port=src_port,
+            dst_port=dst_port,
+            protocol=proto,
+            packet_size=len(raw_bytes),
+            domain=domain,
+            sni=sni,
+            ja4=ja4,
+            src_mac=src_mac,
+            dst_mac=dst_mac,
+            application_protocol=app_proto,
+            service_name=service_name,
+            analysis_source="dpkt_fast_dissector",
+            analysis_confidence=confidence,
+            protocol_confidence=1.00,
+            analysis_signals=tuple(signals),
+            vlan_id=vlan_id,
+            tcp_flags=tcp_flags,
+        )
+
+    @classmethod
     def from_packet(
         cls,
         packet,
@@ -225,6 +363,31 @@ class PacketObservation:
         domain_cache: DomainHintCache | None = None,
         observed_at: float | None = None,
     ) -> "PacketObservation | None":
+        if isinstance(packet, bytes):
+            dpkt_obs = cls.from_raw_bytes(
+                packet,
+                source_type=source_type,
+                metadata_only=metadata_only,
+                domain_cache=domain_cache,
+                observed_at=observed_at,
+            )
+            if dpkt_obs is not None:
+                return dpkt_obs
+        elif hasattr(packet, "__bytes__"):
+            try:
+                raw_b = bytes(packet)
+                dpkt_obs = cls.from_raw_bytes(
+                    raw_b,
+                    source_type=source_type,
+                    metadata_only=metadata_only,
+                    domain_cache=domain_cache,
+                    observed_at=observed_at,
+                )
+                if dpkt_obs is not None:
+                    return dpkt_obs
+            except Exception:
+                pass
+
         Ether, IP, IPv6, TCP, UDP = _load_scapy_primitives()
         if not packet or not (packet.haslayer(IP) or packet.haslayer(IPv6)):
             return None
