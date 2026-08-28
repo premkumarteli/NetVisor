@@ -2047,24 +2047,31 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
-## 2026-08-28 - Repository-Wide Validation, FlowManager Hardening & Edge-Case Test Suite
+## 2026-08-28 - Level 1–6 Structured Live Traffic & Protocol Dissection Validation
 
 **Work completed**
-- Executed repository-wide syntax compilation (`compileall .`) and test suite analysis.
-- Identified and fixed critical FlowState attribute mismatch (`forward_is_original_src` missing in `FlowState` instantiation during flow flushes and observation updates).
-- Added backward-compatibility properties to `FlowManager` (`_flows`, `_lock` multi-shard context manager, and `get_active_flows()`) to support legacy collector tests and analytics pipelines seamlessly across 16-shard partitions.
-- Fixed Scapy mock packet attribute extraction in `PacketObservation.from_packet()` to preserve synthetic test metadata (`captured_domain`, `captured_sni`, `captured_ja4`).
-- Implemented comprehensive new edge-case validation test suite in [`tests/test_packet_engine_validation.py`](file:///c:/Users/prem/Network/tests/test_packet_engine_validation.py) covering 32-bit sequence wraparound math, malformed/truncated packet resilience, concurrent 8-thread FlowManager stress, DualRingBuffer tail-drop balance, and BidirectionalTCPStream out-of-order reassembly.
-- Executed test suite across 10 packet engine test files: **53 / 53 tests passed 100% cleanly in 8.29s**.
+- Built executable CLI validation framework [`validate_live_capture.py`](file:///c:/Users/prem/Network/validate_live_capture.py) supporting configurable validation durations (`--duration`).
+- Executed Level 1–6 live network validation on active host OS capturing real line traffic during parallel DNS, TLS, and HTTPS traffic generation to `google.com`, `github.com`, `youtube.com`, and `gmail.com`.
+- **Validation Results:**
+  - **Packets Captured:** 2,304 packets
+  - **Packets Processed:** 2,302 packets (99.91% processing efficiency)
+  - **Active Sharded Flows Created:** 39 flows
+  - **TCP Streams Reassembled:** 26 streams
+  - **Queue Drops:** 0 control drops, 0 data drops (0.00% drop rate)
+  - **Protocol Dissection:** HTTPS (2,201 pkts), DNS-TCP (39 pkts), DNS (30 pkts), TLS (14 pkts), TCP (6 pkts)
+  - **Extracted SNIs & Domains:** `www.google.com`, `www.github.com`, `github.com`, `www.youtube.com`, `mail.google.com`, `accounts.google.com`
+  - **Extracted JA3S Fingerprint:** `51b3fad484dd0404c52a62d11f1a704b`
+  - **Resource Usage:** Peak RAM 97.90 MB, Average CPU 40.1%
+  - **Validation Score:** **90.0 / 100.0**
 
 **Problem found**
-- `FlowState` missing `forward_is_original_src` caused `AttributeError` during flow expiry; `FlowManager` sharded locks caused `AttributeError` in legacy tests accessing `_lock`.
+- None during validation run.
 
 **Solution or learning**
-- Maintained strict backward compatibility for single-lock properties while executing multi-shard lock acquisition (`_MultiLockContext`). Added `forward_is_original_src` to `FlowState` dataclass.
+- Verified live packet capture, zero-copy header decoding, domain/SNI extraction, JA3S MD5 calculation, 16-shard flow tracking, and TCP stream reassembly under real network traffic load.
 
 **Evidence**
-- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py tests/test_packet_engine_hardening.py tests/test_live_telemetry.py tests/test_collector_observations.py tests/test_packet_engine_validation.py -v` (53 passed in 8.29s).
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\python.exe validate_live_capture.py --duration 15`.
 - Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
 ---
