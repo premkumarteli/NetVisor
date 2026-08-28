@@ -9,15 +9,25 @@ and TCP stream reassembly.
 from __future__ import annotations
 
 import sys
+import os
+
+# Auto-activate local .venv site-packages if executed via global python binary
+_venv_site = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".venv", "Lib", "site-packages")
+if os.path.exists(_venv_site) and _venv_site not in sys.path:
+    sys.path.insert(0, _venv_site)
+
 import time
 import argparse
 import threading
 import urllib.request
 import socket
-import psutil
-import os
 import logging
 from typing import Dict, List, Any
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from packet_engine import (
     DualRingBuffer,
@@ -68,16 +78,17 @@ class LiveCaptureValidator:
         self.sample_flows: List[Dict[str, Any]] = []
 
     def _process_envelope(self, envelope) -> None:
-        raw_b = envelope.raw_bytes
+        raw_pkt = envelope.raw_bytes
         ts = envelope.timestamp
+        raw_bytes = bytes(raw_pkt) if hasattr(raw_pkt, "__bytes__") else (raw_pkt if isinstance(raw_pkt, bytes) else b"")
 
         try:
             # 1. Fast BPF Filter Check
-            if not self.bpf_filter.should_pass_packet(raw_b):
+            if raw_bytes and not self.bpf_filter.should_pass_packet(raw_bytes):
                 return
 
-            # 2. Zero-Copy DPKT Fast Packet Observation Dissection
-            obs = PacketObservation.from_raw_bytes(raw_b, observed_at=ts)
+            # 2. Fast Packet Observation Dissection
+            obs = PacketObservation.from_packet(raw_pkt, observed_at=ts)
             if obs is None:
                 return
 
@@ -91,8 +102,8 @@ class LiveCaptureValidator:
                 self.captured_snis.add(obs.sni)
 
             # 3. Protocol Dissectors (TLS / JA3 / ALPN / QUIC)
-            if obs.protocol == "TCP" and len(raw_b) > 54:
-                payload = raw_b[54:]
+            if obs.protocol == "TCP" and len(raw_bytes) > 54:
+                payload = raw_bytes[54:]
                 ch_meta = parse_tls_client_hello_record(payload)
                 if ch_meta:
                     if ch_meta.sni:
@@ -109,8 +120,8 @@ class LiveCaptureValidator:
                     if sh_meta.server_alpn:
                         self.captured_alpn.add(sh_meta.server_alpn)
 
-            elif obs.protocol == "UDP" and obs.dst_port == 443 and len(raw_b) > 42:
-                payload = raw_b[42:]
+            elif obs.protocol == "UDP" and obs.dst_port == 443 and len(raw_bytes) > 42:
+                payload = raw_bytes[42:]
                 quic_meta = extract_quic_metadata(payload)
                 if quic_meta and quic_meta.is_quic:
                     self.captured_quic_versions.add(quic_meta.version)
@@ -196,8 +207,7 @@ class LiveCaptureValidator:
             )
             
             def on_pkt(raw_packet):
-                raw_b = bytes(raw_packet) if hasattr(raw_packet, "__bytes__") else str(raw_packet).encode("utf-8", errors="ignore")
-                self.ring_buffer.push(raw_b, priority=0, timestamp=time.time())
+                self.ring_buffer.push(raw_packet, priority=0, timestamp=time.time())
 
             capture_thread = threading.Thread(target=lambda: backend.start(on_pkt), daemon=True)
             capture_thread.start()
@@ -210,14 +220,18 @@ class LiveCaptureValidator:
         traffic_thread.start()
 
         # 4. Measure System Resource Usage
-        proc = psutil.Process(os.getpid())
+        proc = psutil.Process(os.getpid()) if psutil is not None else None
         cpu_samples = []
         ram_samples = []
 
         start_time = time.time()
         while time.time() - start_time < self.duration_seconds:
-            cpu_samples.append(proc.cpu_percent())
-            ram_samples.append(proc.memory_info().rss / (1024 * 1024))
+            if proc is not None:
+                try:
+                    cpu_samples.append(proc.cpu_percent())
+                    ram_samples.append(proc.memory_info().rss / (1024 * 1024))
+                except Exception:
+                    pass
             time.sleep(1.0)
 
         # 5. Stop Capture & Drain Loop

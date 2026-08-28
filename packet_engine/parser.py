@@ -1,6 +1,7 @@
-import time
-import socket
-import dpkt
+try:
+    import dpkt
+except ImportError:
+    dpkt = None
 from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -242,6 +243,9 @@ class PacketObservation:
         dst_port = 0
         tcp_flags = None
         payload = b""
+
+        if dpkt is None:
+            return None
 
         try:
             eth = dpkt.ethernet.Ethernet(raw_bytes)

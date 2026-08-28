@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import socket
-import struct
-import dpkt
+try:
+    import dpkt
+except ImportError:
+    dpkt = None
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
