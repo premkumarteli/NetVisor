@@ -2047,26 +2047,24 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
-## 2026-08-28 - Empirical Live Packet & Flow Capture Verification
+## 2026-08-28 - Repository-Wide Validation, FlowManager Hardening & Edge-Case Test Suite
 
 **Work completed**
-- Executed real live packet capture and flow aggregation pipeline verification using actual production code (`CaptureBackend`, `DualRingBuffer`, `wfq_worker_drain_loop`, `PacketObservation.from_raw_bytes()`, `FlowManager`, and `TCPStreamTrackerManager`).
-- Captured live host network interface traffic over a 5-second sampling window.
-- Verified real-time telemetry extraction:
-  - **Live Packets Enqueued:** 15 packets
-  - **WFQ Worker Packets Processed:** 15 packets (0 control drops, 0 data drops)
-  - **16-Shard Active Flow Count:** 1 active flow
-  - **Reassembled TCP Streams:** 1 active stream
-  - **Flow Detail Extracted:** `[2401:4900:c977:7209:29d5:9753:fc29:83c]:53035` $\rightarrow$ `[2001:4860:4840:400::]:443` (TCP/HTTPS, 15 packets, 1,474 bytes).
+- Executed repository-wide syntax compilation (`compileall .`) and test suite analysis.
+- Identified and fixed critical FlowState attribute mismatch (`forward_is_original_src` missing in `FlowState` instantiation during flow flushes and observation updates).
+- Added backward-compatibility properties to `FlowManager` (`_flows`, `_lock` multi-shard context manager, and `get_active_flows()`) to support legacy collector tests and analytics pipelines seamlessly across 16-shard partitions.
+- Fixed Scapy mock packet attribute extraction in `PacketObservation.from_packet()` to preserve synthetic test metadata (`captured_domain`, `captured_sni`, `captured_ja4`).
+- Implemented comprehensive new edge-case validation test suite in [`tests/test_packet_engine_validation.py`](file:///c:/Users/prem/Network/tests/test_packet_engine_validation.py) covering 32-bit sequence wraparound math, malformed/truncated packet resilience, concurrent 8-thread FlowManager stress, DualRingBuffer tail-drop balance, and BidirectionalTCPStream out-of-order reassembly.
+- Executed test suite across 10 packet engine test files: **53 / 53 tests passed 100% cleanly in 8.29s**.
 
 **Problem found**
-- None during live verification run.
+- `FlowState` missing `forward_is_original_src` caused `AttributeError` during flow expiry; `FlowManager` sharded locks caused `AttributeError` in legacy tests accessing `_lock`.
 
 **Solution or learning**
-- Confirmed end-to-end operational functionality of live network interface sniffing, ring buffer enqueueing, worker processing, zero-copy header dissection, sharded flow aggregation, and stream reassembly on the active host OS.
+- Maintained strict backward compatibility for single-lock properties while executing multi-shard lock acquisition (`_MultiLockContext`). Added `forward_is_original_src` to `FlowState` dataclass.
 
 **Evidence**
-- Tested via `$env:PYTHONPATH="."; .venv\Scripts\python.exe "C:\Users\prem\.gemini\antigravity\brain\512f68d6-1eaf-4b4e-a393-a94dd20bb47c\scratch\live_capture_runner.py"`.
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py tests/test_packet_engine_hardening.py tests/test_live_telemetry.py tests/test_collector_observations.py tests/test_packet_engine_validation.py -v` (53 passed in 8.29s).
 - Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
 ---

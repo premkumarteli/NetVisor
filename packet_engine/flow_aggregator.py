@@ -54,6 +54,7 @@ class FlowState:
     is_closing: bool = False
     closing_at: Optional[float] = None
     priority_boost: bool = False
+    forward_is_original_src: bool = True
     orig_src_ip: str = ""
     orig_dst_ip: str = ""
     orig_src_port: int = 0
@@ -156,6 +157,42 @@ class FlowManager:
     def stop(self) -> None:
         self._stop_event.set()
 
+    @property
+    def _flows(self) -> dict[FlowKey, FlowState]:
+        """Backward-compatibility property exposing aggregated flow dictionary across all 16 shards."""
+        flows: dict[FlowKey, FlowState] = {}
+        for shard_idx in range(self.NUM_SHARDS):
+            with self._locks[shard_idx]:
+                flows.update(self._shards[shard_idx])
+        return flows
+
+    class _MultiLockContext:
+        def __init__(self, locks: list[threading.Lock]):
+            self.locks = locks
+
+        def __enter__(self):
+            for l in self.locks:
+                l.acquire()
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            for l in reversed(self.locks):
+                l.release()
+
+    @property
+    def _lock(self):
+        """Backward-compatibility property returning a context manager that locks all 16 shards."""
+        return self._MultiLockContext(self._locks)
+
+    def get_active_flows(self) -> dict[FlowKey, FlowSummary]:
+        """Returns dictionary of active flow summaries across all 16 shards."""
+        summaries: dict[FlowKey, FlowSummary] = {}
+        for shard_idx in range(self.NUM_SHARDS):
+            with self._locks[shard_idx]:
+                for key, state in self._shards[shard_idx].items():
+                    summaries[key] = self._build_summary(key, state)
+        return summaries
+
     def status_snapshot(self) -> dict:
         active_flows = 0
         oldest_seen = 0.0
@@ -254,6 +291,7 @@ class FlowManager:
                     is_closing=is_closing,
                     closing_at=closing_at,
                     priority_boost=is_control,
+                    forward_is_original_src=observation.is_forward_direction,
                     orig_src_ip=observation.src_ip,
                     orig_dst_ip=observation.dst_ip,
                     orig_src_port=observation.src_port,
@@ -361,6 +399,7 @@ class FlowManager:
                             tcp_flags=state.tcp_flags,
                             is_closing=state.is_closing,
                             closing_at=state.closing_at,
+                            priority_boost=state.priority_boost,
                             forward_is_original_src=state.forward_is_original_src,
                             orig_src_ip=state.orig_src_ip,
                             orig_dst_ip=state.orig_dst_ip,

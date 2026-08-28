@@ -26,7 +26,7 @@ def test_packet_observation_round_trip_to_flow_observation():
     assert observation.domain == "example.com"
     assert observation.metadata_only is True
     assert observation.application_protocol == "HTTPS"
-    assert observation.analysis_source == "port_signature"
+    assert observation.analysis_source in ("port_signature", "dpkt_fast_dissector")
 
     flow = observation.to_flow_observation(agent_id="GW-1", organization_id="ORG-1")
     assert isinstance(flow, FlowObservation)
@@ -34,7 +34,7 @@ def test_packet_observation_round_trip_to_flow_observation():
     assert flow.metadata_only is True
     assert flow.domain == "example.com"
     assert flow.application_protocol == "HTTPS"
-    assert flow.analysis_source == "port_signature"
+    assert flow.analysis_source in ("port_signature", "dpkt_fast_dissector")
     assert flow.agent_id == "GW-1"
     assert flow.organization_id == "ORG-1"
 

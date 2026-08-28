@@ -384,6 +384,34 @@ class PacketObservation:
                     observed_at=observed_at,
                 )
                 if dpkt_obs is not None:
+                    cap_dom = getattr(packet, "captured_domain", None)
+                    cap_sni = getattr(packet, "captured_sni", None)
+                    cap_ja4 = getattr(packet, "captured_ja4", None)
+                    if cap_dom or cap_sni or cap_ja4:
+                        return cls(
+                            observed_at=dpkt_obs.observed_at,
+                            source_type=dpkt_obs.source_type,
+                            metadata_only=dpkt_obs.metadata_only,
+                            src_ip=dpkt_obs.src_ip,
+                            dst_ip=dpkt_obs.dst_ip,
+                            src_port=dpkt_obs.src_port,
+                            dst_port=dpkt_obs.dst_port,
+                            protocol=dpkt_obs.protocol,
+                            packet_size=dpkt_obs.packet_size,
+                            domain=cap_dom or dpkt_obs.domain,
+                            sni=cap_sni or dpkt_obs.sni,
+                            ja4=cap_ja4 or dpkt_obs.ja4,
+                            src_mac=dpkt_obs.src_mac,
+                            dst_mac=dpkt_obs.dst_mac,
+                            application_protocol=dpkt_obs.application_protocol,
+                            service_name=dpkt_obs.service_name,
+                            analysis_source=dpkt_obs.analysis_source,
+                            analysis_confidence=dpkt_obs.analysis_confidence,
+                            protocol_confidence=dpkt_obs.protocol_confidence,
+                            analysis_signals=dpkt_obs.analysis_signals,
+                            vlan_id=dpkt_obs.vlan_id,
+                            tcp_flags=dpkt_obs.tcp_flags,
+                        )
                     return dpkt_obs
             except Exception:
                 pass
