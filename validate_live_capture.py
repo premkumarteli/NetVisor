@@ -120,11 +120,16 @@ class LiveCaptureValidator:
                     if sh_meta.server_alpn:
                         self.captured_alpn.add(sh_meta.server_alpn)
 
-            elif obs.protocol == "UDP" and obs.dst_port == 443 and len(raw_bytes) > 42:
-                payload = raw_bytes[42:]
-                quic_meta = extract_quic_metadata(payload)
-                if quic_meta and quic_meta.is_quic:
-                    self.captured_quic_versions.add(quic_meta.version)
+            elif obs.protocol == "UDP" and (obs.dst_port == 443 or obs.src_port == 443):
+                udp_offset = 62 if len(raw_bytes) >= 62 and (raw_bytes[:2] == b"\x86\xdd" or (len(raw_bytes) >= 14 and raw_bytes[12:14] == b"\x86\xdd")) else 42
+                if len(raw_bytes) > udp_offset:
+                    payload = raw_bytes[udp_offset:]
+                    quic_meta = extract_quic_metadata(payload)
+                    if quic_meta and quic_meta.is_quic:
+                        self.captured_quic_versions.add(quic_meta.version)
+                        if quic_meta.sni:
+                            self.captured_snis.add(quic_meta.sni)
+                            self.captured_domains.add(quic_meta.sni)
 
             # 4. Update 16-Shard Flow Manager
             self.flow_manager.update_from_observation(obs)

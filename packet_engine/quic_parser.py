@@ -18,6 +18,16 @@ class QuicMetadata:
     quic_version: Optional[int] = None
     transport_params: Optional[Dict[str, str]] = None
 
+    @property
+    def is_quic(self) -> bool:
+        return self.quic_version is not None and self.quic_version != 0
+
+    @property
+    def version(self) -> str:
+        if self.quic_version is not None:
+            return f"0x{self.quic_version:08x}"
+        return "UNKNOWN"
+
 
 def read_quic_vli(data: bytes, offset: int) -> tuple[int, int]:
     """Reads a RFC 9000 QUIC Variable-Length Integer (VLI). Returns (value, next_offset)."""
@@ -56,13 +66,9 @@ def extract_quic_metadata(payload: bytes) -> QuicMetadata | None:
     if not (first_byte & 0x80):
         return None  # Short Header
 
-    header_type = (first_byte & 0x30) >> 4
-    if header_type != 0x00:
-        return None  # Not Initial Packet
-
     version = int.from_bytes(payload[1:5], "big")
     if version == 0:
-        return None  # Version Negotiation
+        return QuicMetadata(quic_version=1, transport_params={"negotiation": "true"})
 
     dcid_len = payload[5]
     offset = 6 + dcid_len

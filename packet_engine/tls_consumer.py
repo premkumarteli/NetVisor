@@ -19,6 +19,12 @@ class TLSHandshakeMetadata:
     tls_version: str = "TLS 1.2"
     confidence: float = 1.00
 
+    @property
+    def alpn_protocols(self) -> List[str]:
+        if self.alpn:
+            return [a.strip() for a in self.alpn.split(",") if a.strip()]
+        return []
+
 
 @dataclass(slots=True)
 class TLSServerHelloMetadata:
