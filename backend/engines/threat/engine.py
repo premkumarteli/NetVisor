@@ -10,6 +10,9 @@ from .brute_force import BruteForceDetector
 from .beaconing import BeaconingDetector
 from .dns_tunneling import DNSTunnelingDetector
 from .exfiltration import ExfiltrationDetector
+from .kerberoasting import KerberoastingDetector
+from .pass_the_hash import PassTheHashDetector
+from .smb_lateral_movement import SMBLateralMovementDetector
 from backend.engines.common.config import EngineConfig
 
 class ThreatEngine(BaseEngine):
@@ -30,6 +33,9 @@ class ThreatEngine(BaseEngine):
         self.beaconing_detector = BeaconingDetector(self.store, self.config)
         self.dns_tunneling_detector = DNSTunnelingDetector(self.config)
         self.exfiltration_detector = ExfiltrationDetector(self.config)
+        self.kerberoasting_detector = KerberoastingDetector(self.config)
+        self.pass_the_hash_detector = PassTheHashDetector(self.config)
+        self.smb_lateral_movement_detector = SMBLateralMovementDetector(self.config)
 
         self._lock = threading.RLock()
 
@@ -51,6 +57,9 @@ class ThreatEngine(BaseEngine):
         with self._lock:
             self.store.clear()
             self.dns_tunneling_detector.clear()
+            self.kerberoasting_detector.clear()
+            self.pass_the_hash_detector.clear()
+            self.smb_lateral_movement_detector.clear()
 
     def analyze(self, context: dict) -> EngineResult:
         start_time = time.perf_counter()
@@ -89,7 +98,10 @@ class ThreatEngine(BaseEngine):
             self.brute_force_detector,
             self.beaconing_detector,
             self.dns_tunneling_detector,
-            self.exfiltration_detector
+            self.exfiltration_detector,
+            self.kerberoasting_detector,
+            self.pass_the_hash_detector,
+            self.smb_lateral_movement_detector,
         ]:
             finding = detector.analyze(context, observed_at)
             if finding:

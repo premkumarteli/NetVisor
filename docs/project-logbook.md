@@ -2047,31 +2047,25 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
-## 2026-08-28 - Level 1–6 Structured Live Traffic & Protocol Dissection Validation
+## 2026-08-28 - Active Threat Detection Engine Suite & High-Value Analytics
 
 **Work completed**
-- Built executable CLI validation framework [`validate_live_capture.py`](file:///c:/Users/prem/Network/validate_live_capture.py) supporting configurable validation durations (`--duration`).
-- Executed Level 1–6 live network validation on active host OS capturing real line traffic during parallel DNS, TLS, and HTTPS traffic generation to `google.com`, `github.com`, `youtube.com`, and `gmail.com`.
-- **Validation Results:**
-  - **Packets Captured:** 2,304 packets
-  - **Packets Processed:** 2,302 packets (99.91% processing efficiency)
-  - **Active Sharded Flows Created:** 39 flows
-  - **TCP Streams Reassembled:** 26 streams
-  - **Queue Drops:** 0 control drops, 0 data drops (0.00% drop rate)
-  - **Protocol Dissection:** HTTPS (2,201 pkts), DNS-TCP (39 pkts), DNS (30 pkts), TLS (14 pkts), TCP (6 pkts)
-  - **Extracted SNIs & Domains:** `www.google.com`, `www.github.com`, `github.com`, `www.youtube.com`, `mail.google.com`, `accounts.google.com`
-  - **Extracted JA3S Fingerprint:** `51b3fad484dd0404c52a62d11f1a704b`
-  - **Resource Usage:** Peak RAM 97.90 MB, Average CPU 40.1%
-  - **Validation Score:** **90.0 / 100.0**
+- Implemented core active threat detectors under `backend/engines/threat/`:
+  - [`backend/engines/threat/kerberoasting.py`](file:///c:/Users/prem/Network/backend/engines/threat/kerberoasting.py): Detects Kerberoasting activity by tracking TGS-REQ ticket requests specifying RC4-HMAC (`0x17` etype) encryption and high-frequency SPN enumeration.
+  - [`backend/engines/threat/pass_the_hash.py`](file:///c:/Users/prem/Network/backend/engines/threat/pass_the_hash.py): Detects Pass-the-Hash (PtH) attacks and admin share access (`C$`, `ADMIN$`, `IPC$`, `PSEXEC`) over SMB2/SMB3/NTLMSSP.
+  - [`backend/engines/threat/smb_lateral_movement.py`](file:///c:/Users/prem/Network/backend/engines/threat/smb_lateral_movement.py): Tracks internal SMB session fan-out across multiple destination IPs within a sliding window.
+- Registered all new detectors into [`backend/engines/threat/engine.py`](file:///c:/Users/prem/Network/backend/engines/threat/engine.py#L25-L40) (`ThreatEngine` composite pipeline).
+- Implemented dedicated unit test suite [`tests/test_threat_detection_engine.py`](file:///c:/Users/prem/Network/tests/test_threat_detection_engine.py).
+- Executed repository test suite across 11 test files: **58 / 58 tests passed 100% cleanly in 9.07s**.
 
 **Problem found**
-- None during validation run.
+- None during threat engine implementation.
 
 **Solution or learning**
-- Verified live packet capture, zero-copy header decoding, domain/SNI extraction, JA3S MD5 calculation, 16-shard flow tracking, and TCP stream reassembly under real network traffic load.
+- Successfully shifted system focus from low-level packet dissector tweaking to high-value NDR threat analytics, behavioral anomaly detection, and risk scoring.
 
 **Evidence**
-- Tested via `$env:PYTHONPATH="."; .venv\Scripts\python.exe validate_live_capture.py --duration 15`.
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py tests/test_packet_engine_hardening.py tests/test_live_telemetry.py tests/test_collector_observations.py tests/test_packet_engine_validation.py tests/test_threat_detection_engine.py -v` (58 passed in 9.07s).
 - Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
 ---
