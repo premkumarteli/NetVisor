@@ -22,7 +22,7 @@ class ObjectPool(Generic[T]):
         self._recycled_count = 0
         self._borrowed_count = 0
 
-    def borrow() -> T | None:
+    def borrow(self) -> T | None:
         with self._lock:
             if self._pool:
                 self._borrowed_count += 1
@@ -59,6 +59,39 @@ class PacketObservationPool:
 
     @classmethod
     def get_pool(cls, max_size: int = 20_000) -> ObjectPool:
+        if cls._instance is None:
+            cls._instance = ObjectPool(max_size=max_size)
+        return cls._instance
+
+
+class FlowObservationPool:
+    """Global pool for recycling FlowObservation / FlowState instances."""
+    _instance: Optional[ObjectPool] = None
+
+    @classmethod
+    def get_pool(cls, max_size: int = 10_000) -> ObjectPool:
+        if cls._instance is None:
+            cls._instance = ObjectPool(max_size=max_size)
+        return cls._instance
+
+
+class HttpTransactionPool:
+    """Global pool for recycling HttpTransaction / HttpRequestResponse instances."""
+    _instance: Optional[ObjectPool] = None
+
+    @classmethod
+    def get_pool(cls, max_size: int = 5_000) -> ObjectPool:
+        if cls._instance is None:
+            cls._instance = ObjectPool(max_size=max_size)
+        return cls._instance
+
+
+class TLSHandshakeMetadataPool:
+    """Global pool for recycling TLSHandshakeMetadata instances."""
+    _instance: Optional[ObjectPool] = None
+
+    @classmethod
+    def get_pool(cls, max_size: int = 5_000) -> ObjectPool:
         if cls._instance is None:
             cls._instance = ObjectPool(max_size=max_size)
         return cls._instance

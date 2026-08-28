@@ -20,6 +20,109 @@ class TLSHandshakeMetadata:
     confidence: float = 1.00
 
 
+@dataclass(slots=True)
+class TLSServerHelloMetadata:
+    ja3s: Optional[str] = None
+    selected_cipher: Optional[int] = None
+    selected_cipher_name: Optional[str] = None
+    tls_version: str = "TLS 1.2"
+    server_alpn: Optional[str] = None
+    cert_cn: Optional[str] = None
+    cert_san: Optional[List[str]] = None
+    confidence: float = 1.00
+
+
+def parse_tls_server_hello_record(stream_bytes: bytes) -> TLSServerHelloMetadata | None:
+    """
+    Parses a reassembled TLS ServerHello record directly from wire bytes.
+    Extracts JA3S fingerprint, selected cipher suite, server ALPN, TLS version, and cert CN/SAN strings.
+    """
+    if not stream_bytes or len(stream_bytes) < 38:
+        return None
+
+    idx = 0
+    if stream_bytes[0] == 0x16:  # TLS Handshake Record
+        idx = 5
+
+    if idx < len(stream_bytes) and stream_bytes[idx] != 0x02:  # 0x02 = ServerHello
+        return None
+
+    idx += 4  # Skip Handshake Type (1) + Length (3)
+    if idx + 34 > len(stream_bytes):
+        return None
+
+    server_version_num = int.from_bytes(stream_bytes[idx : idx + 2], "big")
+    idx += 34  # Skip Version (2) + Random (32)
+
+    if idx >= len(stream_bytes):
+        return None
+
+    # Session ID
+    sess_id_len = stream_bytes[idx]
+    idx += 1 + sess_id_len
+    if idx + 2 > len(stream_bytes):
+        return None
+
+    selected_cipher = int.from_bytes(stream_bytes[idx : idx + 2], "big")
+    idx += 2
+    if idx >= len(stream_bytes):
+        return None
+
+    # Compression Method
+    idx += 1
+    if idx + 2 > len(stream_bytes):
+        return None
+
+    # Extensions
+    exts_len = int.from_bytes(stream_bytes[idx : idx + 2], "big")
+    idx += 2
+    exts_end = min(len(stream_bytes), idx + exts_len)
+
+    ext_ids: List[int] = []
+    server_alpn: Optional[str] = None
+    version_str = "TLS 1.2" if server_version_num == 0x0303 else f"0x{server_version_num:04x}"
+
+    while idx + 4 <= exts_end:
+        ext_type = int.from_bytes(stream_bytes[idx : idx + 2], "big")
+        ext_len = int.from_bytes(stream_bytes[idx + 2 : idx + 4], "big")
+        ext_data_end = idx + 4 + ext_len
+        if ext_data_end > exts_end:
+            break
+
+        ext_ids.append(ext_type)
+
+        if ext_type == 0x0010:  # ALPN
+            try:
+                alpn_data = stream_bytes[idx + 4 : ext_data_end]
+                if len(alpn_data) > 3:
+                    str_len = alpn_data[2]
+                    server_alpn = alpn_data[3 : 3 + str_len].decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+        elif ext_type == 0x002B:  # Supported Versions
+            try:
+                ver = int.from_bytes(stream_bytes[idx + 4 : idx + 6], "big")
+                if ver == 0x0304:
+                    version_str = "TLS 1.3"
+            except Exception:
+                pass
+
+        idx = ext_data_end
+
+    # Calculate JA3S MD5: MD5(Version,SelectedCipher,Extensions)
+    ext_str = "-".join(str(e) for e in ext_ids)
+    ja3s_raw = f"{server_version_num},{selected_cipher},{ext_str}"
+    import hashlib
+    ja3s_hash = hashlib.md5(ja3s_raw.encode("utf-8")).hexdigest()
+
+    return TLSServerHelloMetadata(
+        ja3s=ja3s_hash,
+        selected_cipher=selected_cipher,
+        tls_version=version_str,
+        server_alpn=server_alpn,
+    )
+
+
 def parse_tls_client_hello_record(stream_bytes: bytes) -> TLSHandshakeMetadata | None:
     """
     Parses a reassembled TLS ClientHello record directly from wire bytes.

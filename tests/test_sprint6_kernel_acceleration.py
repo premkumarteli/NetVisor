@@ -9,12 +9,12 @@ from packet_engine.advanced_decoders import JA3Fingerprinter, SMB2Dissector, Ker
 def test_bpf_filter_engine_noise_dropping():
     filter_engine = BPFFilterEngine()
 
-    # Synthetic mDNS frame (Port 5353)
-    mdns_pkt = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00" + (b"\x00" * 9) + b"\x11" + (b"\x00" * 10) + b"\x14\xe9\x14\xe9"
+    # Synthetic mDNS frame (Port 5353) with IPv4 IHL 20 (0x45)
+    mdns_pkt = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00\x45" + (b"\x00" * 8) + b"\x11" + (b"\x00" * 10) + b"\x14\xe9\x14\xe9"
     assert filter_engine.should_pass_packet(mdns_pkt) is False
 
-    # Synthetic DNS frame (Port 53)
-    dns_pkt = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00" + (b"\x00" * 9) + b"\x11" + (b"\x00" * 10) + b"\x00\x35\x00\x35"
+    # Synthetic DNS frame (Port 53) with IPv4 IHL 20 (0x45)
+    dns_pkt = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\x08\x00\x45" + (b"\x00" * 8) + b"\x11" + (b"\x00" * 10) + b"\x00\x35\x00\x35"
     assert filter_engine.should_pass_packet(dns_pkt) is True
 
 

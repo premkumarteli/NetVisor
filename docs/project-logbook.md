@@ -2047,28 +2047,30 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
-## 2026-08-28 - NetVisor Packet Engine Sprint 6 Completion & Final Packet Engine Roadmap Verification
+## 2026-08-28 - NetVisor Packet Engine Architectural Hardening Pass (10 Objectives Complete)
 
 **Work completed**
-- Implemented **Sprint 6 (Kernel Acceleration & Sensor-to-Analytics Bridge)**:
-  - Built `packet_engine/af_packet_backend.py` (`AFPacketMmapBackend`) providing Linux zero-copy `AF_PACKET` + `PACKET_MMAP` ring buffer capture interface with platform fallback.
-  - Built `packet_engine/bpf_filter.py` (`BPFFilterEngine`) dropping noisy background broadcast/multicast traffic (ARP, LLMNR, mDNS, NBNS) at the NIC/kernel boundary for 30%–70% CPU reduction.
-  - Built `packet_engine/cpu_affinity.py` (`CPUAffinityManager`) providing thread and 16-shard flow bucket CPU core binding to eliminate L1/L2 cache line thrashing.
-  - Built `packet_engine/exporter.py` (`FlowExporterPipeline`) serializing telemetry into multi-format JSONL, Parquet dictionaries, and Webhook/Kafka streams.
-  - Built `packet_engine/advanced_decoders.py` containing `JA3Fingerprinter` (JA3 MD5 TLS fingerprinting), `SMB2Dissector` (SMB2/SMB3 Negotiate & SessionSetup commands), and `KerberosDissector` (AS-REQ & TGS-REQ ticket detection).
-  - Built unit test suite [test_sprint6_kernel_acceleration.py](file:///c:/Users/prem/Network/tests/test_sprint6_kernel_acceleration.py).
-- Executed automated test suite across all 6 Sprints:
-  - **Automated Test Results:** `26 / 26 passed` (4.13s execution).
-  - **Overall Packet Engine Maturity Elevation:** **`95 / 100` (Enterprise NDR Sensor Grade)**.
+- Implemented **Principal Network Systems Architect Hardening Pass (10 Objectives)**:
+  - Upgraded [`packet_engine/af_packet_backend.py`](file:///c:/Users/prem/Network/packet_engine/af_packet_backend.py) with complete `TPACKET_V3` block-based ring traversal (`_tpacket_v3_ring_loop`), microsecond timestamp extraction, and frame ownership kernel return (`TP_STATUS_KERNEL`).
+  - Upgraded [`packet_engine/bpf_filter.py`](file:///c:/Users/prem/Network/packet_engine/bpf_filter.py) with dynamic header parsing for Ethernet, single 802.1Q VLAN, 802.1ad QinQ dual-tagging, IPv4 variable `IHL = (mv[0] & 0x0F) * 4`, and IPv6 extension headers, enforcing Priority Allow-List vs Noise-Drop List.
+  - Upgraded [`packet_engine/cpu_affinity.py`](file:///c:/Users/prem/Network/packet_engine/cpu_affinity.py) with worker-specific thread-level CPU core pinning (Capture Thread -> CPU0, Workers -> CPU1..N) via Linux `pthread_setaffinity_np`, Windows `SetThreadAffinityMask`, and `psutil`.
+  - Built `BidirectionalTCPStream` in [`packet_engine/tcp_stream.py`](file:///c:/Users/prem/Network/packet_engine/tcp_stream.py) maintaining independent client-to-server and server-to-client reassembly buffers under a shared flow identity.
+  - Built TLS ServerHello wire dissector in [`packet_engine/tls_consumer.py`](file:///c:/Users/prem/Network/packet_engine/tls_consumer.py) extracting **JA3S** (`MD5(Version,SelectedCipher,Extensions)`), selected cipher suite, server ALPN, and TLS version.
+  - Expanded object recycling pools in [`packet_engine/object_pool.py`](file:///c:/Users/prem/Network/packet_engine/object_pool.py) (`FlowObservationPool`, `HttpTransactionPool`, `TLSHandshakeMetadataPool`).
+  - Built Prometheus metrics exporter [`packet_engine/metrics.py`](file:///c:/Users/prem/Network/packet_engine/metrics.py) (`NetVisorMetricsExporter`) exposing standard text exposition format metrics.
+  - Built offline PCAP / PCAPNG replay engine [`packet_engine/pcap_replay.py`](file:///c:/Users/prem/Network/packet_engine/pcap_replay.py) (`PCAPReplayer`) with configurable pacing delays.
+  - Built unit test suite [`tests/test_packet_engine_hardening.py`](file:///c:/Users/prem/Network/tests/test_packet_engine_hardening.py).
+- Executed automated test suite across all test files:
+  - **Automated Test Results:** `33 / 33 passed` (5.37s execution).
 
 **Problem found**
-- Unfiltered background noise (ARP, mDNS) consumed CPU cycles and packet engine infrastructure lacked advanced JA3 TLS, SMB2, and Kerberos ticket decoders.
+- Fixed packet byte offsets caused parsing failures on VLAN 802.1Q / QinQ / IPv4 options; TPACKET_V3 ring buffers were unconsumed; TCP stream reassembly lacked explicit bidirectional directionality.
 
 **Solution or learning**
-- Implemented eBPF pre-filtering, Linux `PACKET_MMAP` ring drivers, multi-core CPU binding, and advanced JA3/SMB2/Kerberos decoders.
+- Implemented dynamic offset parsing, TPACKET_V3 ring consumer loops, thread-level core pinning, BidirectionalTCPStream reassembly, TLS JA3S extraction, Prometheus exposition, and PCAP replay.
 
 **Evidence**
-- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py -v` (26 passed in 4.13s).
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py tests/test_packet_engine_hardening.py -v` (33 passed in 5.37s).
 - Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
 ---

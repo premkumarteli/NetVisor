@@ -47,6 +47,64 @@ class TCPSegment:
     timestamp: float
 
 
+class BidirectionalTCPStream:
+    """
+    Bidirectional TCP Stream Container.
+    Maintains independent sequence tracking, out-of-order reassembly buffers, and retransmission
+    counts for client_to_server (forward) and server_to_client (reverse) stream directions
+    while bound to a single shared flow_key.
+    """
+
+    __slots__ = ("flow_key", "client_to_server", "server_to_client", "created_at", "last_seen")
+
+    def __init__(
+        self,
+        flow_key: tuple,
+        max_stream_bytes: int = 512 * 1024,
+        max_idle_seconds: float = 60.0,
+        max_stream_age_seconds: float = 300.0,
+    ) -> None:
+        self.flow_key = flow_key
+        self.client_to_server = TCPStreamBuffer(
+            flow_key=flow_key,
+            max_stream_bytes=max_stream_bytes,
+            max_idle_seconds=max_idle_seconds,
+            max_stream_age_seconds=max_stream_age_seconds,
+        )
+        self.server_to_client = TCPStreamBuffer(
+            flow_key=flow_key,
+            max_stream_bytes=max_stream_bytes,
+            max_idle_seconds=max_idle_seconds,
+            max_stream_age_seconds=max_stream_age_seconds,
+        )
+        self.created_at: float = time.time()
+        self.last_seen: float = time.time()
+
+    @property
+    def memory_footprint_bytes(self) -> int:
+        return self.client_to_server.memory_footprint_bytes + self.server_to_client.memory_footprint_bytes
+
+    def is_expired(self, now: float | None = None) -> bool:
+        return self.client_to_server.is_expired(now) and self.server_to_client.is_expired(now)
+
+    def process_segment(
+        self,
+        seq: int,
+        ack: int,
+        payload: bytes,
+        flags: str,
+        is_forward: bool = True,
+        timestamp: float | None = None,
+    ) -> bytes:
+        now = timestamp if timestamp is not None else time.time()
+        self.last_seen = now
+
+        if is_forward:
+            return self.client_to_server.process_segment(seq, ack, payload, flags, now)
+        else:
+            return self.server_to_client.process_segment(seq, ack, payload, flags, now)
+
+
 class TCPStreamBuffer:
     """
     Per-flow TCP Stream Reassembly Buffer.
@@ -230,12 +288,57 @@ class TCPStreamTrackerManager:
                 self.max_global_memory_bytes // (1024 * 1024),
                 shard_idx,
             )
-            sorted_streams = sorted(shard.items(), key=lambda kv: kv[1].last_seen)
-            for k, st in sorted_streams:
-                shard.pop(k, None)
-                self._shard_memory_bytes[shard_idx] -= st.memory_footprint_bytes
-                if self.current_global_memory_bytes() <= self.max_global_memory_bytes:
-                    break
+            oldest_key = min(shard.keys(), key=lambda k: shard[k].last_seen)
+            oldest_stream = shard.pop(oldest_key, None)
+            if oldest_stream:
+                self._shard_memory_bytes[shard_idx] -= oldest_stream.memory_footprint_bytes
+                logger.info(f"Evicted oldest TCP stream {oldest_key} to enforce global memory cap.")
+
+    def process_bidirectional_segment(
+        self,
+        flow_key: tuple,
+        seq: int,
+        ack: int,
+        payload: bytes,
+        flags: str,
+        is_forward: bool = True,
+        timestamp: float | None = None,
+    ) -> bytes:
+        now = timestamp if timestamp is not None else time.time()
+        shard_idx = self._get_shard_index(flow_key)
+
+        with self._locks[shard_idx]:
+            shard = self._shards[shard_idx]
+            bi_stream = shard.get(flow_key)
+
+            if bi_stream is None or not isinstance(bi_stream, BidirectionalTCPStream):
+                bi_stream = BidirectionalTCPStream(
+                    flow_key=flow_key,
+                    max_stream_bytes=self.max_stream_bytes,
+                    max_idle_seconds=self.max_idle_seconds,
+                    max_stream_age_seconds=self.max_stream_age_seconds,
+                )
+                shard[flow_key] = bi_stream
+                self.streams_tracked_total += 1
+
+            prev_mem = bi_stream.memory_footprint_bytes
+            target_buffer = bi_stream.client_to_server if is_forward else bi_stream.server_to_client
+            prev_retrans = target_buffer.retransmissions_count
+            prev_ooo = target_buffer.out_of_order_count
+
+            flushed_bytes = bi_stream.process_segment(seq, ack, payload, flags, is_forward, now)
+
+            delta_retrans = target_buffer.retransmissions_count - prev_retrans
+            delta_ooo = target_buffer.out_of_order_count - prev_ooo
+            delta_mem = bi_stream.memory_footprint_bytes - prev_mem
+
+            self.retransmissions_detected_total += delta_retrans
+            self.out_of_order_buffered_total += delta_ooo
+            self.stream_bytes_assembled_total += len(flushed_bytes)
+            self._shard_memory_bytes[shard_idx] += delta_mem
+
+            self._enforce_global_memory_budget_locked(shard_idx, now)
+            return flushed_bytes
 
     def process_packet_segment(
         self, flow_key: tuple, seq: int, ack: int, payload: bytes, flags: str, timestamp: float | None = None
@@ -256,15 +359,15 @@ class TCPStreamTrackerManager:
                 )
                 shard[flow_key] = stream
                 self.streams_tracked_total += 1
+            elif isinstance(stream, BidirectionalTCPStream):
+                stream = stream.client_to_server
 
-            # Track deltas before processing to avoid double-counting bug
             prev_retrans = stream.retransmissions_count
             prev_ooo = stream.out_of_order_count
             prev_mem = stream.memory_footprint_bytes
 
             flushed_bytes = stream.process_segment(seq, ack, payload, flags, now)
 
-            # Update delta metrics accurately
             delta_retrans = stream.retransmissions_count - prev_retrans
             delta_ooo = stream.out_of_order_count - prev_ooo
             delta_mem = stream.memory_footprint_bytes - prev_mem
@@ -274,10 +377,9 @@ class TCPStreamTrackerManager:
             self.stream_bytes_assembled_total += len(flushed_bytes)
             self._shard_memory_bytes[shard_idx] += delta_mem
 
-            # Enforce memory budget AFTER payload processing completes
             self._enforce_global_memory_budget_locked(shard_idx, now)
 
-            if stream.state in (TCPStreamStateEnum.CLOSED, TCPStreamStateEnum.RESET):
+            if isinstance(stream, TCPStreamBuffer) and stream.state in (TCPStreamStateEnum.CLOSED, TCPStreamStateEnum.RESET):
                 st = shard.pop(flow_key, None)
                 if st:
                     self._shard_memory_bytes[shard_idx] -= st.memory_footprint_bytes
