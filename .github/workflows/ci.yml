@@ -82,8 +82,23 @@ jobs:
           source .venv/bin/activate
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-server.txt ]; then pip install -r requirements-server.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f requirements/server.txt ]; then
+            pip install -r requirements/server.txt
+          elif [ -f requirements-server.txt ]; then
+            pip install -r requirements-server.txt
+          fi
+
+          if [ -f requirements/agent.txt ]; then
+            pip install -r requirements/agent.txt
+          elif [ -f requirements-agent.txt ]; then
+            pip install -r requirements-agent.txt
+          fi
+
+          if [ -f requirements/dev.txt ]; then
+            pip install -r requirements/dev.txt
+          elif [ -f requirements-dev.txt ]; then
+            pip install -r requirements-dev.txt
+          fi
 
       - name: Initialize test database
         run: |
