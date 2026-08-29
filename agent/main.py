@@ -57,6 +57,7 @@ class DeviceInventory:
         AGENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
         self.storage_file = Path(storage_file) if storage_file else AGENT_RUNTIME_DIR / "device_inventory.json"
         self.devices = {}
+        self._dirty = False
         self.load_inventory()
         threading.Thread(target=self._auto_save_worker, daemon=True).start()
 
@@ -72,7 +73,8 @@ class DeviceInventory:
     def _auto_save_worker(self):
         while True:
             time.sleep(30)
-            self.save_inventory()
+            if self._dirty:
+                self.save_inventory()
 
     def save_inventory(self):
         try:
@@ -80,6 +82,7 @@ class DeviceInventory:
                 self.storage_file.parent.mkdir(parents=True, exist_ok=True)
                 with self.storage_file.open("w", encoding="utf-8") as f:
                     json.dump(self.devices, f)
+                self._dirty = False
         except Exception as e:
             logger.warning("Failed to save device inventory: %s", e)
 
@@ -95,6 +98,7 @@ class DeviceInventory:
                     "confidence": "low",
                     "last_seen": time.time()
                 }
+                self._dirty = True
 
             for k, v in kwargs.items():
                 if v and v not in ["Unknown", "-"]:
@@ -411,7 +415,7 @@ class NetworkAgent:
         time.sleep(2)
         while self.is_running:
             try:
-                time.sleep(3)
+                time.sleep(10)
                 snap = self.status_snapshot()
                 elapsed = time.time() - start_time
                 elapsed_str = f"{int(elapsed // 3600):02d}:{int((elapsed % 3600) // 60):02d}:{int(elapsed % 60):02d}"

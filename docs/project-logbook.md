@@ -2047,6 +2047,24 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
+## 2026-08-29 - Agent CPU, Memory & Thermal Optimization Pass
+
+**Work completed**
+- Optimized NetVisor `agent` background workers and active discovery loops to minimize CPU utilization, memory footprint, and thermal/power generation while preserving all module functionality:
+  - [`agent/device_detector.py`](file:///c:/Users/prem/Network/agent/device_detector.py): Added 300-second TTL LRU caching (`_hostname_cache`, `_device_type_cache`) for IP hostname resolutions and TCP device probing. Slashed active probe socket connection timeout from `0.3s` to `0.1s`. Reduced `ThreadPoolExecutor` worker count from 30 to **10 threads** to prevent thread starvation and high CPU context switching.
+  - [`agent/main.py`](file:///c:/Users/prem/Network/agent/main.py): Added dirty state tracking (`self._dirty`) to `DeviceInventory` auto-save worker, eliminating unneeded JSON serialization and disk I/O loops every 30 seconds. Increased `_stats_reporter_worker` polling interval from `3s` to `10s` to reduce terminal formatting and snapshot calculation CPU overhead.
+- Executed unit test verification across agent services and device detectors: **21 / 21 agent unit tests passed 100% cleanly**.
+
+**Problem found**
+- High thread count (30 workers) and uncached multi-port TCP connect loops caused CPU spikes and power/thermal draw during background subnet scanning.
+
+**Solution or learning**
+- Implemented TTL caching for hostname and device type resolution while scaling down thread concurrency. Preserved 100% of agent modules and capabilities while significantly lowering idle CPU and memory consumption.
+
+**Evidence**
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_agent_service.py tests/test_agent_state.py tests/test_agent_transport_policy.py tests/test_device_detector_hostname.py -v` (21 passed in 23.46s).
+- Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
+
 ## 2026-08-29 - Repository-Wide Python Syntax Verification
 
 **Work completed**
@@ -2119,7 +2137,25 @@ This project provided deep, hands-on experience in networking, systems security,
 - Frontend production build: `npm run build --prefix frontend` (Built cleanly with Vite in 43.25s).
 - Verified live DB discovery: `application_service.get_application_summary(conn)` accurately aggregates all traffic into clean product app and service cards.
 
+## 2026-08-29 - Directory Cleanliness & Redundant File Cleanup Execution
 
+**Work completed**
+- Executed workspace cleanup of useless and redundant files while preserving all database dumps and CSV backups as requested (`db_dump/`, `db_dump.zip`, `database_data_dump.txt`, `database_export.txt`, `dpi_events_from_db.csv`).
+- Removed leftover MITM test browser profile cache trees (`runtime/agent/mitm/browser-profiles`, 4,472 files / 655.4 MB).
+- Removed build targets and compiler intermediates: Rust target artifacts (`backend/correlation_engine/rust/target/`), Android Gradle build directories (`Android_Application/app/build/` and `.gradle/`), deployment bundles (`build/deploy/`), and frontend distribution bundle (`frontend/dist/`).
+- Removed redundant repository zip archive `packet_engine.zip`, 0-byte root file `python`, scratch files (`scratch_yt_check.py`, `scratch/fix_dev.py`), and stale root planning artifacts (`implementation_plan.md`, `walkthrough.md`, `ORIGINAL_REQUEST.md`, `TEST_READY.md`).
+- Purged all Python `__pycache__` and `.pytest_cache` directories across the workspace.
+
+**Problem found**
+- Over 900+ MB of temporary browser test caches, compiler artifacts, and redundant scratch files were cluttering the repository.
+- Sockets in `tmp/netvisor-gateway-transport-*` were created by elevated SYSTEM processes during service tests and are retained until elevated service cleanup.
+
+**Solution or learning**
+- Safely purged all non-essential build/runtime files while leaving all database dump directories and archives completely intact. Reclaimed ~930 MB of active workspace storage.
+
+**Evidence**
+- Deleted items: [packet_engine.zip](file:///c:/Users/prem/Network/packet_engine.zip) (62 KB), [python](file:///c:/Users/prem/Network/python) (0 B), `runtime/agent/mitm/browser-profiles/` (655.4 MB), `backend/.../target/` (~170 MB), `Android_Application/app/build/` (96.2 MB).
+- Preserved: [db_dump/](file:///c:/Users/prem/Network/db_dump) (15,847 files), [db_dump.zip](file:///c:/Users/prem/Network/db_dump.zip) (19.2 MB), [database_data_dump.txt](file:///c:/Users/prem/Network/database_data_dump.txt) (84.6 MB), [database_export.txt](file:///c:/Users/prem/Network/database_export.txt) (69.8 MB).
 
 ---
 

@@ -81,6 +81,8 @@ class DeviceDetector:
         self.network = network
         self.local_ip = local_ip
         self._upnp_cache = {"expires_at": 0.0, "locations_by_ip": {}}
+        self._hostname_cache: dict[str, tuple[str, float]] = {}
+        self._device_type_cache: dict[str, tuple[str, float]] = {}
 
     def set_network(self, network):
         self.network = network
@@ -407,6 +409,11 @@ class DeviceDetector:
         return None
 
     def resolve_hostname(self, ip):
+        now = time.time()
+        cached = self._hostname_cache.get(ip)
+        if cached and cached[1] > now:
+            return cached[0]
+
         for resolver in (
             self.get_dns_name,
             self.get_netbios_name,
@@ -418,7 +425,10 @@ class DeviceDetector:
         ):
             name = resolver(ip)
             if name:
+                self._hostname_cache[ip] = (name, now + 300.0)
                 return name
+
+        self._hostname_cache[ip] = ("", now + 60.0)
         return None
 
     def _parse_ping_hostname(self, output, ip):
@@ -452,6 +462,11 @@ class DeviceDetector:
         return cleaned or None
 
     def detect_device_type(self, ip):
+        now = time.time()
+        cached = self._device_type_cache.get(ip)
+        if cached and cached[1] > now:
+            return cached[0]
+
         common_ports = {
             445: "Windows Device",
             22: "Linux/Unix Device",
@@ -468,14 +483,16 @@ class DeviceDetector:
         for port, device_type in common_ports.items():
             try:
                 sock = socket.socket()
-                sock.settimeout(0.3)
+                sock.settimeout(0.1)
                 sock.connect((ip, port))
                 sock.close()
+                self._device_type_cache[ip] = (device_type, now + 300.0)
                 return device_type
             except Exception as e:
                 logger.debug("Exception: %s", e)
                 continue
 
+        self._device_type_cache[ip] = ("Unknown Type", now + 60.0)
         return "Unknown Type"
 
     def resolve_vendor(self, mac):
@@ -543,7 +560,7 @@ class DeviceDetector:
         ]
         final_results = []
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=30) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             futures = {}
 
             for device in devices:
