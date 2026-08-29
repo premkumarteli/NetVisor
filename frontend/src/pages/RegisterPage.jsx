@@ -58,7 +58,7 @@ const RegisterPage = () => {
         <i className="ri-user-3-line"></i>
         <div>
           <strong>Role-Based Access Control</strong>
-          <p>Registration matches your organization's policy and access tiers assigned by an administrator.</p>
+          <p>Registration matches your organization&apos;s policy and access tiers assigned by an administrator.</p>
         </div>
       </div>
       <div className="nv-auth__point">

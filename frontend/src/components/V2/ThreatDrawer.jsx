@@ -23,7 +23,7 @@ const ThreatDrawer = ({ open, threat, onClose, title = 'Threat Audit Details' })
   return (
     <SidePanel
       open={open}
-      title={intel.title}
+      title={intel.title || title}
       description="Operational incident briefing, threat classification, and analyst actions."
       onClose={onClose}
     >

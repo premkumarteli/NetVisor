@@ -8,8 +8,7 @@ import TrafficChart from '../components/Dashboard/TrafficChart';
 import ThreatDistributionChart from '../components/Dashboard/ThreatDistributionChart';
 import StatusBadge from '../components/V2/StatusBadge';
 import ErrorState from '../components/V2/ErrorState';
-import SectionCard from '../components/V2/SectionCard';
-import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
+import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatByteCount, getRiskTone, parseByteValue } from '../utils/presentation';
 import EvidenceDrawer from '../components/V2/EvidenceDrawer';
 import { formatCompact, resolveSeverityCount, SceneMetricCard, SeverityCard } from '../components/Dashboard/DashboardMetrics';
@@ -40,7 +39,6 @@ const DashboardPage = () => {
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [webActivity, setWebActivity] = useState([]);
   const [trafficHistory, setTrafficHistory] = useState([]);
   const [trafficResolution, setTrafficResolution] = useState('hour'); // 'second' | 'minute' | 'hour'
   const [analytics, setAnalytics] = useState({
@@ -63,12 +61,11 @@ const DashboardPage = () => {
     setError(null);
 
     try {
-      const [statsRes, devicesRes, alertsRes, activityRes, webRes, analyticsRes] = await Promise.all([
+      const [statsRes, devicesRes, alertsRes, activityRes, analyticsRes] = await Promise.all([
         systemService.getStats(),
         systemService.getDevices(),
         systemService.getAlerts({ severity: 'HIGH,CRITICAL', resolved: false, hours: 24, limit: 12 }),
         systemService.getActivity(18),
-        systemService.getGlobalWebActivity(12),
         systemService.getAnalyticsOverview(24, 6),
       ]);
 
@@ -76,7 +73,6 @@ const DashboardPage = () => {
       setDevices(devicesRes.data || []);
       setAlerts(alertsRes.data || []);
       setActivity(activityRes.data || []);
-      setWebActivity(Array.isArray(webRes.data) ? webRes.data : (webRes.data?.activity || []));
       setAnalytics(analyticsRes.data || {
         top_applications: [],
         top_devices: [],
@@ -234,10 +230,6 @@ const DashboardPage = () => {
   const dominantAppBytes = formatByteCount(
     topApps[0]?.bandwidth_bytes || parseByteValue(topApps[0]?.bandwidth) || 0
   );
-
-  const activeAgentsCount = Number(stats.agent_count || stats.active_agents || devices.filter((d) => d.source_type === 'agent').length || 0);
-  const fleetBufferQueue = Number(stats.fleet_buffer_queue || stats.queue_depth || 0);
-  const agentFleetStatus = activeAgentsCount > 0 ? 'Optimal' : devices.length > 0 ? 'Standby' : 'No Agents';
 
   const handleExportDashboard = () => {
     const reportData = recentSessions.map((s) => ({

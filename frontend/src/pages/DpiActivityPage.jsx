@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { systemService } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import PageHeader from '../components/V2/PageHeader';
@@ -13,7 +13,7 @@ import ErrorState from '../components/V2/ErrorState';
 import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { formatBrowserLabel, getRiskTone } from '../utils/presentation';
-import { getWebEvidencePrimaryLabel, getWebEvidenceScopeLabel, normalizeWebRiskLevel } from '../utils/webEvidence';
+import { normalizeWebRiskLevel } from '../utils/webEvidence';
 import { beautifyDpiUrl, isDpiNoise } from '../utils/webNoise';
 import { formatRelativeTime } from '../utils/intelTranslator';
 import { exportToCsv, exportToJson } from '../utils/exportUtils';
@@ -21,9 +21,7 @@ import { exportToCsv, exportToJson } from '../utils/exportUtils';
 const DpiActivityPage = () => {
   const { deviceIp } = useParams();
   const decodedIp = decodeURIComponent(deviceIp);
-  const navigate = useNavigate();
   const [events, setEvents] = useState([]);
-  const [evidenceGroups, setEvidenceGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deviceInfo, setDeviceInfo] = useState(null);
@@ -37,12 +35,8 @@ const DpiActivityPage = () => {
     }
     setError(null);
     try {
-      const [activityRes, groupsRes] = await Promise.all([
-        systemService.getDeviceWebActivity(decodedIp),
-        systemService.getDeviceWebEvidenceGroups(decodedIp),
-      ]);
+      const activityRes = await systemService.getDeviceWebActivity(decodedIp);
       setEvents(activityRes.data?.activity || []);
-      setEvidenceGroups(groupsRes.data?.activity || []);
 
       const devices = await systemService.getDevices();
       const device = (devices.data || []).find((entry) => entry.ip === decodedIp);
@@ -92,25 +86,6 @@ const DpiActivityPage = () => {
     return result.filter((entry) => entry.content_category === filter);
   }, [events, filter, hideNoise]);
 
-  const filteredGroups = useMemo(() => {
-    let result = evidenceGroups;
-    if (hideNoise) {
-      result = result.filter((entry) => !isDpiNoise(entry));
-    }
-    if (filter === 'all') return result;
-    if (filter === 'threats') return result.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe');
-    if (filter === 'streaming') {
-      return result.filter((entry) => {
-        const url = String(entry.page_url || entry.base_domain || '').toLowerCase();
-        return url.includes('youtube') || url.includes('youtu.be') || url.includes('video') || entry.content_category === 'streaming';
-      });
-    }
-    if (filter === 'search') {
-      return result.filter((entry) => Boolean(entry.search_query || entry.search_queries?.length));
-    }
-    return result.filter((entry) => entry.content_category === filter);
-  }, [evidenceGroups, filter, hideNoise]);
-
   const stats = useMemo(() => {
     const total = events.length;
     const threats = events.filter((entry) => normalizeWebRiskLevel(entry.risk_level) !== 'safe').length;
@@ -135,60 +110,6 @@ const DpiActivityPage = () => {
   const handleExportJson = () => {
     exportToJson(`device-${decodedIp}-dpi`, filteredEvents);
   };
-
-  const groupedColumns = [
-    {
-      key: 'activity',
-      label: 'Inspected Activity',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{getWebEvidencePrimaryLabel(row)}</div>
-          <div className="nv-table__meta">{row.base_domain || row.page_url || '-'}</div>
-          <div className="nv-table__meta">{getWebEvidenceScopeLabel(row).text}</div>
-        </>
-      ),
-    },
-    {
-      key: 'browser',
-      label: 'Client Browser',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{formatBrowserLabel(row.browser_name, row.process_name)}</div>
-          <div className="nv-table__meta mono">{row.process_name || '-'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'scope',
-      label: 'Evidence Scope',
-      render: (row) => (
-        <>
-          <div className="nv-table__primary">{getWebEvidenceScopeLabel(row).eventCount} event{getWebEvidenceScopeLabel(row).eventCount === 1 ? '' : 's'}</div>
-          <div className="nv-table__meta">{row.content_category || row.content_id || 'web'}</div>
-        </>
-      ),
-    },
-    {
-      key: 'risk',
-      label: 'Security Posture',
-      render: (row) => {
-        const riskLevel = normalizeWebRiskLevel(row.risk_level);
-        return <StatusBadge tone={getRiskTone(riskLevel)}>{riskLevel.toUpperCase()}</StatusBadge>;
-      },
-    },
-    {
-      key: 'time',
-      label: 'Observed',
-      render: (row) => {
-        const ts = row.last_seen || row.timestamp;
-        return (
-          <span className="mono" title={formatUtcTimestampToLocal(ts)}>
-            {formatRelativeTime(ts)}
-          </span>
-        );
-      },
-    },
-  ];
 
   const rawColumns = [
     {

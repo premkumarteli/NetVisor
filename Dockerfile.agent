@@ -10,11 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements-agent.txt .
 COPY requirements/ requirements/
 
 # Create a complete offline wheelhouse, including transitive dependencies.
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements-agent.txt
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements/agent.txt
 
 
 # Runtime stage
@@ -32,11 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy wheels from builder
 COPY --from=builder /build/wheels /wheels
-COPY --from=builder /build/requirements-agent.txt .
 COPY --from=builder /build/requirements/ requirements/
 
 # Install Python packages without reaching the network in the runtime stage.
-RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-agent.txt
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements/agent.txt
 
 # Copy application code
 COPY agent/ ./agent/

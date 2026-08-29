@@ -9,11 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements-server.txt .
 COPY requirements/ requirements/
 
 # Create a complete wheelhouse, including transitive dependencies.
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements-server.txt
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements/server.txt
 
 
 # Runtime stage
@@ -29,11 +28,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy wheels from builder
 COPY --from=builder /build/wheels /wheels
-COPY --from=builder /build/requirements-server.txt .
 COPY --from=builder /build/requirements/ requirements/
 
 # Install Python packages without reaching the network in the runtime stage.
-RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements-server.txt
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements/server.txt
 
 # Copy application code
 COPY backend/ ./backend/

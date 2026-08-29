@@ -2368,6 +2368,62 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Modified [scripts/init_ci_database.py](file:///c:/Users/prem/Network/scripts/init_ci_database.py#L46-L49).
 
+## 2026-08-29 - Root Requirements Wrapper Cleanup & Docker Path Consolidation
+
+**Work completed**
+- Removed 7 legacy 1-line wrapper requirement files from the repository root: `requirements-agent.txt`, `requirements-dev.in`, `requirements-dev.txt`, `requirements-gateway.txt`, `requirements-server.txt`, `requirements.in`, and `requirements.txt`.
+- Consolidated all dependency references across `Dockerfile.agent`, `Dockerfile.gateway`, `infra/docker/Dockerfile.backend`, and `scripts/build_deploy_bundles.py` to point directly to the canonical requirement files in `requirements/` (`requirements/agent.txt`, `requirements/gateway.txt`, `requirements/server.txt`, `requirements/dev.txt`, `requirements/base.txt`).
+
+**Problem found**
+- Legacy pointer wrapper files in the root directory caused confusion regarding where active dependencies are defined.
+
+**Solution or learning**
+- Directing Docker builds and packaging scripts to canonical files in `requirements/` eliminates top-level redundancy while keeping builds clean.
+
+**Evidence**
+- Deleted 7 root files: `requirements*.txt` and `requirements*.in`.
+- Canonical files verified in `requirements/` directory.
+- Test suite verification: 26 passed in 60.37s (`tests/test_dashboard_overview_api.py`, `tests/test_application_service.py`, `tests/test_device_service.py`, `tests/test_analytics_service.py`).
+
+
+## 2026-08-29 - Fix Frontend ESLint Warnings & Errors
+
+**Work completed**
+- Resolved 10 ESLint errors and 2 warnings across the React frontend codebase:
+  - `frontend/src/components/V2/ThreatDrawer.jsx`: Used `title` prop in `SidePanel` fallback (`title={intel.title || title}`).
+  - `frontend/src/pages/DashboardPage.jsx`: Removed unused imports `SectionCard` and `StatGridSkeleton`, and unused state/variables (`webActivity`, `fleetBufferQueue`, `agentFleetStatus`).
+  - `frontend/src/pages/DpiActivityPage.jsx`: Removed unused `useNavigate` import, unused `evidenceGroups` state, and unused memoized arrays (`filteredGroups`, `groupedColumns`).
+  - `frontend/src/pages/RegisterPage.jsx`: Escaped single quote in JSX (`organization&apos;s`).
+
+**Problem found**
+- CI workflow failed during "Run frontend lint" (`eslint .`) with 12 problems (10 errors, 2 warnings).
+
+**Solution or learning**
+- Cleaned up unused imports, variables, and unescaped HTML entities in JSX components to satisfy ESLint rules cleanly.
+
+**Evidence**
+- Modified [frontend/src/components/V2/ThreatDrawer.jsx](file:///c:/Users/prem/Network/frontend/src/components/V2/ThreatDrawer.jsx), [frontend/src/pages/DashboardPage.jsx](file:///c:/Users/prem/Network/frontend/src/pages/DashboardPage.jsx), [frontend/src/pages/DpiActivityPage.jsx](file:///c:/Users/prem/Network/frontend/src/pages/DpiActivityPage.jsx), and [frontend/src/pages/RegisterPage.jsx](file:///c:/Users/prem/Network/frontend/src/pages/RegisterPage.jsx).
+
+## 2026-08-29 - Scratch Scripts, Mock Test Artifacts & Historical DB Dump Pruning
+
+**Work completed**
+- Merged `test_flow_sanitization_tolerates_missing_timestamps()` into [`tests/test_flow_sanitization_service.py`](file:///c:/Users/prem/Network/tests/test_flow_sanitization_service.py) and removed redundant duplicate `tests/test_flow_sanitization.py` and 2-line `tests/test_app_main_import.py`.
+- Removed scratch debug scripts from `scripts/dev/`: `test_patch.py`, `test_debug.py`, `test_ssdp_debug.py`, `generate_all_txt.py`, and `generate_split_txt.py`.
+- Removed stale mock runtime test artifacts: `runtime/.pytest_tmp_uifix`, `runtime/agent/mitm_test`, and `runtime/agent/mitm_clean`.
+- Removed machine-specific `Android_Application/local.properties` and updated `Android_Application/.gitignore` to ignore `.idea/` and `local.properties`.
+- Pruned 1,109 stale historical database snapshot directories from `db_dump/`, retaining the 5 most recent snapshots and eliminating over 17,000 duplicate CSV files.
+
+**Problem found**
+- Continuous backup creation during server test runs generated 1,100+ duplicate folders in `db_dump/`, consuming unnecessary disk space and cluttering searches.
+
+**Solution or learning**
+- Retaining only recent backup snapshots in `db_dump/` and eliminating one-off scratch scripts keeps the repository fast, clean, and maintainable.
+
+**Evidence**
+- Pruned 1,109 folders in `db_dump/`; remaining count: 5 active snapshots.
+- Removed 8 scratch and redundant test files across `scripts/dev/`, `tests/`, and `runtime/`.
+- Test suite verification: 34 passed in 42.21s (`tests/test_flow_sanitization_service.py`, `tests/test_dashboard_overview_api.py`, `tests/test_application_service.py`, `tests/test_device_service.py`, `tests/test_analytics_service.py`, `tests/test_system_service.py`).
+
 ---
 
 ## Template for Future Daily Entries
