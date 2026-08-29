@@ -1835,7 +1835,7 @@ class FlowService:
                 row["analysis_confidence"] = float(row.get("analysis_confidence") or 0.0)
                 row["analysis_signals"] = self._decode_analysis_signals(row.get("analysis_signals_json"))
                 if (row.get("application") or "") in {"", "Other", "Unknown"}:
-                    row["application"] = application_service.classify_app(row)
+                    row["application"] = application_service.classify_app(row, organization_id=organization_id)
 
             return {"total": total, "results": rows}
         finally:

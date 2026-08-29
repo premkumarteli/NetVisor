@@ -1379,7 +1379,8 @@ application_service = ApplicationService()
 
 def application_compatibility_wrapper(row: Any) -> "EngineResult":
     from engine import EngineResult, Finding, Severity
-    app_label = application_service.classify_app(row)
+    org_id = application_service._row_value(row, "organization_id") or "default-org-id"
+    app_label = application_service.classify_app(row, organization_id=org_id)
     
     findings = []
     if app_label and app_label not in {"Unknown", "Other"}:
