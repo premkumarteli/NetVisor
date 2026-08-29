@@ -43,7 +43,10 @@ def _connect_with_retry():
 
 
 def main() -> None:
-    sql_path = Path(__file__).resolve().parents[1] / "database" / "init.sql"
+    project_root = Path(__file__).resolve().parents[1]
+    sql_path = project_root / "infra" / "database" / "init.sql"
+    if not sql_path.exists():
+        sql_path = project_root / "database" / "init.sql"
     statements = list(_iter_sql_statements(sql_path.read_text(encoding="utf-8")))
 
     conn = _connect_with_retry()

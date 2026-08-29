@@ -2352,6 +2352,22 @@ This project provided deep, hands-on experience in networking, systems security,
 - Verified local installation completion using `.venv\Scripts\python.exe -m pip install -r requirements/base.txt`, `-r requirements/server.txt`, `-r requirements/dev.txt`, and `-r requirements-dev.txt` without errors.
 - Touched files: `.github/workflows/ci.yml`, `requirements/dev.txt`, `requirements/dev.in`, `Dockerfile.agent`, `Dockerfile.gateway`, `infra/docker/Dockerfile.backend`, `scripts/build_deploy_bundles.py`, `infra/deployment/docker-compose.yml`, `infra/deployment/server/docker-compose.yml`.
 
+
+## 2026-08-29 - Fix CI Database Initialization SQL Path
+
+**Work completed**
+- Updated `sql_path` resolution in `scripts/init_ci_database.py` to check `infra/database/init.sql` with fallback to `database/init.sql`.
+
+**Problem found**
+- CI workflow failed during "Initialize test database" with `FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/NetVisor/NetVisor/database/init.sql'`.
+- `scripts/init_ci_database.py` had hardcoded `Path(__file__).resolve().parents[1] / "database" / "init.sql"`, whereas the database schema SQL file resides at `infra/database/init.sql`.
+
+**Solution or learning**
+- Updated `scripts/init_ci_database.py` to check `infra/database/init.sql` first.
+
+**Evidence**
+- Modified [scripts/init_ci_database.py](file:///c:/Users/prem/Network/scripts/init_ci_database.py#L46-L49).
+
 ---
 
 ## Template for Future Daily Entries
