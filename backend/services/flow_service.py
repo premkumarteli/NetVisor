@@ -1276,7 +1276,8 @@ class FlowService:
         sanitized_batch = []
         ch_rows = []
         flow_logs_insert_values = []
-
+        app_accumulator: dict[tuple[str, str], dict] = {}
+        device_accumulator: dict[tuple[str, str], dict] = {}
 
         for flow in batch:
             org_id = self._resolve_organization_id(
@@ -1623,6 +1624,66 @@ class FlowService:
                     )
                 )
 
+            # Micro-batch accumulators for stream processing
+            app_key = (org_id or "default-org-id", application or "Other")
+            if app_key not in app_accumulator:
+                app_accumulator[app_key] = {
+                    "flow_count": 0,
+                    "byte_count": 0,
+                    "last_seen": sanitized.last_seen,
+                    "category": "web",
+                }
+            app_accumulator[app_key]["flow_count"] += 1
+            app_accumulator[app_key]["byte_count"] += sanitized.byte_count or 0
+            if sanitized.last_seen and (not app_accumulator[app_key]["last_seen"] or sanitized.last_seen > app_accumulator[app_key]["last_seen"]):
+                app_accumulator[app_key]["last_seen"] = sanitized.last_seen
+
+            if sanitized.internal_device_ip:
+                dev_key = (org_id or "default-org-id", sanitized.internal_device_ip)
+                if dev_key not in device_accumulator:
+                    device_accumulator[dev_key] = {
+                        "flow_count": 0,
+                        "byte_count": 0,
+                        "last_seen": sanitized.last_seen,
+                        "latest_app": application,
+                        "latest_domain": sanitized.sni or sanitized.domain,
+                        "agent_id": sanitized.agent_id if management_mode == "managed" else None,
+                        "mac": sanitized.internal_device_mac,
+                        "management_mode": management_mode,
+                    }
+                device_accumulator[dev_key]["flow_count"] += 1
+                device_accumulator[dev_key]["byte_count"] += sanitized.byte_count or 0
+                if sanitized.last_seen and (not device_accumulator[dev_key]["last_seen"] or sanitized.last_seen > device_accumulator[dev_key]["last_seen"]):
+                    device_accumulator[dev_key]["last_seen"] = sanitized.last_seen
+                    device_accumulator[dev_key]["latest_app"] = application
+                    device_accumulator[dev_key]["latest_domain"] = sanitized.sni or sanitized.domain
+
+            # Push flow into LiveTelemetryStore 500-item activity ring buffer
+            try:
+                from backend.services.live_telemetry_store import live_telemetry_store
+                live_telemetry_store.record_recent_activity(
+                    org_id,
+                    {
+                        "time": str(self._mysql_timestamp(sanitized.last_seen) or ""),
+                        "last_seen": str(self._mysql_timestamp(sanitized.last_seen) or ""),
+                        "src_ip": sanitized.src_ip,
+                        "dst_ip": sanitized.dst_ip,
+                        "src_port": sanitized.src_port,
+                        "dst_port": sanitized.dst_port,
+                        "external_endpoint_ip": sanitized.external_endpoint_ip,
+                        "sni": sanitized.sni,
+                        "domain": sanitized.domain,
+                        "application": application,
+                        "protocol": sanitized.protocol,
+                        "byte_count": sanitized.byte_count or 0,
+                        "severity": report["severity"],
+                        "risk_score": report["score"],
+                        "management_mode": management_mode,
+                    }
+                )
+            except Exception as ring_err:
+                logger.debug("Failed to record activity in ring buffer: %s", ring_err)
+
         # Bulk insert to MySQL flow_logs (Issue #18)
         if flow_logs_insert_values:
             insert_sql = """
@@ -1640,6 +1701,66 @@ class FlowService:
             else:
                 for row_val in flow_logs_insert_values:
                     cursor.execute(insert_sql, row_val)
+
+        # Micro-batch flush: Bulk upsert application_summary
+        if app_accumulator:
+            app_upsert_sql = """
+                INSERT INTO application_summary (
+                    organization_id, application_name, category, flow_count, total_bytes, last_seen, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE
+                    flow_count = flow_count + VALUES(flow_count),
+                    total_bytes = total_bytes + VALUES(total_bytes),
+                    last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                    updated_at = UTC_TIMESTAMP()
+            """
+            app_params = [
+                (
+                    k[0], k[1], v["category"], v["flow_count"], v["byte_count"],
+                    self._mysql_timestamp(v["last_seen"])
+                )
+                for k, v in app_accumulator.items()
+            ]
+            try:
+                if hasattr(cursor, "executemany"):
+                    cursor.executemany(app_upsert_sql, app_params)
+                else:
+                    for row_param in app_params:
+                        cursor.execute(app_upsert_sql, row_param)
+            except Exception as exc:
+                logger.debug("Failed to bulk upsert application_summary: %s", exc)
+
+        # Micro-batch flush: Bulk upsert device_summary
+        if device_accumulator:
+            dev_upsert_sql = """
+                INSERT INTO device_summary (
+                    organization_id, device_id, ip, mac, management_mode,
+                    top_application, top_domain, total_flows, total_bytes, first_seen, last_seen, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, UTC_TIMESTAMP())
+                ON DUPLICATE KEY UPDATE
+                    last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                    total_flows = total_flows + VALUES(total_flows),
+                    total_bytes = total_bytes + VALUES(total_bytes),
+                    top_application = COALESCE(VALUES(top_application), top_application),
+                    top_domain = COALESCE(VALUES(top_domain), top_domain),
+                    updated_at = UTC_TIMESTAMP()
+            """
+            dev_params = [
+                (
+                    k[0], k[1], k[1], v["mac"], v["management_mode"],
+                    v["latest_app"], v["latest_domain"], v["flow_count"], v["byte_count"],
+                    self._mysql_timestamp(v["last_seen"]), self._mysql_timestamp(v["last_seen"])
+                )
+                for k, v in device_accumulator.items()
+            ]
+            try:
+                if hasattr(cursor, "executemany"):
+                    cursor.executemany(dev_upsert_sql, dev_params)
+                else:
+                    for row_param in dev_params:
+                        cursor.execute(dev_upsert_sql, row_param)
+            except Exception as exc:
+                logger.debug("Failed to bulk upsert device_summary: %s", exc)
 
         # Bulk insert to ClickHouse (Milestone 2 Dual-Write)
         if ch_rows:

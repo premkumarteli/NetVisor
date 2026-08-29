@@ -375,26 +375,30 @@ class ApplicationService:
                     or normalized.endswith(f".{allowed_domain}")
                 ):
                     with self._lock:
-                        self._domain_app_cache[normalized] = {
-                            "name": application,
-                            "category": infer_app_category(application, normalized),
-                            "source": "seed_rule",
-                            "is_override": False,
-                            "confidence": 1.0,
-                        }
+                        existing = self._domain_app_cache.get(normalized)
+                        if not existing or not existing.get("is_override"):
+                            self._domain_app_cache[normalized] = {
+                                "name": application,
+                                "category": infer_app_category(application, normalized),
+                                "source": "seed_rule",
+                                "is_override": False,
+                                "confidence": 1.0,
+                            }
                     return application
 
         # Layer 1B: Check curated domain intelligence (e.g. Azure CloudApp, Visual Studio Code, Grammarly)
         service_label = self._service_label_from_host(normalized)
         if service_label:
             with self._lock:
-                self._domain_app_cache[normalized] = {
-                    "name": service_label,
-                    "category": infer_app_category(service_label, normalized),
-                    "source": "domain_intelligence",
-                    "is_override": False,
-                    "confidence": 0.95,
-                }
+                existing = self._domain_app_cache.get(normalized)
+                if not existing or not existing.get("is_override"):
+                    self._domain_app_cache[normalized] = {
+                        "name": service_label,
+                        "category": infer_app_category(service_label, normalized),
+                        "source": "domain_intelligence",
+                        "is_override": False,
+                        "confidence": 0.95,
+                    }
             return service_label
 
         # Layer 1C: Check Umbrella Providers (Google, Microsoft)
@@ -406,13 +410,15 @@ class ApplicationService:
                     or normalized.endswith(f".{allowed_domain}")
                 ):
                     with self._lock:
-                        self._domain_app_cache[normalized] = {
-                            "name": application,
-                            "category": infer_app_category(application, normalized),
-                            "source": "seed_rule",
-                            "is_override": False,
-                            "confidence": 1.0,
-                        }
+                        existing = self._domain_app_cache.get(normalized)
+                        if not existing or not existing.get("is_override"):
+                            self._domain_app_cache[normalized] = {
+                                "name": application,
+                                "category": infer_app_category(application, normalized),
+                                "source": "seed_rule",
+                                "is_override": False,
+                                "confidence": 1.0,
+                            }
                     return application
 
         if base_domain in SHARED_INFRA_BASE_DOMAINS:
@@ -422,13 +428,15 @@ class ApplicationService:
         dynamic_name, category = clean_domain_to_app_name(normalized)
         if dynamic_name and dynamic_name not in UNCLASSIFIED_SENTINELS and dynamic_name != "Unknown":
             with self._lock:
-                self._domain_app_cache[normalized] = {
-                    "name": dynamic_name,
-                    "category": category,
-                    "source": "sld_heuristics",
-                    "is_override": False,
-                    "confidence": 0.85,
-                }
+                existing = self._domain_app_cache.get(normalized)
+                if not existing or not existing.get("is_override"):
+                    self._domain_app_cache[normalized] = {
+                        "name": dynamic_name,
+                        "category": category,
+                        "source": "sld_heuristics",
+                        "is_override": False,
+                        "confidence": 0.85,
+                    }
             self._async_persist_discovery(
                 organization_id,
                 normalized,
@@ -897,6 +905,63 @@ class ApplicationService:
                     return [dict(item) for item in cached_entry[1]]
 
         active_cutoff = datetime.now(timezone.utc) - timedelta(seconds=active_window_seconds)
+
+        # Fast path: Query pre-aggregated application_summary table
+        if db_conn is not None:
+            cursor = db_conn.cursor(dictionary=True)
+            try:
+                params = []
+                org_filter = ""
+                if organization_id:
+                    org_filter = "WHERE organization_id = %s"
+                    params.append(organization_id)
+
+                cursor.execute(
+                    f"""
+                    SELECT
+                        application_name AS application,
+                        category,
+                        flow_count,
+                        total_bytes AS bandwidth_bytes,
+                        last_seen
+                    FROM application_summary
+                    {org_filter}
+                    ORDER BY flow_count DESC
+                    LIMIT 100
+                    """,
+                    tuple(params)
+                )
+                rows = cursor.fetchall() or []
+                if rows:
+                    res = []
+                    for r in rows:
+                        last_dt = self._coerce_utc_datetime(r.get("last_seen"))
+                        is_active = bool(last_dt and last_dt >= active_cutoff)
+                        b_bytes = float(r.get("bandwidth_bytes") or 0)
+                        res.append({
+                            "application": r["application"],
+                            "device_count": 1,
+                            "device_ips": [],
+                            "active_devices": 1 if is_active else 0,
+                            "is_active": is_active,
+                            "bandwidth_bytes": b_bytes,
+                            "bandwidth_formatted": self._format_bytes(b_bytes),
+                            "session_count": int(r.get("flow_count") or 0),
+                            "flow_count": int(r.get("flow_count") or 0),
+                            "first_seen": self._format_timestamp(last_dt),
+                            "last_seen": self._format_timestamp(last_dt),
+                            "runtime_seconds": 60,
+                            "runtime_formatted": "Active",
+                            "category": r.get("category") or "web",
+                        })
+                    with self._lock:
+                        self._summary_cache[cache_key] = (now_ts, res)
+                    return res
+            except Exception as exc:
+                logger.debug("application_summary fast query fallback: %s", exc)
+            finally:
+                cursor.close()
+
         grouped: dict[str, dict] = {}
 
         # 1. Process L4 Sessions
@@ -1379,7 +1444,16 @@ application_service = ApplicationService()
 
 def application_compatibility_wrapper(row: Any) -> "EngineResult":
     from engine import EngineResult, Finding, Severity
-    org_id = application_service._row_value(row, "organization_id") or "default-org-id"
+    raw_org_id = application_service._row_value(row, "organization_id")
+    if not raw_org_id:
+        logger.warning(
+            "application_compatibility_wrapper called on row without 'organization_id' (host: %s); fallback to '%s'.",
+            application_service._preferred_host(row),
+            settings.DEFAULT_ORGANIZATION_ID,
+        )
+        org_id = settings.DEFAULT_ORGANIZATION_ID
+    else:
+        org_id = str(raw_org_id).strip()
     app_label = application_service.classify_app(row, organization_id=org_id)
     
     findings = []

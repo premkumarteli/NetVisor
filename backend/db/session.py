@@ -154,6 +154,53 @@ REQUIRED_SECURITY_TABLES = {
             INDEX idx_disc_app_override (is_override)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """,
+    "device_summary": """
+        CREATE TABLE IF NOT EXISTS device_summary (
+            device_id VARCHAR(64) NOT NULL,
+            organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+            hostname VARCHAR(255) NULL,
+            mac VARCHAR(64) NULL,
+            ip VARCHAR(45) NOT NULL,
+            vendor VARCHAR(128) NULL,
+            device_type VARCHAR(64) NULL,
+            os_family VARCHAR(64) NULL,
+            management_mode VARCHAR(20) NOT NULL DEFAULT 'byod',
+            top_application VARCHAR(128) NULL,
+            top_domain VARCHAR(255) NULL,
+            total_flows BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            total_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (organization_id, device_id),
+            INDEX idx_dev_sum_last_seen (organization_id, last_seen),
+            INDEX idx_dev_sum_ip (organization_id, ip)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "application_summary": """
+        CREATE TABLE IF NOT EXISTS application_summary (
+            application_name VARCHAR(128) NOT NULL,
+            organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+            category VARCHAR(64) NOT NULL DEFAULT 'web',
+            device_count INT UNSIGNED NOT NULL DEFAULT 0,
+            flow_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            total_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (organization_id, application_name),
+            INDEX idx_app_sum_flow_count (organization_id, flow_count),
+            INDEX idx_app_sum_last_seen (organization_id, last_seen)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
+    "dashboard_cache": """
+        CREATE TABLE IF NOT EXISTS dashboard_cache (
+            organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+            cache_key VARCHAR(128) NOT NULL,
+            payload LONGTEXT NOT NULL,
+            generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (organization_id, cache_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
 }
 
 
@@ -212,6 +259,9 @@ REQUIRED_RUNTIME_TABLES = (
     "audit_logs",
     "device_risks",
     "discovered_applications",
+    "device_summary",
+    "application_summary",
+    "dashboard_cache",
 )
 
 
@@ -313,6 +363,28 @@ REQUIRED_RUNTIME_COLUMNS = {
         "risk_level",
         "reasons",
     },
+    "device_summary": {
+        "device_id",
+        "organization_id",
+        "hostname",
+        "mac",
+        "ip",
+        "total_flows",
+        "total_bytes",
+        "last_seen",
+    },
+    "application_summary": {
+        "application_name",
+        "organization_id",
+        "flow_count",
+        "total_bytes",
+        "last_seen",
+    },
+    "dashboard_cache": {
+        "organization_id",
+        "cache_key",
+        "payload",
+    },
 }
 
 REQUIRED_RUNTIME_INDEXES = {
@@ -397,6 +469,19 @@ REQUIRED_RUNTIME_INDEXES = {
         "uq_disc_app_org_domain",
         "idx_disc_app_org_app",
         "idx_disc_app_override",
+    },
+    "device_summary": {
+        "PRIMARY",
+        "idx_dev_sum_last_seen",
+        "idx_dev_sum_ip",
+    },
+    "application_summary": {
+        "PRIMARY",
+        "idx_app_sum_flow_count",
+        "idx_app_sum_last_seen",
+    },
+    "dashboard_cache": {
+        "PRIMARY",
     },
 }
 
@@ -753,7 +838,73 @@ def ensure_bootstrap_state():
                 )
                 logger.info("Normalized bootstrap user '%s' role/org.", admin_username)
 
+        ensure_summary_backfill(conn)
         conn.commit()
     finally:
         cursor.close()
         conn.close()
+
+
+def ensure_summary_backfill(conn):
+    """Backfills device_summary and application_summary if empty."""
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("SELECT COUNT(*) AS c FROM device_summary")
+        dev_count = int((cursor.fetchone() or {}).get("c") or 0)
+        if dev_count == 0:
+            cursor.execute("""
+                INSERT INTO device_summary (
+                    device_id, organization_id, hostname, mac, ip, vendor,
+                    device_type, os_family, management_mode, total_flows, total_bytes,
+                    first_seen, last_seen, updated_at
+                )
+                SELECT
+                    COALESCE(d.agent_id, d.ip) AS device_id,
+                    COALESCE(d.organization_id, 'default-org-id') AS organization_id,
+                    COALESCE(d.hostname, 'Unknown') AS hostname,
+                    NULLIF(d.mac, '') AS mac,
+                    d.ip,
+                    COALESCE(d.vendor, 'Unknown') AS vendor,
+                    COALESCE(d.device_type, 'Observed Device') AS device_type,
+                    COALESCE(d.os_family, 'Unknown') AS os_family,
+                    CASE WHEN d.agent_id IS NOT NULL THEN 'managed' ELSE 'byod' END AS management_mode,
+                    0 AS total_flows,
+                    0 AS total_bytes,
+                    COALESCE(d.first_seen, UTC_TIMESTAMP()) AS first_seen,
+                    COALESCE(d.last_seen, UTC_TIMESTAMP()) AS last_seen,
+                    UTC_TIMESTAMP() AS updated_at
+                FROM devices d
+                ON DUPLICATE KEY UPDATE
+                    last_seen = GREATEST(last_seen, VALUES(last_seen))
+            """)
+            conn.commit()
+            logger.info("Primed device_summary table from existing devices.")
+
+        cursor.execute("SELECT COUNT(*) AS c FROM application_summary")
+        app_count = int((cursor.fetchone() or {}).get("c") or 0)
+        if app_count == 0:
+            cursor.execute("""
+                INSERT INTO application_summary (
+                    application_name, organization_id, category, flow_count, total_bytes, last_seen, updated_at
+                )
+                SELECT
+                    COALESCE(NULLIF(application, ''), 'Other') AS application_name,
+                    COALESCE(organization_id, 'default-org-id') AS organization_id,
+                    'web' AS category,
+                    COUNT(*) AS flow_count,
+                    COALESCE(SUM(byte_count), 0) AS total_bytes,
+                    MAX(COALESCE(last_seen, created_at)) AS last_seen,
+                    UTC_TIMESTAMP() AS updated_at
+                FROM flow_logs
+                GROUP BY COALESCE(NULLIF(application, ''), 'Other'), COALESCE(organization_id, 'default-org-id')
+                ON DUPLICATE KEY UPDATE
+                    flow_count = VALUES(flow_count),
+                    total_bytes = VALUES(total_bytes),
+                    last_seen = VALUES(last_seen)
+            """)
+            conn.commit()
+            logger.info("Primed application_summary table from existing flow_logs.")
+    except Exception as exc:
+        logger.debug("Summary backfill notice: %s", exc)
+    finally:
+        cursor.close()

@@ -240,10 +240,21 @@ class DashboardService:
 
     def get_recent_activity(
         self,
-        db_conn,
+        db_conn=None,
         organization_id: Optional[str] = None,
         limit: int = 50,
     ) -> list[dict]:
+        try:
+            from .live_telemetry_store import live_telemetry_store
+            mem_items = live_telemetry_store.get_recent_activity(organization_id, limit=limit)
+            if mem_items:
+                return mem_items
+        except Exception as exc:
+            pass
+
+        if db_conn is None:
+            return []
+
         cursor = db_conn.cursor(dictionary=True)
         try:
             params = []

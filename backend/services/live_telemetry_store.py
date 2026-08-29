@@ -41,6 +41,7 @@ class LiveTelemetryStore:
             "active_devices": {},        # ip -> last_seen_timestamp
             "total_devices_count": 0,
             "recent_alerts": deque(maxlen=100),
+            "recent_activity": deque(maxlen=500),  # 500-item in-memory ring buffer for activity stream
             "risk_distribution": defaultdict(int),
             "top_applications": defaultdict(float),
             "top_protocols": defaultdict(float),
@@ -125,6 +126,49 @@ class LiveTelemetryStore:
                 except Exception:
                     alert_data["message"] = "Suspicious activity detected"
                 self._states[org_id]["recent_alerts"].append(alert_data)
+
+            # 5. Recent activity ring buffer priming
+            cursor.execute(
+                """
+                SELECT
+                    f.last_seen,
+                    f.src_ip,
+                    f.dst_ip,
+                    f.src_port,
+                    f.dst_port,
+                    f.external_endpoint_ip,
+                    f.sni,
+                    f.domain,
+                    COALESCE(NULLIF(f.application, ''), 'Other') AS application,
+                    f.protocol,
+                    f.byte_count,
+                    COALESCE(r.risk_level, 'LOW') AS severity,
+                    f.organization_id
+                FROM flow_logs f
+                LEFT JOIN device_risks r ON f.src_ip = r.device_id
+                ORDER BY f.last_seen DESC
+                LIMIT 100
+                """
+            )
+            for row in cursor.fetchall() or []:
+                org_id = row.get("organization_id") or "default"
+                act = {
+                    "time": str(row.get("last_seen") or ""),
+                    "last_seen": str(row.get("last_seen") or ""),
+                    "src_ip": row.get("src_ip"),
+                    "dst_ip": row.get("dst_ip"),
+                    "src_port": row.get("src_port"),
+                    "dst_port": row.get("dst_port"),
+                    "external_endpoint_ip": row.get("external_endpoint_ip"),
+                    "sni": row.get("sni"),
+                    "domain": row.get("domain"),
+                    "application": row.get("application") or "Other",
+                    "protocol": row.get("protocol"),
+                    "byte_count": row.get("byte_count") or 0,
+                    "severity": row.get("severity") or "LOW",
+                    "management_mode": "managed" if row.get("src_ip") in self._states[org_id]["known_ips"] else "byod",
+                }
+                self._states[org_id]["recent_activity"].append(act)
 
             logger.info("LiveTelemetryStore primed successfully from DB.")
         except Exception:
@@ -353,6 +397,19 @@ class LiveTelemetryStore:
         with self._get_org_lock(org_id):
             alerts = list(self._states[org_id]["recent_alerts"])
             return alerts[:limit]
+
+    def record_recent_activity(self, organization_id: Optional[str], activity_dict: dict) -> None:
+        """Appends a new flow activity event to the in-memory 500-item ring buffer."""
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            self._states[org_id]["recent_activity"].appendleft(activity_dict)
+
+    def get_recent_activity(self, organization_id: Optional[str] = None, limit: int = 50) -> list[dict]:
+        """Returns recent activity events instantly from in-memory ring buffer."""
+        org_id = organization_id or "default"
+        with self._get_org_lock(org_id):
+            items = list(self._states[org_id]["recent_activity"])
+            return items[:limit]
 
 
 # Global singleton store instance

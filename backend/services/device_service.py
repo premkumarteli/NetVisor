@@ -55,62 +55,69 @@ class DeviceService:
         self._schema_ready = True
 
     def get_devices(self, db_conn, organization_id: Optional[str] = None, include_observed: bool = False) -> List[dict]:
+        if db_conn is None:
+            return []
         self.ensure_schema(db_conn)
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params = []
+            org_filter = ""
+            if organization_id:
+                org_filter = "WHERE ds.organization_id = %s"
+                params.append(organization_id)
+
+            query = f"""
+                SELECT
+                    ds.device_id AS id,
+                    ds.device_id AS agent_id,
+                    ds.ip,
+                    COALESCE(NULLIF(ds.mac, ''), '-') AS mac,
+                    COALESCE(NULLIF(ds.hostname, 'Unknown'), 'Unknown') AS hostname,
+                    COALESCE(NULLIF(ds.vendor, 'Unknown'), 'Unknown') AS vendor,
+                    COALESCE(NULLIF(ds.device_type, 'Unknown'), 'Unknown') AS device_type,
+                    COALESCE(NULLIF(ds.os_family, 'Unknown'), 'Unknown') AS os_family,
+                    ds.management_mode,
+                    ds.top_application,
+                    ds.top_domain,
+                    ds.total_flows,
+                    ds.total_bytes,
+                    ds.first_seen,
+                    ds.last_seen,
+                    ds.organization_id,
+                    COALESCE(r.current_score, 0) AS risk_score,
+                    COALESCE(r.risk_level, 'LOW') AS risk_level,
+                    CASE WHEN ds.management_mode = 'managed' THEN 'high' ELSE 'medium' END AS confidence
+                FROM device_summary ds
+                LEFT JOIN device_risks r ON ds.ip = r.device_id AND (ds.organization_id = r.organization_id OR ds.organization_id IS NULL)
+                {org_filter}
+                ORDER BY ds.last_seen DESC
+            """
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall() or []
+            if rows:
+                formatted = self._format_device_rows(rows, brand="Managed")
+                if not include_observed:
+                    formatted = [
+                        d for d in formatted
+                        if d.get("management_mode") == "managed" or (d.get("status") == "Online" and d.get("top_application"))
+                    ]
+                return formatted
+        except Exception as exc:
+            logger.debug("device_summary fast query notice: %s", exc)
+        finally:
+            cursor.close()
+
+        # Fallback to legacy path if device_summary is still initializing
         managed = self._get_managed_devices(db_conn, organization_id)
         discovered_only = self._get_observed_devices(db_conn, organization_id)
-
         merged = self._merge_devices(managed + discovered_only)
-        self._add_activity_snapshots(db_conn, merged)
-        
         if not include_observed:
-            # Option 1: Only keep active / managed devices, excluding passive observed ARP devices
             merged = [
                 d for d in merged
                 if d.get("management_mode") == "managed" or (d.get("status") == "Online" and d.get("top_application"))
             ]
-
         merged.sort(key=lambda d: d.get("last_seen") or "", reverse=True)
         return merged
-
-    def _add_activity_snapshots(self, db_conn, devices: List[dict]):
-        if not devices:
-            return
-        
-        cursor = db_conn.cursor(dictionary=True)
-        try:
-            device_ips = [d.get("ip") for d in devices if d.get("ip")]
-            if not device_ips:
-                return
-
-            # Batch query for latest session per device
-            format_strings = ','.join(['%s'] * len(device_ips))
-            query = f"""
-                SELECT s.device_ip, s.application, s.domain, s.last_seen
-                FROM sessions s
-                INNER JOIN (
-                    SELECT device_ip, MAX(last_seen) as max_seen
-                    FROM sessions
-                    WHERE device_ip IN ({format_strings})
-                    GROUP BY device_ip
-                ) m ON s.device_ip = m.device_ip AND s.last_seen = m.max_seen
-            """
-            cursor.execute(query, tuple(device_ips))
-            snapshots = {row["device_ip"]: row for row in cursor.fetchall()}
-            
-            for device in devices:
-                ip = device.get("ip")
-                snap = snapshots.get(ip)
-                if snap:
-                    device["top_application"] = snap["application"]
-                    device["top_domain"] = snap["domain"]
-                    device["activity_last_seen"] = self._format_timestamp(snap["last_seen"])
-                else:
-                    device["top_application"] = None
-                    device["top_domain"] = None
-        except Exception as e:
-            logger.error(f"Failed to fetch activity snapshots: {e}")
-        finally:
-            cursor.close()
 
     def _is_trackable_device_ip(self, ip: str | None) -> bool:
         return is_rfc1918_device_ip(ip)

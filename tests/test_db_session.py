@@ -129,6 +129,18 @@ class _SchemaCursor:
         if normalized.startswith("ALTER TABLE agents ADD COLUMN cert_status"):
             self.conn.columns.setdefault("agents", set()).add("cert_status")
             return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS discovered_applications"):
+            self.conn.tables.add("discovered_applications")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS device_summary"):
+            self.conn.tables.add("device_summary")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS application_summary"):
+            self.conn.tables.add("application_summary")
+            return
+        if normalized.startswith("CREATE TABLE IF NOT EXISTS dashboard_cache"):
+            self.conn.tables.add("dashboard_cache")
+            return
         raise AssertionError(f"Unexpected query: {normalized}")
 
     def fetchone(self):

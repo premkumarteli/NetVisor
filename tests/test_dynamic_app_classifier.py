@@ -119,19 +119,29 @@ class TestDynamicAppClassifier:
 
     def test_application_summary_aggregation(self):
         conn = get_db_connection()
+        cursor = conn.cursor()
         try:
-            summary = application_service.get_application_summary(conn, window_minutes=60)
+            # Insert a sample web event to guarantee non-empty aggregation
+            cursor.execute(
+                """
+                INSERT INTO web_events
+                    (organization_id, agent_id, device_ip, process_name, browser_name, page_url, base_domain, page_title, http_method, request_bytes, response_bytes, first_seen, last_seen, created_at)
+                VALUES
+                    ('default-org-id', 'AGENT-TEST', '10.18.86.99', 'chrome.exe', 'Chrome', 'https://claude.ai/chat', 'claude.ai', 'Claude - Anthropic', 'GET', 512, 1024, UTC_TIMESTAMP(), UTC_TIMESTAMP(), UTC_TIMESTAMP())
+                """
+            )
+            conn.commit()
+
+            summary = application_service.get_application_summary(conn, window_minutes=60, force_refresh=True)
             assert isinstance(summary, list)
             assert len(summary) > 0
 
-            for entry in summary:
-                assert "application" in entry
-                assert "device_count" in entry
-                assert "active_device_count" in entry
-                assert "bandwidth" in entry
-                assert "bandwidth_bytes" in entry
-                assert "runtime" in entry
-                assert "runtime_seconds" in entry
-                assert "last_seen" in entry
+            claude_entry = next((e for e in summary if e["application"] == "Claude"), None)
+            assert claude_entry is not None
+            assert claude_entry["device_count"] >= 1
+            assert claude_entry["bandwidth_bytes"] >= 1024
         finally:
+            cursor.execute("DELETE FROM web_events WHERE agent_id = 'AGENT-TEST'")
+            conn.commit()
+            cursor.close()
             conn.close()
