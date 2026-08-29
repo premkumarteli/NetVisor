@@ -6,5 +6,6 @@ requests
 scapy
 colorama
 cryptography
+httpx
 
 pytest

@@ -2441,6 +2441,21 @@ This project provided deep, hands-on experience in networking, systems security,
 - Directory verification confirmed via `Get-ChildItem -Path . -Filter "requirements*"`.
 - Git commit: `fad7ec8` pushed to `origin/master`.
 
+
+## 2026-08-29 - Add httpx to Test Dependencies for FastAPI TestClient
+
+**Work completed**
+- Added `httpx` to `requirements/dev.txt` and `requirements/dev.in`.
+
+**Problem found**
+- CI workflow failed during "Run backend unit tests" with `RuntimeError: The starlette.testclient module requires the httpx package to be installed.` and `ModuleNotFoundError: No module named 'httpx'`.
+
+**Solution or learning**
+- Starlette 0.21+ / FastAPI 0.87+ `TestClient` requires `httpx` for executing test HTTP requests. Declaring `httpx` in `requirements/dev.txt` ensures CI environments install it during test setup.
+
+**Evidence**
+- Modified [requirements/dev.txt](file:///c:/Users/prem/Network/requirements/dev.txt) and [requirements/dev.in](file:///c:/Users/prem/Network/requirements/dev.in).
+
 ---
 
 ## Template for Future Daily Entries
