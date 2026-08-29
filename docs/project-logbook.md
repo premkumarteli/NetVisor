@@ -2293,6 +2293,22 @@ This project provided deep, hands-on experience in networking, systems security,
 - Test suite verification: 31 passed in 37.65s (`tests/test_dashboard_overview_api.py`, `tests/test_application_service.py`, `tests/test_device_service.py`, `tests/test_analytics_service.py`, `tests/test_system_service.py`).
 - 9 passed in 14.40s (`tests/test_dpi_app_grouping.py`, `tests/test_dynamic_app_classifier.py`).
 
+## 2026-08-29 - Async Discovery Persistence Warning Logging & MySQL 8.0.20+ Syntax Upgrade
+
+**Work completed**
+- Bumped exception logging in `ApplicationService._async_persist_discovery._persist_task` from `logger.debug` to `logger.warning` in [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py#L218-L225) to prevent silent write failures in production.
+- Upgraded the upsert SQL query in `_persist_task` from legacy `VALUES(col)` to the standard MySQL 8.0.20+ row-alias syntax with table qualification (`AS new_row ON DUPLICATE KEY UPDATE application_name = IF(discovered_applications.is_override = 1, discovered_applications.application_name, new_row.application_name), category = IF(discovered_applications.is_override = 1, discovered_applications.category, new_row.category)`).
+
+**Problem found**
+- Legacy `VALUES()` in `ON DUPLICATE KEY UPDATE` is deprecated in MySQL 8.0.20+. Unqualified row alias syntax caused `1052: Column 'is_override' in field list is ambiguous` in MySQL 8.0.41.
+
+**Solution or learning**
+- Qualified column names with the target table name `discovered_applications.is_override` to ensure unambiguous evaluation.
+
+**Evidence**
+- Unit tests: `tests/test_dynamic_app_classifier.py` and `tests/test_compatibility_wrappers.py` (**11 / 11 passed in 5.76s**).
+- Git commit: `f23d3e7` pushed to `master`.
+
 ---
 
 ## Template for Future Daily Entries
