@@ -2047,6 +2047,23 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - Documented in project architectural assessment and logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
 
+## 2026-08-29 - Repository-Wide Python Syntax Verification
+
+**Work completed**
+- Executed forced recompilation (`python -m compileall -f`) across all Python source modules in `agent/`, `backend/`, `packet_engine/`, `tests/`, `scratch/`, and root CLI entrypoints.
+- Verified syntax validity across **100+ Python source files**.
+- **Result:** 0 syntax errors found across the entire repository.
+
+**Problem found**
+- None. All modules, threat detectors, packet engine parsers, and test files compiled cleanly.
+
+**Solution or learning**
+- Confirmed full syntax integrity across all codebase layers.
+
+**Evidence**
+- Tested via `$env:PYTHONPATH="."; .venv\Scripts\python.exe -m compileall -f agent backend packet_engine tests scratch validate_live_capture.py`.
+- Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
+
 ## 2026-08-28 - Active Threat Detection Engine Suite & High-Value Analytics
 
 **Work completed**
@@ -2065,12 +2082,49 @@ This project provided deep, hands-on experience in networking, systems security,
 - Successfully shifted system focus from low-level packet dissector tweaking to high-value NDR threat analytics, behavioral anomaly detection, and risk scoring.
 
 **Evidence**
-- Tested via `$env:PYTHONPATH="."; .venv\Scripts\pytest.exe tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint3_tcp_stream.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py tests/test_sprint6_kernel_acceleration.py tests/test_packet_engine_hardening.py tests/test_live_telemetry.py tests/test_collector_observations.py tests/test_packet_engine_validation.py tests/test_threat_detection_engine.py -v` (58 passed in 9.07s).
-- Logged to [docs/project-logbook.md](file:///c:/Users/prem/Network/docs/project-logbook.md).
+## 2026-08-28 - Dynamic Application Classifier, Multi-Source Aggregation & Admin Overrides
+
+**Work completed**
+- Created dynamic application classifier module [`intel/app_classifier.py`](file:///c:/Users/prem/Network/intel/app_classifier.py) with 5-layer classification hierarchy:
+  - Layer 0: Admin Overrides (explicit user pinning via database table & in-memory cache)
+  - Layer 1: Page Title / Web Metadata sanitization & Seed Rules (Claude, ChatGPT, Gemini, YouTube, Microsoft, Sentry, etc.)
+  - Layer 2: Second-Level Domain (SLD) and multi-tenant PaaS hosting awareness (`*.vercel.app`, `*.herokuapp.com`, `*.pages.dev`, `*.github.io`, etc.)
+  - Layer 3: Endpoint process/binary mapping (`cursor.exe` -> Cursor, `spotify.exe` -> Spotify, `code.exe` -> VS Code)
+  - Layer 4: TLS Subject Organization extraction with CDN/CA denylist (`Cloudflare`, `Let's Encrypt`, `DigiCert`, `Google Trust Services`, `Amazon Corporate`, etc.)
+- Created `discovered_applications` table schema in [`backend/db/session.py`](file:///c:/Users/prem/Network/backend/db/session.py) with asynchronous non-blocking persistence.
+- Refactored [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py):
+  - Unified multi-source aggregation combining `sessions`, `web_events` (DPI decrypted streams), and `flow_logs` (un-sessioned flows) into application summaries.
+  - Updated `get_application_devices()` and `get_application_workspace()` to query all data streams.
+  - Implemented `get_admin_overrides()`, `set_admin_override()`, and `delete_admin_override()`.
+- Added Admin Override REST endpoints in [`backend/api/apps.py`](file:///c:/Users/prem/Network/backend/api/apps.py) (`GET/POST/DELETE /api/v1/apps/overrides`).
+- Enhanced frontend in [`frontend/src/utils/apps.js`](file:///c:/Users/prem/Network/frontend/src/utils/apps.js) and [`frontend/src/pages/ApplicationsPage.jsx`](file:///c:/Users/prem/Network/frontend/src/pages/ApplicationsPage.jsx):
+  - Deterministic generative color generator with semantic color collision guard (excluding Red $345^\circ - 20^\circ$ and Amber $35^\circ - 55^\circ$).
+  - Search and filter bar (All, Active, Products, Services).
+  - Interactive "Manage Overrides" glass modal and per-host "Pin Name" button on unclassified domains.
+  - Updated `systemService` API client in [`frontend/src/services/api.js`](file:///c:/Users/prem/Network/frontend/src/services/api.js).
+- Added comprehensive unit and integration test suite [`tests/test_dynamic_app_classifier.py`](file:///c:/Users/prem/Network/tests/test_dynamic_app_classifier.py) (7 passed).
+
+**Problem found**
+- Discovered applications were previously limited to 2 hardcoded records (Sentry and Microsoft) because `ApplicationService.get_application_summary()` only queried the `sessions` table, omitting decrypted browser activity in `web_events` and un-sessioned `flow_logs`.
+- Web event rows in `web_events` store the hostname under the `base_domain` column; `_preferred_host()` was previously only checking `sni` and `domain`, causing web events to skip domain classification and fall through to raw chat titles and browser subservice paths (`Frontend Development Plan`, `Autofillservice`, `Notfoundpathwillgive 404`).
+
+**Solution or learning**
+- Updated `_preferred_host()` to inspect `base_domain` and `host` attributes alongside `sni` and `domain`.
+- Prioritized domain seed rules and admin overrides before web page title extraction in `classify_app()`.
+- Combined `sessions`, `web_events`, and `flow_logs` into a single deduplicated aggregation pipeline, cleanly grouping chat sessions and API paths into `ChatGPT`, `Microsoft`, `Google`, `Gemini`, `Google Play`, etc.
+
+**Evidence**
+- Added high-priority seed recognition rules and branding visuals for regional portals: [`VTU`](file:///c:/Users/prem/Network/backend/services/application_service.py#L86-L92) (`vtu.ac.in`), [`Acharya Institutes / Acharya ERP`](file:///c:/Users/prem/Network/backend/services/application_service.py#L87) (`acharya.ac.in`, `acharyaerp.in`), [`RailOne / IRCTC`](file:///c:/Users/prem/Network/backend/services/application_service.py#L88-L89) (`railone.in`, `irctc.co.in`), and [`HDHub4u`](file:///c:/Users/prem/Network/backend/services/application_service.py#L90).
+- Pytest test execution: `tests/test_system_service.py tests/test_web_inspection_service.py tests/test_dynamic_app_classifier.py` (17 passed in 8.36s).
+- Frontend production build: `npm run build --prefix frontend` (Built cleanly with Vite in 43.25s).
+- Verified live DB discovery: `application_service.get_application_summary(conn)` accurately aggregates all traffic into clean product app and service cards.
+
+
 
 ---
 
 ## Template for Future Daily Entries
+
 
 ```text
 ## YYYY-MM-DD - Short Title
