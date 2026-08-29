@@ -2424,6 +2424,22 @@ This project provided deep, hands-on experience in networking, systems security,
 - Removed 8 scratch and redundant test files across `scripts/dev/`, `tests/`, and `runtime/`.
 - Test suite verification: 34 passed in 42.21s (`tests/test_flow_sanitization_service.py`, `tests/test_dashboard_overview_api.py`, `tests/test_application_service.py`, `tests/test_device_service.py`, `tests/test_analytics_service.py`, `tests/test_system_service.py`).
 
+## 2026-08-29 - Root Requirements Files Complete Removal
+
+**Work completed**
+- Permanently deleted all 7 root-level requirements wrapper files: `requirements-agent.txt`, `requirements-dev.in`, `requirements-dev.txt`, `requirements-gateway.txt`, `requirements-server.txt`, `requirements.in`, and `requirements.txt`.
+- Verified directory listing to ensure only the [`requirements/`](file:///c:/Users/prem/Network/requirements) directory remains.
+
+**Problem found**
+- Root-level wrapper files were still present on the Windows filesystem.
+
+**Solution or learning**
+- Executed direct forced removal of the specific file paths via PowerShell `Remove-Item -Force`.
+
+**Evidence**
+- `dir requirements*` output: `0 File(s) 0 bytes`, `1 Dir(s) requirements`.
+- Directory verification confirmed via `Get-ChildItem -Path . -Filter "requirements*"`.
+
 ---
 
 ## Template for Future Daily Entries
