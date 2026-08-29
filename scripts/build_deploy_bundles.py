@@ -33,6 +33,7 @@ CANONICAL_RUNTIME_ROOTS = {
     "requirements-server.txt",
     "requirements-agent.txt",
     "requirements-gateway.txt",
+    "requirements",
 }
 IGNORE_PATTERNS = shutil.ignore_patterns(
     "__pycache__",
@@ -62,6 +63,7 @@ BUNDLES = {
         ("infra/database/migrations", "database/migrations"),
         ("frontend/dist", "frontend/dist"),
         ("requirements-server.txt", "requirements.txt"),
+        ("requirements", "requirements"),
         ("run_server.py", "run_server.py"),
         ("run_flow_worker.py", "run_flow_worker.py"),
         ("run_backup_retention.py", "run_backup_retention.py"),
@@ -85,6 +87,7 @@ BUNDLES = {
         ("collector", "collector"),
         ("config/agent.json", "config/agent.json"),
         ("requirements-agent.txt", "requirements.txt"),
+        ("requirements", "requirements"),
         ("run_agent.py", "run_agent.py"),
         ("scripts/run_agent.py", "scripts/run_agent.py"),
         ("scripts/launch_personal_chrome_dpi.cmd", "scripts/launch_personal_chrome_dpi.cmd"),
@@ -101,6 +104,7 @@ BUNDLES = {
         ("security", "security"),
         ("collector", "collector"),
         ("requirements-gateway.txt", "requirements.txt"),
+        ("requirements", "requirements"),
         ("run_gateway.py", "run_gateway.py"),
         ("scripts/run_gateway.py", "scripts/run_gateway.py"),
         ("infra/deployment/gateway/systemd/netvisor-gateway.service", "systemd/netvisor-gateway.service"),

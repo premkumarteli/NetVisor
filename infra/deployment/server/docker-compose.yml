@@ -34,6 +34,7 @@ services:
       - ./database:/srv/netvisor/database:ro
       - ./run_server.py:/srv/netvisor/run_server.py:ro
       - ./requirements.txt:/srv/netvisor/requirements.txt:ro
+      - ./requirements:/srv/netvisor/requirements:ro
     command: >
       sh -c "
       pip install --no-cache-dir -r requirements.txt &&
@@ -66,6 +67,7 @@ services:
       - ./frontend/dist:/srv/netvisor/frontend/dist:ro
       - ./run_server.py:/srv/netvisor/run_server.py:ro
       - ./requirements.txt:/srv/netvisor/requirements.txt:ro
+      - ./requirements:/srv/netvisor/requirements:ro
       - server_runtime:/srv/netvisor/runtime
       - ./runtime/ca:/srv/netvisor/runtime/ca:ro
     command: >
@@ -97,6 +99,7 @@ services:
       - ./database:/srv/netvisor/database:ro
       - ./run_flow_worker.py:/srv/netvisor/run_flow_worker.py:ro
       - ./requirements.txt:/srv/netvisor/requirements.txt:ro
+      - ./requirements:/srv/netvisor/requirements:ro
       - server_runtime:/srv/netvisor/runtime
     command: >
       sh -c "

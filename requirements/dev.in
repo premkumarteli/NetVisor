@@ -1,5 +1,5 @@
 # NetVisor development/test dependencies
--r requirements-server.txt
+-r server.txt
 requests
 scapy
 colorama

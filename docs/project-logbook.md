@@ -2311,6 +2311,49 @@ This project provided deep, hands-on experience in networking, systems security,
 
 ---
 
+## 2026-08-29 - Full Repository Audit
+
+**Work completed**
+- Reviewed the repository structure, root configuration, documentation, frontend package metadata, test inventory, ignored paths, and local key artifacts.
+- Identified the active layout as `backend/`, `agent/`, `gateway/`, `frontend/`, `packet_engine/`, `security/`, `infra/`, and related services.
+
+**Problem found**
+- `PROJECT.md` documents an older `app/` and `shared/` layout that does not match the current root structure.
+- Pytest collection is blocked by a missing `dpkt` dependency in `tests/test_packet_engine_hardening.py`.
+- The repository contains local `.env`, key, database-dump, virtual-environment, frontend dependency, and build artifacts; these are mostly covered by ignore rules, but local secret/key hygiene should still be verified before sharing or deployment.
+
+**Solution or learning**
+- No code changes were made during this audit. The immediate next step is to install/sync the declared dependencies, then rerun the test suite and refresh stale project documentation.
+
+**Evidence**
+- Root inventory showed 26 top-level directories and 30 root files.
+- Test collection reported `640 tests collected, 1 error`; failure: `ModuleNotFoundError: No module named 'dpkt'`.
+- Relevant files reviewed: `README.md`, `PROJECT.md`, `.gitignore`, `.env.example`, `frontend/package.json`, and `docs/project-logbook.md`.
+
+
+## 2026-08-29 - Fix GitHub Actions CI Requirements File Paths
+
+**Work completed**
+- Fixed relative requirement include in `requirements/dev.txt` and `requirements/dev.in` from `-r requirements-server.txt` to `-r server.txt`.
+- Updated `.github/workflows/ci.yml` dependency installation step to reference canonical requirement files (`requirements/base.txt`, `requirements/server.txt`, `requirements/dev.txt`) with root wrapper fallbacks.
+- Updated `Dockerfile.agent`, `Dockerfile.gateway`, and `infra/docker/Dockerfile.backend` to copy the `requirements/` directory alongside root requirement files.
+- Updated `scripts/build_deploy_bundles.py` to register `requirements/` in `CANONICAL_RUNTIME_ROOTS` and bundle lists (`server`, `agent`, `gateway`).
+- Updated `infra/deployment/docker-compose.yml` and `infra/deployment/server/docker-compose.yml` volume mounts to mount `requirements/` directory.
+
+**Problem found**
+- CI workflow failed during "Install Python test dependencies" with `ERROR: Could not open requirements file: requirements/requirements-server.txt`.
+- `requirements/dev.txt` contained `-r requirements-server.txt`. When pip processed `pip install -r requirements-dev.txt`, it parsed `requirements/dev.txt` and resolved `-r requirements-server.txt` relative to `requirements/`, looking for `requirements/requirements-server.txt` which did not exist.
+
+**Solution or learning**
+- Pip resolves recursive `-r` requirements directives relative to the directory containing the requirement file being parsed. Updating `requirements/dev.txt` to reference `-r server.txt` (which is located in the same `requirements/` folder) cleanly resolves server dependencies.
+
+**Evidence**
+- Locally reproduced error: `ERROR: Could not open requirements file: [Errno 2] No such file or directory: 'C:\Users\prem\Network\requirements\requirements-server.txt'`.
+- Verified local installation completion using `.venv\Scripts\python.exe -m pip install -r requirements/base.txt`, `-r requirements/server.txt`, `-r requirements/dev.txt`, and `-r requirements-dev.txt` without errors.
+- Touched files: `.github/workflows/ci.yml`, `requirements/dev.txt`, `requirements/dev.in`, `Dockerfile.agent`, `Dockerfile.gateway`, `infra/docker/Dockerfile.backend`, `scripts/build_deploy_bundles.py`, `infra/deployment/docker-compose.yml`, `infra/deployment/server/docker-compose.yml`.
+
+---
+
 ## Template for Future Daily Entries
 
 
