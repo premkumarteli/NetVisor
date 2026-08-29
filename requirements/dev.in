@@ -5,4 +5,5 @@ scapy
 colorama
 cryptography
 httpx
+dpkt
 pytest
