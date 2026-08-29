@@ -2253,6 +2253,30 @@ This project provided deep, hands-on experience in networking, systems security,
 - `git branch -a -v` output: only `* master` and `remotes/origin/master` at commit `2e6bf27`.
 - `git push origin --delete <branch>` results: 14 branches deleted.
 
+## 2026-08-29 - Dynamic App Classification Audit, Multi-Tenant Scoping Fix & Concurrency Verification
+
+**Work completed**
+- Traced `process_name` telemetry pipeline from `agent/dpi/mitm_addon.py` through `backend/services/application_service.py`: confirmed Layer 3 is a dead branch for desktop processes because `process_name` is only inferred from HTTP User-Agent/Sec-CH-UA headers (`chrome.exe`, `msedge.exe`, `firefox.exe`, `safari.exe`, `python.exe`) which are filtered out at line 477.
+- Fixed two `organization_id` scoping omissions where `classify_app(row)` defaulted to `"default-org-id"`:
+  1. [`backend/services/flow_service.py`](file:///c:/Users/prem/Network/backend/services/flow_service.py#L1838): updated `get_flow_logs` fallback branch to pass `organization_id=organization_id`.
+  2. [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py#L1382): updated `application_compatibility_wrapper` to extract `row.organization_id` and pass `organization_id=org_id`.
+- Audited `discovered_applications` table blast radius: identified 19 pre-existing entries created under `organization_id='default-org-id'` (all heuristic SLD discoveries: `crl.starfieldtech.com`, `cxcs.microsoft.net`, `inference.location.live.net`, `default.exp-tas.com`, `title.mgt.xboxlive.com`, `edgedl.me.gvt1.com`, `download.windowsupdate.com`, `res.public.onecdn.static.microsoft`, `ocsp.digicert.com`, `check.torproject.org`, `5b9dc0ceba6484328dd15f34778f6605.azr.footprintdns.com`, `client.wns.windows.com`, `ctldl.windowsupdate.com`, `oneclient.sfx.ms`, `csgdtm-svc-agent.dell.com`, `platform.claude.com`, `hb.apis.dell.com`, `downloads.example.org`, `unknown.example.org`), with 0 manual overrides present.
+- Verified `ApplicationService._lock` (`threading.RLock`) protects all in-memory cache reads/writes on `self._domain_app_cache`, `self._summary_cache`, and `set_admin_override`/`delete_admin_override`.
+- Verified `getGenerativeAppVisual(appName)` and `getApplicationVisual(appName)` in [`frontend/src/utils/apps.js`](file:///c:/Users/prem/Network/frontend/src/utils/apps.js#L274-L349) implement the non-colliding HSL hue algorithm ($60^\circ - 340^\circ$) strictly excluding Red ($345^\circ - 20^\circ$) and Amber ($35^\circ - 55^\circ$).
+- Verified end-to-end admin override lifecycle: `POST /api/v1/apps/overrides` updates DB with `is_override=1`, populates `_domain_app_cache`, invalidates `_summary_cache`, and dynamically mutates subsequent `classify_app()` results.
+
+**Problem found**
+- Desktop applications running outside the browser (e.g., Cursor, Discord, Slack desktop clients) cannot be identified via Layer 3 without OS-level socket/PID correlation (e.g. `GetExtendedTcpTable` / `psutil.net_connections`).
+- `flow_service.get_flow_logs` and `application_compatibility_wrapper` were calling `classify_app()` without tenant context.
+
+**Solution or learning**
+- Fixed tenant scoping at both call sites and pushed commit `951ce07` to `master`. Documented OS socket-to-process enumeration architecture and performance cost for future desktop agent phases.
+
+**Evidence**
+- Unit tests: `tests/test_dynamic_app_classifier.py` (**7 / 7 passed in 2.97s**).
+- MySQL query evidence: 19 rows in `discovered_applications` with `organization_id='default-org-id'`.
+- Git commit: `951ce07` on branch `master`.
+
 ---
 
 ## Template for Future Daily Entries
