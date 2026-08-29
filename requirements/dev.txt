@@ -1,5 +1,5 @@
 # NetVisor CI/unit-test dependencies
--r requirements-server.txt
+-r server.txt
 
 # The unit suite imports selected agent/gateway/collector modules.
 requests
