@@ -2439,6 +2439,7 @@ This project provided deep, hands-on experience in networking, systems security,
 **Evidence**
 - `dir requirements*` output: `0 File(s) 0 bytes`, `1 Dir(s) requirements`.
 - Directory verification confirmed via `Get-ChildItem -Path . -Filter "requirements*"`.
+- Git commit: `fad7ec8` pushed to `origin/master`.
 
 ---
 
