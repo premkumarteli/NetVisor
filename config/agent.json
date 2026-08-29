@@ -1,5 +1,6 @@
 {
   "server_url": "http://127.0.0.1:8000/api/v1/collect/packet",
+  "api_key": "very_secure_agent_key_for_communication",
   "dedup_window": 5,
   "log_file": "runtime/agent/local_capture_log.csv",
   "risk_threshold": 5,
@@ -13,3 +14,4 @@
   "sample_rate": 1.0,
   "enable_quic_block": true
 }
+

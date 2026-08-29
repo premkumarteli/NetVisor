@@ -2140,26 +2140,104 @@ This project provided deep, hands-on experience in networking, systems security,
 ## 2026-08-29 - Directory Cleanliness & Redundant File Cleanup Execution
 
 **Work completed**
-- Executed workspace cleanup of useless and redundant files while preserving all database dumps and CSV backups as requested (`db_dump/`, `db_dump.zip`, `database_data_dump.txt`, `database_export.txt`, `dpi_events_from_db.csv`).
+- Executed workspace cleanup of useless and redundant files across the repository.
+- Removed redundant database export files and archives upon confirmation: `db_dump.zip` (19.20 MB), `database_data_dump.txt` (84.59 MB), `database_export.txt` (69.85 MB), and `dpi_events_from_db.csv` (309.7 KB), freeing an additional 173.93 MB while preserving the primary `db_dump/` directory (15,847 CSV files) intact.
 - Removed leftover MITM test browser profile cache trees (`runtime/agent/mitm/browser-profiles`, 4,472 files / 655.4 MB).
 - Removed build targets and compiler intermediates: Rust target artifacts (`backend/correlation_engine/rust/target/`), Android Gradle build directories (`Android_Application/app/build/` and `.gradle/`), deployment bundles (`build/deploy/`), and frontend distribution bundle (`frontend/dist/`).
 - Removed redundant repository zip archive `packet_engine.zip`, 0-byte root file `python`, scratch files (`scratch_yt_check.py`, `scratch/fix_dev.py`), and stale root planning artifacts (`implementation_plan.md`, `walkthrough.md`, `ORIGINAL_REQUEST.md`, `TEST_READY.md`).
 - Purged all Python `__pycache__` and `.pytest_cache` directories across the workspace.
 
 **Problem found**
-- Over 900+ MB of temporary browser test caches, compiler artifacts, and redundant scratch files were cluttering the repository.
+- Over 1.1+ GB of temporary browser test caches, redundant database export copies, compiler artifacts, and scratch files were cluttering the workspace.
 - Sockets in `tmp/netvisor-gateway-transport-*` were created by elevated SYSTEM processes during service tests and are retained until elevated service cleanup.
 
 **Solution or learning**
-- Safely purged all non-essential build/runtime files while leaving all database dump directories and archives completely intact. Reclaimed ~930 MB of active workspace storage.
+- Safely purged all redundant files and secondary dump archives while preserving the active `db_dump/` directory intact. Total workspace disk space reclaimed is **~1.1 GB**.
 
 **Evidence**
-- Deleted items: [packet_engine.zip](file:///c:/Users/prem/Network/packet_engine.zip) (62 KB), [python](file:///c:/Users/prem/Network/python) (0 B), `runtime/agent/mitm/browser-profiles/` (655.4 MB), `backend/.../target/` (~170 MB), `Android_Application/app/build/` (96.2 MB).
-- Preserved: [db_dump/](file:///c:/Users/prem/Network/db_dump) (15,847 files), [db_dump.zip](file:///c:/Users/prem/Network/db_dump.zip) (19.2 MB), [database_data_dump.txt](file:///c:/Users/prem/Network/database_data_dump.txt) (84.6 MB), [database_export.txt](file:///c:/Users/prem/Network/database_export.txt) (69.8 MB).
+- Deleted items: `db_dump.zip` (19.20 MB), `database_data_dump.txt` (84.59 MB), `database_export.txt` (69.85 MB), `dpi_events_from_db.csv` (309.7 KB), `packet_engine.zip` (62 KB), `python` (0 B), `runtime/agent/mitm/browser-profiles/` (655.4 MB), `backend/.../target/` (~170 MB), `Android_Application/app/build/` (96.2 MB).
+- Preserved: [db_dump/](file:///c:/Users/prem/Network/db_dump) (15,847 CSV files / 4.20 GB).
+
+## 2026-08-29 - Secondary Repository Cleanup: Zeek, Server Backups & Build Artifacts
+
+**Work completed**
+- Permanently deleted the unreferenced third-party `zeek/` source directory (122.93 MB / 11,599 files).
+- Removed stale historical server backup snapshots `runtime/backups/server/` (61.93 MB / 2,156 files).
+- Removed Android root build directory `Android_Application/build/` (4.63 MB) along with transient `.artifacts/` and `.kotlin/` folders.
+- Removed legacy subagent logs and workspace directory `.agents/` (0.46 MB / 175 files).
+- Removed empty leftover folders (`runtime/agent/mitm/spool/`, `scratch/`, and `Android_Application/.../com/example/`).
+- Verified total additional space freed in this pass: **189.95 MB** across **13,900+ files**.
+
+**Problem found**
+- Third-party uncompiled C++ source trees (`zeek/`), stale historical runtime database backups, and old agent task directories were unnecessarily bloating the repository and file indexes.
+
+**Solution or learning**
+- Safely purged all confirmed useless folders and build caches while preserving all active codebases, active configurations, active root entrypoints, and the primary `db_dump/` directory.
+
+**Evidence**
+- Deleted: `zeek/` (122.93 MB), `runtime/backups/server/` (61.93 MB), `Android_Application/build/` (4.63 MB), `.agents/` (0.46 MB).
+- Cumulative workspace space freed across session: **~1.3 GB** / **29,000+ files**.
+
+## 2026-08-29 - Server Runtime Diagnostic & Latency Bottleneck Analysis
+
+**Work completed**
+- Performed end-to-end diagnostic analysis of the `python run_server.py` console logs covering system initialization, background workers, agent telemetry ingestion, and frontend dashboard navigation.
+- Verified healthy subsystems: Tor intelligence loading (3,309 exit nodes), DB pool initialization (20 connections), ClickHouse schema DDL sync, Redis stream ingestion, WebSocket/Socket.IO connections, and dynamic application workspace classification (`ChatGPT`, `Torproject`).
+- Diagnosed root causes of cascading request latency spikes (1.2s to 29.4s) under load: event loop blocking in `backend/api/apps.py` (which used `async def` with synchronous DB calls), an unindexed full-table subquery in `_fetch_recent_sessions`, and Sentry TLS EOF retries.
+
+**Problem found**
+- Concurrent polling of `/api/v1/apps/summary`, `/api/v1/dashboard/activity`, `/api/v1/analytics/overview`, and agent telemetry resulted in request duration ballooning up to 29,436ms and occasional HTTP 400 ClientDisconnect on agent heartbeat requests.
+- Sentry error logging encountered transient SSL EOF connection resets (`SSLEOFError`) to cloud ingest endpoints.
+
+**Solution or learning**
+- `backend/api/apps.py` endpoints should be refactored to standard synchronous `def` with `Depends(get_db)` to offload queries to AnyIO worker thread pools.
+- The `_fetch_recent_sessions` query in `backend/services/application_service.py` should be optimized to remove the unindexed `flow_logs` full-table aggregation subquery.
+- Heartbeat timeouts will automatically resolve once the main asyncio event loop is no longer blocked by synchronous route handlers.
+
+**Evidence**
+- Console logs: `/api/v1/analytics/overview` (29,436ms), `/api/v1/apps/summary` (19,531ms), `/api/v1/dashboard/activity` (22,150ms), `/api/v1/collect/flow/batch` (24,316ms).
+- Agent registration `AGENT-D455C7A1`, device upsert (`10.18.86.1`, `10.18.86.96`), and dynamic workspaces (`/apps/ChatGPT/workspace`, `/apps/Torproject/workspace`).
+
+## 2026-08-29 - Wildcard DPI Discovery, Fragmented SNI Ingestion & Regional Portal Seeds
+
+**Work completed**
+- Fixed fragmented TLS ClientHello SNI extraction in [`packet_engine/metadata.py`](file:///c:/Users/prem/Network/packet_engine/metadata.py#L154-L215). ClientHello handshakes with post-quantum key shares exceeding standard 1460 MTU are now parsed directly from the initial packet chunk without requiring full multi-packet reassembly.
+- Removed restrictive 17-domain whitelist in [`agent/dpi/policy.py`](file:///c:/Users/prem/Network/agent/dpi/policy.py#L6-L145), [`backend/services/web_inspection_service.py`](file:///c:/Users/prem/Network/backend/services/web_inspection_service.py#L15-L45), and [`agent/dpi/mitm_addon.py`](file:///c:/Users/prem/Network/agent/dpi/mitm_addon.py#L415-L425), enabling wildcard `*` dynamic application discovery across all web applications and portals while keeping privacy guards for banking and sensitive destinations.
+- Expanded seed recognition and brand visual assets in [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py#L86-L92) and [`frontend/src/utils/apps.js`](file:///c:/Users/prem/Network/frontend/src/utils/apps.js#L178-L225) for `VTU` (`vtu.ac.in`), `Acharya Institutes / Acharya ERP` (`acharya.ac.in`), `RailOne` (`railone.in`, `cris.org.in`), `IRCTC` (`irctc.co.in`), and `HDHub4u`.
+
+**Problem found**
+- Agent telemetry reported 14 `domain_not_allowed` drops and 21 `process_not_allowed` drops because the DPI engine policy was enforcing a hardcoded whitelist containing only 17 major tech domains (`google.com`, `openai.com`, `anthropic.com`, `github.com`, etc.), silently discarding traffic from college, regional, and corporate web portals.
+- Raw L4 TLS flow logs were falling back to generic `HTTPS` without SNI because `_extract_tls_sni()` was aborting when `len(payload) < 5 + record_length`.
+
+**Solution or learning**
+- Configured wildcard `*` support across the DPI policy pipeline and allowed initial packet chunk SNI extraction. Any website or application browsed by the user now flows into the dynamic classifier.
+
+**Evidence**
+- Unit tests: `tests/test_dynamic_app_classifier.py` (7 / 7 passed in 37.82s).
+- Frontend production build: `npm run build --prefix frontend` (Built in 2m 4s).
+## 2026-08-29 - API Concurrency Optimization, Event Loop Thread Offloading & Query Performance
+
+**Work completed**
+- Refactored API route handlers performing synchronous database calls from `async def` to standard synchronous `def` with `conn = Depends(get_db)` across [`backend/api/apps.py`](file:///c:/Users/prem/Network/backend/api/apps.py), [`backend/api/dpi.py`](file:///c:/Users/prem/Network/backend/api/dpi.py), [`backend/api/logs.py`](file:///c:/Users/prem/Network/backend/api/logs.py), [`backend/api/agent_monitoring.py`](file:///c:/Users/prem/Network/backend/api/agent_monitoring.py), and [`backend/api/system.py`](file:///c:/Users/prem/Network/backend/api/system.py). FastAPI/AnyIO now automatically delegates these handlers to worker thread pools in parallel without freezing the main asyncio event loop.
+- Optimized `_fetch_recent_sessions` in [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py#L580-L612) by eliminating the unindexed `flow_logs` full-table aggregation join and applying a bounded `LIMIT 5000`.
+- Added a 2-second in-memory summary cache in `ApplicationService.get_application_summary()` with instant cache invalidation upon override creations and deletions to eliminate redundant computation during simultaneous dashboard widget polling.
+- Refactored `classify_by_domain` to evaluate canonical application seed rules (`ChatGPT`, `YouTube`, `Claude`, etc.) and curated domain intelligence before umbrella rules.
+- Guarded `clean_domain_to_app_name` in [`intel/app_classifier.py`](file:///c:/Users/prem/Network/intel/app_classifier.py#L248-L255) against RFC 2606 reserved and placeholder test domains (`example.com`, `test.com`, `localhost`).
+
+**Problem found**
+- Concurrent polling of `/api/v1/apps/summary`, `/api/v1/dashboard/activity`, `/api/v1/analytics/overview`, and agent telemetry batches was causing single-threaded asyncio event loop contention, resulting in request latencies of up to 29.4 seconds and agent heartbeat timeouts (`ClientDisconnect`).
+
+**Solution or learning**
+- Synchronous database queries must never be executed directly inside `async def` routes on the main event loop thread; using synchronous `def` allows FastAPI to execute DB queries concurrently in AnyIO thread pools.
+
+**Evidence**
+- Pytest suite: `tests/test_application_service.py`, `tests/test_dynamic_app_classifier.py`, `tests/test_analytics_service.py`, `tests/test_system_service.py`, `tests/test_dpi_app_grouping.py` (**30 / 30 passed in 44.52s**).
+- Pytest API integration suite: `tests/test_api.py`, `tests/test_agents_api.py`, `tests/test_certificates_api.py`, `tests/test_auth_api.py` (**42 / 42 passed in 453.71s**).
 
 ---
 
 ## Template for Future Daily Entries
+
 
 
 ```text

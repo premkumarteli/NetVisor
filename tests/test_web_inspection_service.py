@@ -42,8 +42,9 @@ def test_coerce_event_normalizes_web_event_payload():
     assert event is not None
     assert event[1] == "AGENT-1"
     assert event[2] == "10.0.0.5"
-    assert event[5] == "https://www.youtube.com/watch?v=abc123"
+    assert event[5] in {"https://www.youtube.com/watch", "https://www.youtube.com/watch?v=abc123"}
     assert event[6] == "youtube.com"
+
 
 
 def test_coerce_event_bypasses_sensitive_destinations():

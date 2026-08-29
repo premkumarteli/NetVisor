@@ -156,10 +156,11 @@ def _extract_tls_sni(payload: bytes) -> str | None:
         return None
 
     record_length = int.from_bytes(payload[3:5], "big")
-    if len(payload) < 5 + record_length:
+    available_len = min(len(payload), 5 + record_length)
+    if available_len < 9:
         return None
 
-    handshake = payload[5 : 5 + record_length]
+    handshake = payload[5:available_len]
     if len(handshake) < 4 or handshake[0] != 0x01:
         return None
 
@@ -196,7 +197,7 @@ def _extract_tls_sni(payload: bytes) -> str | None:
         extension_start = index + 4
         extension_end = extension_start + extension_size
         if extension_end > extensions_end:
-            return None
+            break
 
         if extension_type == 0x0000 and extension_size >= 5:
             server_name_list_length = int.from_bytes(body[extension_start : extension_start + 2], "big")
@@ -207,7 +208,7 @@ def _extract_tls_sni(payload: bytes) -> str | None:
                 name_length = int.from_bytes(body[pointer + 1 : pointer + 3], "big")
                 pointer += 3
                 if pointer + name_length > list_end:
-                    return None
+                    break
                 if name_type == 0:
                     return _normalize_domain(body[pointer : pointer + name_length].decode("utf-8", errors="ignore"))
                 pointer += name_length
@@ -215,6 +216,7 @@ def _extract_tls_sni(payload: bytes) -> str | None:
         index = extension_end
 
     return None
+
 
 
 import re

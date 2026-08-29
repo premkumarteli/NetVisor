@@ -10,6 +10,7 @@ import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import StatusBadge from '../components/V2/StatusBadge';
 import DataTable from '../components/V2/DataTable';
+import GlassModal from '../components/V2/GlassModal';
 import { StatGridSkeleton, TableSkeleton } from '../components/UI/Skeletons';
 
 const parseByteValue = (value) => {
@@ -64,7 +65,7 @@ const appDetectionSummary = (app) => {
   if (app.top_domain) {
     return `Domain: ${compactHost(app.top_domain)}`;
   }
-  return 'Flow intelligence';
+  return 'Dynamic Intelligence';
 };
 
 const appActivitySummary = (app) => {
@@ -93,18 +94,31 @@ const ApplicationsPage = () => {
   const [applications, setApplications] = useState([]);
   const [liveFeed, setLiveFeed] = useState([]);
   const [analytics, setAnalytics] = useState({ uncategorized_domains: [] });
+  const [overrides, setOverrides] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'active' | 'product' | 'service'
+
+  // Override Modal state
+  const [isOverrideModalOpen, setIsOverrideModalOpen] = useState(false);
+  const [overrideDomain, setOverrideDomain] = useState('');
+  const [overrideAppName, setOverrideAppName] = useState('');
+  const [overrideCategory, setOverrideCategory] = useState('web');
+  const [savingOverride, setSavingOverride] = useState(false);
+  const [overrideError, setOverrideError] = useState('');
 
   const fetchApplications = useCallback(async () => {
     try {
-      const [summaryRes, activityRes, analyticsRes] = await Promise.all([
+      const [summaryRes, activityRes, analyticsRes, overridesRes] = await Promise.all([
         systemService.getAppsSummary(),
         systemService.getActivity(120),
         systemService.getAnalyticsOverview(24, 6),
+        systemService.getAppOverrides().catch(() => ({ data: [] })),
       ]);
       setApplications(summaryRes.data || []);
       setLiveFeed(activityRes.data || []);
       setAnalytics(analyticsRes.data || { uncategorized_domains: [] });
+      setOverrides(overridesRes.data || []);
     } catch (err) {
       console.error('Failed to fetch applications', err);
     } finally {
@@ -198,10 +212,30 @@ const ApplicationsPage = () => {
     ));
   }, [applications, liveApplicationMap]);
 
+  const filteredApplications = useMemo(() => {
+    let list = mergedApplications;
+    const query = searchQuery.trim().toLowerCase();
+    if (query) {
+      list = list.filter((app) =>
+        app.application.toLowerCase().includes(query) ||
+        (app.live_domain && app.live_domain.toLowerCase().includes(query)) ||
+        (app.top_domain && app.top_domain.toLowerCase().includes(query))
+      );
+    }
+    if (filterMode === 'active') {
+      list = list.filter((app) => (app.live_event_count || 0) > 0 || (app.active_device_count || 0) > 0);
+    } else if (filterMode === 'product') {
+      list = list.filter((app) => !isNetworkServiceApplication(app.application));
+    } else if (filterMode === 'service') {
+      list = list.filter((app) => isNetworkServiceApplication(app.application));
+    }
+    return list;
+  }, [mergedApplications, searchQuery, filterMode]);
+
   const { productApplications, networkApplications } = useMemo(() => {
     const products = [];
     const services = [];
-    mergedApplications.forEach((app) => {
+    filteredApplications.forEach((app) => {
       if (isNetworkServiceApplication(app.application)) {
         services.push(app);
       } else {
@@ -213,7 +247,7 @@ const ApplicationsPage = () => {
       productApplications: sortApplications(products),
       networkApplications: sortApplications(services),
     };
-  }, [mergedApplications]);
+  }, [filteredApplications]);
 
   const classificationRows = useMemo(() => analytics.uncategorized_domains || [], [analytics]);
 
@@ -258,13 +292,52 @@ const ApplicationsPage = () => {
       dominantCopy: dominantApp
         ? `${dominantApp.application} is the clearest active signal${dominantApp.live_domain ? ` via ${dominantApp.live_domain}` : ''}.`
         : 'No application signal is active yet.',
-      productCopy: `${totals.productApps} named product app${totals.productApps === 1 ? '' : 's'} separated from protocol noise.`,
+      productCopy: `${totals.productApps} named product app${totals.productApps === 1 ? '' : 's'} dynamically detected.`,
       serviceCopy: `${totals.networkServices} network service bucket${totals.networkServices === 1 ? '' : 's'} kept apart for cleaner reading.`,
       classificationCopy: classificationRows.length > 0
         ? `${classificationRows.length} host${classificationRows.length === 1 ? '' : 's'} still need app mapping.`
         : 'No major classification gaps in the current window.',
     };
   }, [classificationRows.length, mergedApplications, networkApplications, productApplications, totals]);
+
+  const handleOpenOverrideModal = (domainToPin = '') => {
+    setOverrideDomain(domainToPin);
+    setOverrideAppName('');
+    setOverrideCategory('web');
+    setOverrideError('');
+    setIsOverrideModalOpen(true);
+  };
+
+  const handleSaveOverride = async () => {
+    if (!overrideDomain.trim() || !overrideAppName.trim()) {
+      setOverrideError('Domain and application name are required.');
+      return;
+    }
+    setSavingOverride(true);
+    setOverrideError('');
+    try {
+      await systemService.setAppOverride({
+        domain: overrideDomain.trim(),
+        application_name: overrideAppName.trim(),
+        category: overrideCategory,
+      });
+      setIsOverrideModalOpen(false);
+      await fetchApplications();
+    } catch (err) {
+      setOverrideError(err.response?.data?.detail || 'Failed to save application override.');
+    } finally {
+      setSavingOverride(false);
+    }
+  };
+
+  const handleDeleteOverride = async (domain) => {
+    try {
+      await systemService.deleteAppOverride(domain);
+      await fetchApplications();
+    } catch (err) {
+      console.error('Failed to delete override', err);
+    }
+  };
 
   const renderApplicationGrid = (entries, emptyTitle, emptyDescription) => {
     if (entries.length === 0) {
@@ -301,7 +374,7 @@ const ApplicationsPage = () => {
                   </div>
                   <div className="nv-pill-card__content">
                     <strong>{app.application}</strong>
-                    <span>{app.device_count} devices in 24h window</span>
+                    <span>{app.device_count} device{app.device_count === 1 ? '' : 's'} in 24h window</span>
                   </div>
                 </div>
                 <StatusBadge tone={isLive ? 'success' : 'neutral'}>
@@ -311,8 +384,8 @@ const ApplicationsPage = () => {
               <div className="nv-card-button__value">{app.bandwidth || formatByteCount(app.bandwidth_bytes)}</div>
               <div className="nv-card-button__footer">
                 <span>{app.live_event_count || app.active_device_count || 0} active now</span>
-                  <span>{app.runtime || formatRuntime(app.runtime_seconds)}</span>
-                </div>
+                <span>{app.runtime || formatRuntime(app.runtime_seconds)}</span>
+              </div>
               <div className="nv-app-card__explain">
                 <div>
                   <span>Meaning</span>
@@ -340,12 +413,22 @@ const ApplicationsPage = () => {
       <PageHeader
         eyebrow="Inventory"
         title="Application Coverage"
-        description="Understand which real apps are active, which rows are only network-service buckets, and what each signal means for investigation."
+        description="Dynamic 5-layer classification detects running apps, PaaS services, and browser activity without hardcoded dictionary limits."
         actions={(
-          <button type="button" className="nv-button nv-button--secondary" onClick={fetchApplications}>
-            <i className="ri-refresh-line"></i>
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              type="button"
+              className="nv-button nv-button--secondary"
+              onClick={() => handleOpenOverrideModal()}
+            >
+              <i className="ri-edit-line"></i>
+              Manage Overrides
+            </button>
+            <button type="button" className="nv-button nv-button--secondary" onClick={fetchApplications}>
+              <i className="ri-refresh-line"></i>
+              Refresh
+            </button>
+          </div>
         )}
       />
 
@@ -384,6 +467,40 @@ const ApplicationsPage = () => {
         </div>
       )}
 
+      {/* Filter and Search Bar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'space-between', margin: '1rem 0' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 240px', maxWidth: '380px' }}>
+          <div className="nv-search-field" style={{ width: '100%', position: 'relative' }}>
+            <i className="ri-search-line" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', opacity: 0.6 }}></i>
+            <input
+              type="text"
+              className="nv-input"
+              style={{ paddingLeft: '2.25rem', width: '100%' }}
+              placeholder="Search applications or domains..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '0.375rem' }}>
+          {[
+            { id: 'all', label: `All (${mergedApplications.length})` },
+            { id: 'active', label: `Active (${totals.activeProductApps + totals.activeNetworkServices})` },
+            { id: 'product', label: `Products (${totals.productApps})` },
+            { id: 'service', label: `Services (${totals.networkServices})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`nv-button nv-button--sm ${filterMode === tab.id ? 'nv-button--primary' : 'nv-button--ghost'}`}
+              onClick={() => setFilterMode(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {!loading ? (
         <SectionCard title="Application Understanding" caption="Plain-language Readout" className="nv-section--clarity">
           <div className="nv-app-brief">
@@ -393,7 +510,7 @@ const ApplicationsPage = () => {
               </span>
               <div>
                 <h2>{pageInsights.dominantCopy}</h2>
-                <p>NetVisor separates named user apps from protocol buckets so gateway traffic is easier to explain during review.</p>
+                <p>NetVisor dynamically analyzes page metadata, multi-tenant subdomains, and traffic telemetry to name active tools automatically.</p>
               </div>
             </div>
             <div className="nv-app-brief__cards">
@@ -418,32 +535,36 @@ const ApplicationsPage = () => {
         </SectionCard>
       ) : null}
 
-      <SectionCard title="Product Apps" caption="Product-level traffic with concrete application identity">
-        {loading ? (
-          <TableSkeleton rows={4} />
-        ) : (
-          renderApplicationGrid(
-            productApplications,
-            'No product applications yet',
-            'Start the gateway or agent and allow some traffic to flow. Product apps are grouped from the last 24 hours of visible sessions.',
-          )
-        )}
-      </SectionCard>
+      {(filterMode === 'all' || filterMode === 'product' || filterMode === 'active') && (
+        <SectionCard title="Product Apps" caption="Dynamically identified apps with concrete brand identity">
+          {loading ? (
+            <TableSkeleton rows={4} />
+          ) : (
+            renderApplicationGrid(
+              productApplications,
+              'No matching product applications',
+              'No product applications match your search or active filter.',
+            )
+          )}
+        </SectionCard>
+      )}
 
-      <SectionCard
-        title="Network Services"
-        caption="Transport, control, and unclassified buckets shown apart from product apps"
-      >
-        {loading ? (
-          <TableSkeleton rows={4} />
-        ) : (
-          renderApplicationGrid(
-            networkApplications,
-            'No network services yet',
-            'Protocol-level buckets such as HTTPS, DNS, QUIC, NBNS, Other, and Unknown will appear here when the agent has seen control-plane traffic.',
-          )
-        )}
-      </SectionCard>
+      {(filterMode === 'all' || filterMode === 'service' || filterMode === 'active') && (
+        <SectionCard
+          title="Network Services"
+          caption="Transport, control, and unclassified buckets shown apart from product apps"
+        >
+          {loading ? (
+            <TableSkeleton rows={4} />
+          ) : (
+            renderApplicationGrid(
+              networkApplications,
+              'No matching network services',
+              'Protocol-level buckets such as HTTPS, DNS, QUIC, NBNS, Other, and Unknown will appear here when active.',
+            )
+          )}
+        </SectionCard>
+      )}
 
       <SectionCard
         title="Needs Classification"
@@ -478,6 +599,23 @@ const ApplicationsPage = () => {
                 label: 'Last Seen',
                 render: (row) => <span className="mono">{row.last_seen || 'N/A'}</span>,
               },
+              {
+                key: 'actions',
+                label: 'Actions',
+                render: (row) => (
+                  <button
+                    type="button"
+                    className="nv-button nv-button--sm nv-button--secondary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenOverrideModal(row.base_domain || row.host);
+                    }}
+                  >
+                    <i className="ri-price-tag-3-line"></i>
+                    Pin Name
+                  </button>
+                ),
+              },
             ]}
             rows={classificationRows}
             rowKey={(row, index) => `${row.base_domain || row.host || 'unknown'}-${index}`}
@@ -486,8 +624,114 @@ const ApplicationsPage = () => {
           />
         </div>
       </SectionCard>
+
+      {/* Admin Application Override Modal */}
+      <GlassModal
+        open={isOverrideModalOpen}
+        title="Application Identity Overrides"
+        description="Pin custom application names and categories for domains. Overrides take immediate precedence over dynamic classifier heuristics."
+        confirmText={savingOverride ? 'Saving...' : 'Save Override'}
+        cancelText="Close"
+        onConfirm={handleSaveOverride}
+        onCancel={() => setIsOverrideModalOpen(false)}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '0.5rem' }}>
+          {overrideError && (
+            <div style={{ color: '#ef4444', fontSize: '0.85rem', background: 'rgba(239, 68, 68, 0.1)', padding: '0.5rem 0.75rem', borderRadius: '4px' }}>
+              {overrideError}
+            </div>
+          )}
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Domain or Hostname
+            </label>
+            <input
+              type="text"
+              className="nv-input"
+              style={{ width: '100%' }}
+              placeholder="e.g. app.custom-crm.internal or vercel.app"
+              value={overrideDomain}
+              onChange={(e) => setOverrideDomain(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Application Name
+            </label>
+            <input
+              type="text"
+              className="nv-input"
+              style={{ width: '100%' }}
+              placeholder="e.g. SalesForge CRM"
+              value={overrideAppName}
+              onChange={(e) => setOverrideAppName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.25rem' }}>
+              Category
+            </label>
+            <select
+              className="nv-input"
+              style={{ width: '100%' }}
+              value={overrideCategory}
+              onChange={(e) => setOverrideCategory(e.target.value)}
+            >
+              <option value="ai">AI / LLM</option>
+              <option value="dev">Developer Tool</option>
+              <option value="chat">Chat / Collaboration</option>
+              <option value="cloud">Cloud / Infrastructure</option>
+              <option value="web">Web Application</option>
+              <option value="security">Security / Auth</option>
+              <option value="streaming">Media / Streaming</option>
+            </select>
+          </div>
+
+          {overrides.length > 0 && (
+            <div style={{ marginTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '0.75rem' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', opacity: 0.8 }}>
+                Existing Custom Overrides ({overrides.length})
+              </div>
+              <div style={{ maxHeight: '140px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                {overrides.map((ov) => (
+                  <div
+                    key={ov.id || ov.domain}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.35rem 0.6rem',
+                      background: 'rgba(255,255,255,0.03)',
+                      borderRadius: '4px',
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ marginRight: '0.5rem' }}>{ov.application_name}</strong>
+                      <span className="mono" style={{ opacity: 0.6 }}>{ov.domain}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="nv-button nv-button--ghost nv-button--sm"
+                      style={{ color: '#ef4444', padding: '0.2rem 0.4rem' }}
+                      onClick={() => handleDeleteOverride(ov.domain)}
+                      title="Remove override"
+                    >
+                      <i className="ri-delete-bin-line"></i>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </GlassModal>
     </div>
   );
 };
 
 export default ApplicationsPage;
+

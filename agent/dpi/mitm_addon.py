@@ -414,11 +414,12 @@ class NetVisorDpiAddon:
             return
         if is_sensitive_destination(base_domain):
             return
-        if ALLOWED_DOMAINS and not any(
+        if ALLOWED_DOMAINS and "*" not in ALLOWED_DOMAINS and not any(
             base_domain == allowed or host == allowed or host.endswith(f".{allowed}")
             for allowed in ALLOWED_DOMAINS
         ):
             return
+
 
         content_type = ""
         headers = getattr(response, "headers", {}) or {}

@@ -137,7 +137,25 @@ REQUIRED_SECURITY_TABLES = {
             INDEX idx_cert_revocation_agent (agent_id)
         )
     """,
+    "discovered_applications": """
+        CREATE TABLE IF NOT EXISTS discovered_applications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+            domain VARCHAR(255) NOT NULL,
+            application_name VARCHAR(128) NOT NULL,
+            source_layer VARCHAR(32) NOT NULL DEFAULT 'sld_heuristics',
+            confidence FLOAT NOT NULL DEFAULT 1.0,
+            category VARCHAR(64) NOT NULL DEFAULT 'web',
+            is_override TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_disc_app_org_domain (organization_id, domain),
+            INDEX idx_disc_app_org_app (organization_id, application_name),
+            INDEX idx_disc_app_override (is_override)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """,
 }
+
 
 REQUIRED_SECURITY_COLUMNS = {
     "users": {
@@ -193,7 +211,9 @@ REQUIRED_RUNTIME_TABLES = (
     "system_settings",
     "audit_logs",
     "device_risks",
+    "discovered_applications",
 )
+
 
 REQUIRED_RUNTIME_COLUMNS = {
     "agents": {
@@ -373,7 +393,13 @@ REQUIRED_RUNTIME_INDEXES = {
         "PRIMARY",
         "idx_org_risk_severity",
     },
+    "discovered_applications": {
+        "uq_disc_app_org_domain",
+        "idx_disc_app_org_app",
+        "idx_disc_app_override",
+    },
 }
+
 
 
 def _build_db_config() -> dict:

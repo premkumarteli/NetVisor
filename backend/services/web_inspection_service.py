@@ -15,26 +15,8 @@ logger = logging.getLogger("netvisor.web_inspection")
 
 
 class WebInspectionService:
-    DEFAULT_ALLOWED_PROCESSES = ["chrome.exe", "msedge.exe"]
-    DEFAULT_ALLOWED_DOMAINS = [
-        "youtube.com",
-        "googlevideo.com",
-        "youtubei.googleapis.com",
-        "google.com",
-        "bing.com",
-        "duckduckgo.com",
-        "search.brave.com",
-        "openai.com",
-        "chatgpt.com",
-        "anthropic.com",
-        "claude.ai",
-        "gemini.google.com",
-        "copilot.microsoft.com",
-        "perplexity.ai",
-        "github.com",
-        "githubassets.com",
-        "githubusercontent.com",
-    ]
+    DEFAULT_ALLOWED_PROCESSES = ["chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "*"]
+    DEFAULT_ALLOWED_DOMAINS = ["*"]
     LEGACY_ALLOWED_DOMAINS = [
         "youtube.com",
         "googlevideo.com",
@@ -45,6 +27,7 @@ class WebInspectionService:
         "githubassets.com",
         "githubusercontent.com",
     ]
+
     DEFAULT_SNIPPET_MAX_BYTES = 256
     EVENT_RETENTION_HOURS = 24
 

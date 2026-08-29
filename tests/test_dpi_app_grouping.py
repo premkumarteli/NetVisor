@@ -70,10 +70,6 @@ def test_dpi_app_route_returns_grouped_activity(monkeypatch):
     monkeypatch.setattr(dpi.application_service, "classify_by_domain", lambda domain: "ChatGPT" if "chatgpt.com" in domain else "")
     monkeypatch.setattr(dpi, "get_service_info", lambda domain: ("ChatGPT", "ai"))
 
-    async def run():
-        response = await dpi.get_dpi_events_by_app("ChatGPT", limit=100)
-        assert response["activity"][0]["event_count"] == 1
-        assert response["activity"][0]["group_key"].startswith("chrome|chatgpt.com")
-
-    import asyncio
-    asyncio.run(run())
+    response = dpi.get_dpi_events_by_app("ChatGPT", limit=100, conn=DummyConn())
+    assert response["activity"][0]["event_count"] == 1
+    assert response["activity"][0]["group_key"].startswith("chrome|chatgpt.com")

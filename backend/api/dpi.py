@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
-from ..db.session import get_db_connection
+from ..db.session import get_db, get_db_connection
 from ..services.application_service import application_service
 from ..services.web_inspection_service import web_inspection_service
 from ..utils.domain_intelligence import get_service_info
@@ -93,47 +93,42 @@ def _group_app_events(events: list[dict]) -> list[dict]:
     return grouped_rows
 
 @router.get("/events", response_model=GlobalWebActivityResponse)
-async def get_dpi_events(
+def get_dpi_events(
     device_id: Optional[str] = Query(None),
     app: Optional[str] = Query(None),
     domain: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    conn = Depends(get_db),
 ):
-    conn = get_db_connection()
-    try:
-        # Use web_inspection_service to fetch events, filter in Python for now
-        events = web_inspection_service.get_global_activity(conn, organization_id=None, limit=limit)
-        if device_id:
-            events = [e for e in events if e.get("device_ip") == device_id]
-        if app:
-            events = [e for e in events if e.get("process_name") == app]
-        if domain:
-            events = [e for e in events if e.get("base_domain") == domain]
-        return {"activity": events}
-    finally:
-        conn.close()
+    events = web_inspection_service.get_global_activity(conn, organization_id=None, limit=limit)
+    if device_id:
+        events = [e for e in events if e.get("device_ip") == device_id]
+    if app:
+        events = [e for e in events if e.get("process_name") == app]
+    if domain:
+        events = [e for e in events if e.get("base_domain") == domain]
+    return {"activity": events}
 
 @router.get("/apps/{app_name}", response_model=GlobalWebActivityResponse)
-async def get_dpi_events_by_app(app_name: str, limit: int = Query(100, ge=1, le=500)):
-    conn = get_db_connection()
-    try:
-        events = web_inspection_service.get_global_activity(conn, organization_id=None, limit=limit)
-        normalized = app_name.strip().lower()
-        filtered = []
-        for event in events:
-            base_domain = event.get("base_domain") or ""
-            service_name, _ = get_service_info(base_domain)
-            classified_name = application_service.classify_by_domain(base_domain) or ""
-            if service_name.strip().lower() == normalized or classified_name.strip().lower() == normalized:
-                filtered.append(event)
-        return {"activity": _group_app_events(filtered)}
-    finally:
-        conn.close()
+def get_dpi_events_by_app(
+    app_name: str,
+    limit: int = Query(100, ge=1, le=500),
+    conn = Depends(get_db),
+):
+    events = web_inspection_service.get_global_activity(conn, organization_id=None, limit=limit)
+    normalized = app_name.strip().lower()
+    filtered = []
+    for event in events:
+        base_domain = event.get("base_domain") or ""
+        service_name, _ = get_service_info(base_domain)
+        classified_name = application_service.classify_by_domain(base_domain) or ""
+        if service_name.strip().lower() == normalized or classified_name.strip().lower() == normalized:
+            filtered.append(event)
+    return {"activity": _group_app_events(filtered)}
 
 
 @router.get("/status")
-async def get_dpi_status():
-    conn = get_db_connection()
+def get_dpi_status(conn = Depends(get_db)):
     cursor = conn.cursor(dictionary=True)
     try:
         cursor.execute(
@@ -159,7 +154,6 @@ async def get_dpi_status():
         event_row = cursor.fetchone() or {}
     finally:
         cursor.close()
-        conn.close()
 
     enabled_agents = int(agent_row.get("enabled_agents") or 0)
     running_agents = int(agent_row.get("running_agents") or 0)

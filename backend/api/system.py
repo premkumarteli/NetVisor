@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from ..core.config import settings
 from ..core.dependencies import require_org_admin, require_super_admin, request_rate_limit, admin_required
-from ..db.session import get_db_connection
+from ..db.session import get_db
 from ..services.alert_service import alert_service
 from ..services.release_service import release_service
 from ..services.system_service import system_service
@@ -29,33 +29,31 @@ class ToggleRequest(BaseModel):
 
 
 @router.get("/admin-stats")
-async def get_admin_stats(current_user: dict = Depends(require_org_admin)):
-    conn = get_db_connection()
-    try:
-        return system_service.get_admin_stats(conn)
-    finally:
-        conn.close()
+def get_admin_stats(
+    current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
+):
+    return system_service.get_admin_stats(conn)
 
 
 @router.get("/status")
-async def get_system_status(current_user: dict = Depends(require_org_admin)):
-    conn = get_db_connection()
-    try:
-        runtime = system_service.get_runtime_status(conn)
-        return {
-            "active": runtime["active"],
-            "maintenance_mode": runtime["maintenance_mode"],
-            "runtime": runtime,
-            "release": release_service.snapshot(),
-            "backup": system_service.latest_backup_status(),
-            "backup_retention": system_service.backup_retention_status(),
-        }
-    finally:
-        conn.close()
+def get_system_status(
+    current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
+):
+    runtime = system_service.get_runtime_status(conn)
+    return {
+        "active": runtime["active"],
+        "maintenance_mode": runtime["maintenance_mode"],
+        "runtime": runtime,
+        "release": release_service.snapshot(),
+        "backup": system_service.latest_backup_status(),
+        "backup_retention": system_service.backup_retention_status(),
+    }
 
 
 @router.get("/release")
-async def get_release_status(current_user: dict = Depends(require_org_admin)):
+def get_release_status(current_user: dict = Depends(require_org_admin)):
     return {
         "release": release_service.snapshot(),
         "backup": system_service.latest_backup_status(),
@@ -64,87 +62,75 @@ async def get_release_status(current_user: dict = Depends(require_org_admin)):
 
 
 @router.get("/logs")
-async def get_system_logs(current_user: dict = Depends(require_org_admin), limit: int = 20):
-    conn = get_db_connection()
-    try:
-        org_id = current_user.get("organization_id")
-        recent_alerts = alert_service.get_alerts(conn, organization_id=org_id, limit=limit * 2)
-        vpn_alerts = [
-            alert
-            for alert in recent_alerts
-            if (alert.get("breakdown", {}).get("vpn_score", 0) or 0) > 0.3
-            or "Possible VPN/Proxy Usage" in alert.get("breakdown", {}).get("reasons", [])
-        ][:limit]
-        return {
-            "admin": system_service.list_logs(conn, organization_id=org_id, limit=limit),
-
-
-
-            "vpn": vpn_alerts,
-        }
-    finally:
-        conn.close()
+def get_system_logs(
+    current_user: dict = Depends(require_org_admin),
+    limit: int = 20,
+    conn = Depends(get_db),
+):
+    org_id = current_user.get("organization_id")
+    recent_alerts = alert_service.get_alerts(conn, organization_id=org_id, limit=limit * 2)
+    vpn_alerts = [
+        alert
+        for alert in recent_alerts
+        if (alert.get("breakdown", {}).get("vpn_score", 0) or 0) > 0.3
+        or "Possible VPN/Proxy Usage" in alert.get("breakdown", {}).get("reasons", [])
+    ][:limit]
+    return {
+        "admin": system_service.list_logs(conn, organization_id=org_id, limit=limit),
+        "vpn": vpn_alerts,
+    }
 
 
 @router.post("/settings/maintenance")
-async def set_maintenance_mode(
+def set_maintenance_mode(
     payload: ToggleRequest,
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
 ):
-    conn = get_db_connection()
-    try:
-        ip = _resolve_source_ip(request)
-        return system_service.set_maintenance(
-            conn,
-            active=payload.active,
-            username=current_user.get("username", "admin"),
-            organization_id=current_user.get("organization_id"),
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    ip = _resolve_source_ip(request)
+    return system_service.set_maintenance(
+        conn,
+        active=payload.active,
+        username=current_user.get("username", "admin"),
+        organization_id=current_user.get("organization_id"),
+        ip_address=ip,
+    )
 
 
 @router.post("/settings/monitoring")
-async def set_monitoring_state(
+def set_monitoring_state(
     payload: ToggleRequest,
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
 ):
-    conn = get_db_connection()
-    try:
-        ip = _resolve_source_ip(request)
-        return system_service.set_monitoring(
-            conn,
-            active=payload.active,
-            username=current_user.get("username", "admin"),
-            organization_id=current_user.get("organization_id"),
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    ip = _resolve_source_ip(request)
+    return system_service.set_monitoring(
+        conn,
+        active=payload.active,
+        username=current_user.get("username", "admin"),
+        organization_id=current_user.get("organization_id"),
+        ip_address=ip,
+    )
 
 
 @router.post("/actions/scan")
-async def trigger_scan(
+def trigger_scan(
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
 ):
-    conn = get_db_connection()
-    try:
-        ip = _resolve_source_ip(request)
-        return system_service.trigger_scan(
-            conn,
-            username=current_user.get("username", "admin"),
-            organization_id=current_user.get("organization_id"),
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    ip = _resolve_source_ip(request)
+    return system_service.trigger_scan(
+        conn,
+        username=current_user.get("username", "admin"),
+        organization_id=current_user.get("organization_id"),
+        ip_address=ip,
+    )
 
 
 class ResetTenantPayload(BaseModel):
@@ -156,11 +142,12 @@ class ResetPlatformPayload(BaseModel):
 
 
 @router.post("/settings/reset-tenant-data")
-async def reset_tenant_data(
+def reset_tenant_data(
     payload: ResetTenantPayload,
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_org_admin),
+    conn = Depends(get_db),
 ):
     org_id = current_user.get("organization_id")
     if not org_id or payload.confirm_org_id != org_id:
@@ -169,25 +156,22 @@ async def reset_tenant_data(
             detail="Confirmation organization ID does not match your authenticated organization ID."
         )
 
-    conn = get_db_connection()
-    try:
-        ip = _resolve_source_ip(request)
-        return system_service.reset_operational_data(
-            conn,
-            username=current_user.get("username", "admin"),
-            organization_id=org_id,
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    ip = _resolve_source_ip(request)
+    return system_service.reset_operational_data(
+        conn,
+        username=current_user.get("username", "admin"),
+        organization_id=org_id,
+        ip_address=ip,
+    )
 
 
 @router.post("/settings/reset-platform")
-async def reset_platform_data(
+def reset_platform_data(
     payload: ResetPlatformPayload,
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(require_super_admin),
+    conn = Depends(get_db),
 ):
     if payload.confirm_platform_reset != "RESET":
         raise HTTPException(
@@ -195,34 +179,27 @@ async def reset_platform_data(
             detail="Confirmation token must be exactly 'RESET' to wipe the platform."
         )
 
-    conn = get_db_connection()
-    try:
-        ip = _resolve_source_ip(request)
-        return system_service.reset_operational_data(
-            conn,
-            username=current_user.get("username", "admin"),
-            organization_id=None,
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    ip = _resolve_source_ip(request)
+    return system_service.reset_operational_data(
+        conn,
+        username=current_user.get("username", "admin"),
+        organization_id=None,
+        ip_address=ip,
+    )
 
 
 @router.post("/reset-data")
-async def reset_data(
+def reset_data(
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(admin_required),
+    conn = Depends(get_db),
 ):
-    conn = get_db_connection()
-    try:
-        org_id = current_user.get("organization_id") if current_user.get("role") == "org_admin" else None
-        ip = _resolve_source_ip(request)
-        return system_service.reset_operational_data(
-            conn,
-            username=current_user.get("username", "admin"),
-            organization_id=org_id,
-            ip_address=ip,
-        )
-    finally:
-        conn.close()
+    org_id = current_user.get("organization_id") if current_user.get("role") == "org_admin" else None
+    ip = _resolve_source_ip(request)
+    return system_service.reset_operational_data(
+        conn,
+        username=current_user.get("username", "admin"),
+        organization_id=org_id,
+        ip_address=ip,
+    )

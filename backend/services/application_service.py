@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 import logging
 import threading
+import time
 
 from ..core.config import settings
-from ..db.session import require_runtime_schema
+from ..db.session import get_db_connection, require_runtime_schema
 from ..utils.asn_lookup import asn_lookup_service
 from ..engines.application.ja4_signatures import lookup_ja4_signature
 from ..utils.domain_intelligence import get_service_info
@@ -15,28 +17,63 @@ from ..utils.network import is_rfc1918_device_ip, normalize_ip
 from .device_service import device_service
 from .web_inspection_service import web_inspection_service
 
+from intel.app_classifier import (
+    GENERIC_CERT_ORGS,
+    MULTI_TENANT_SUFFIXES,
+    clean_cert_org_to_app_name,
+    clean_domain_to_app_name,
+    clean_process_to_app_name,
+    clean_title_to_app_name,
+    infer_app_category,
+)
+
 logger = logging.getLogger("netvisor.apps")
 
 DEFAULT_APPLICATION_WINDOW_MINUTES = 24 * 60
 DEFAULT_ACTIVE_APPLICATION_WINDOW_SECONDS = 5 * 60
 
-# Specific applications must be checked before generic umbrella providers.
-APP_RULES: dict[str, list[str]] = {
+# Specific canonical applications checked first
+CANONICAL_APP_RULES: dict[str, list[str]] = {
+    "Claude": ["anthropic.com", "claude.ai"],
+    "ChatGPT": ["openai.com", "chatgpt.com"],
+    "Gemini": ["gemini.google.com", "bard.google.com"],
     "YouTube": ["youtube.com", "youtu.be", "ytimg.com", "googlevideo.com"],
     "Netflix": ["netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com"],
     "Instagram": ["instagram.com"],
     "Facebook": ["facebook.com", "fbcdn.net", "messenger.com"],
-    "WhatsApp": ["whatsapp.com", "whatsapp.net"],
+    "WhatsApp": ["whatsapp.com", "whatsapp.net", "web.whatsapp.com"],
     "Telegram": ["telegram.org", "t.me", "telegram.me"],
     "Discord": ["discord.com", "discord.gg", "discordapp.com"],
-    "ChatGPT": ["openai.com", "chatgpt.com"],
-    "Claude": ["anthropic.com", "claude.ai"],
     "GitHub": ["github.com", "githubassets.com", "githubusercontent.com"],
     "Perplexity": ["perplexity.ai", "perplexity.com"],
     "Zoom": ["zoom.us"],
     "Google Meet": ["meet.google.com"],
-    "Gemini": ["gemini.google.com"],
+    "Google Play": ["play.google.com"],
+    "Sentry": ["sentry.io"],
+    "Spotify": ["spotify.com", "scdn.co"],
+    "Slack": ["slack.com", "slack-edge.com"],
+    "LinkedIn": ["linkedin.com", "licdn.com"],
+    "Stack Overflow": ["stackoverflow.com", "stackexchange.com"],
+    "Notion": ["notion.so", "notion.site"],
     "Antigravity": ["antigravity-unleash.goog"],
+    "VTU": ["vtu.ac.in", "results.vtu.ac.in"],
+    "Acharya Institutes": ["acharya.ac.in", "acharyaerp.in", "erp.acharya.ac.in"],
+    "RailOne": ["railone.indianrailways.gov.in", "railone.in", "cris.org.in"],
+    "IRCTC": ["irctc.co.in", "irctc.com"],
+    "HDHub4u": ["hdhub4u.tv", "hdhub4u.ms", "hdhub4u.work", "hdhub4u.lat", "hdhub4u.top", "hdhub4u.guru"],
+}
+
+# Generic umbrella providers checked after curated domain intelligence
+UMBRELLA_APP_RULES: dict[str, list[str]] = {
+    "Google": [
+        "google.com",
+        "googleapis.com",
+        "gstatic.com",
+        "googleusercontent.com",
+        "google.co.in",
+        "googletagmanager.com",
+        "google-analytics.com",
+    ],
     "Microsoft": [
         "bing.com",
         "bingapis.com",
@@ -51,10 +88,15 @@ APP_RULES: dict[str, list[str]] = {
         "microsoftonline.com",
         "gamepass.com",
         "xbox.com",
+        "azure.com",
+        "azureedge.net",
+        "windows.net",
+        "edge.microsoft.com",
     ],
-    "Google Play": ["play.google.com"],
-    "Google": ["google.com", "googleapis.com", "gstatic.com", "googleusercontent.com", "google.co.in"],
 }
+
+APP_RULES: dict[str, list[str]] = {**CANONICAL_APP_RULES, **UMBRELLA_APP_RULES}
+
 
 CONTROL_PORTS = {53, 67, 68, 123, 137, 138, 1900, 5353, 5355}
 TRANSPORT_PROTOCOL_LABELS = {
@@ -108,11 +150,84 @@ class ApplicationService:
         self._schema_ready = False
         self._unknown_debug_cache: set[tuple[str, str | None]] = set()
         self._lock = threading.RLock()
+        self._domain_app_cache: dict[str, dict] = {}
+        self._overrides_loaded = False
+        self._persist_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="netvisor-app-persist")
+        self._summary_cache: dict[tuple[str, int, int], tuple[float, list[dict]]] = {}
+        self._summary_cache_ttl = 2.0  # seconds
+
+    def _load_overrides_if_needed(self, db_conn, organization_id: Optional[str] = None) -> None:
+        if self._overrides_loaded or db_conn is None:
+            return
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params = []
+            query = "SELECT domain, application_name, category, source_layer, is_override FROM discovered_applications WHERE is_override = 1"
+            if organization_id:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            cursor.execute(query, tuple(params))
+            with self._lock:
+                for row in cursor.fetchall() or []:
+                    domain = str(row.get("domain") or "").strip().lower()
+                    if domain:
+                        self._domain_app_cache[domain] = {
+                            "name": row.get("application_name"),
+                            "category": row.get("category") or "web",
+                            "source": "override",
+                            "is_override": True,
+                            "confidence": 1.0,
+                        }
+                self._overrides_loaded = True
+        except Exception as exc:
+            logger.debug("Could not load app overrides: %s", exc)
+        finally:
+            cursor.close()
+
+    def _async_persist_discovery(
+        self,
+        organization_id: str,
+        domain: str,
+        app_name: str,
+        category: str = "web",
+        source_layer: str = "sld_heuristics",
+        confidence: float = 0.85,
+    ) -> None:
+        if not domain or not app_name or app_name in UNCLASSIFIED_SENTINELS:
+            return
+
+        def _persist_task():
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO discovered_applications
+                            (organization_id, domain, application_name, category, source_layer, confidence, is_override)
+                        VALUES
+                            (%s, %s, %s, %s, %s, %s, 0)
+                        ON DUPLICATE KEY UPDATE
+                            application_name = IF(is_override = 1, application_name, VALUES(application_name)),
+                            category = IF(is_override = 1, category, VALUES(category)),
+                            updated_at = NOW()
+                        """,
+                        (organization_id, domain.lower(), app_name, category, source_layer, confidence),
+                    )
+                    conn.commit()
+                finally:
+                    cursor.close()
+                    conn.close()
+            except Exception as e:
+                logger.debug("Failed async discovery persistence for %s: %s", domain, e)
+
+        self._persist_executor.submit(_persist_task)
 
     def _row_value(self, row: Any, key: str) -> Any:
         if isinstance(row, dict):
             return row.get(key)
         return getattr(row, key, None)
+
 
     def _normalize_domain(self, value: object) -> Optional[str]:
         return normalize_host(value)
@@ -145,7 +260,13 @@ class ApplicationService:
         return " ".join(words) or "Other"
 
     def _preferred_host(self, row: Any) -> Optional[str]:
-        return self._normalize_domain(self._row_value(row, "sni") or self._row_value(row, "domain"))
+        return self._normalize_domain(
+            self._row_value(row, "sni")
+            or self._row_value(row, "domain")
+            or self._row_value(row, "base_domain")
+            or self._row_value(row, "host")
+        )
+
 
     def _preferred_external_ip(self, row: Any) -> Optional[str]:
         for key in ("external_endpoint_ip", "external_ip", "dst_ip", "src_ip"):
@@ -226,51 +347,97 @@ class ApplicationService:
             return False
         return normalized.upper() in {label.upper() for label in GENERIC_TRANSPORT_APPLICATIONS}
 
-    def resolve_application_label(self, row: Any) -> str:
+    def classify_by_domain(self, domain: object, organization_id: str = "default-org-id") -> Optional[str]:
         """
-        Preserve a stored product label when we have one, but promote generic
-        transport buckets like HTTPS/DNS/QUIC whenever the row carries better
-        host or ASN context.
-        """
-        stored_application = str(self._row_value(row, "application") or "").strip()
-        if stored_application and stored_application not in UNCLASSIFIED_SENTINELS and not self.is_generic_transport_application(stored_application):
-            return stored_application
-
-        classified = self.classify_app(row)
-        if classified in UNCLASSIFIED_SENTINELS:
-            return stored_application or "Unknown"
-        return classified
-
-    def classify_by_domain(self, domain: object) -> Optional[str]:
-        """
-        Classify using SNI/domain data.
-        Returns a concrete app name when matched, "Other" for known-but-uncategorized
-        hosts, and None when the host is missing/invalid or generic infrastructure
-        should defer to ASN resolution.
+        Classify domain using 5-layer pipeline:
+        Layer 0: Admin Overrides (in-memory / DB)
+        Layer 1: Seed Rules (APP_RULES) & curated domain intelligence
+        Layer 2: Dynamic SLD & Multi-Tenant Subdomain Heuristics
         """
         normalized = self._normalize_domain(domain)
         if not normalized:
             return None
 
-        base_domain = self.get_base_domain(normalized)
-        if not base_domain:
-            return None
+        # Layer 0: Check in-memory cache / admin overrides
+        with self._lock:
+            cached = self._domain_app_cache.get(normalized)
+            if cached:
+                return cached["name"]
 
-        for application, allowed_domains in APP_RULES.items():
+        base_domain = self.get_base_domain(normalized) or normalized
+
+        # Layer 1A: Check Canonical Specific Seed Rules (e.g. ChatGPT, YouTube, Claude, Discord)
+        for application, allowed_domains in CANONICAL_APP_RULES.items():
             for allowed_domain in allowed_domains:
                 if (
                     base_domain == allowed_domain
                     or normalized == allowed_domain
                     or normalized.endswith(f".{allowed_domain}")
                 ):
+                    with self._lock:
+                        self._domain_app_cache[normalized] = {
+                            "name": application,
+                            "category": infer_app_category(application, normalized),
+                            "source": "seed_rule",
+                            "is_override": False,
+                            "confidence": 1.0,
+                        }
                     return application
 
+        # Layer 1B: Check curated domain intelligence (e.g. Azure CloudApp, Visual Studio Code, Grammarly)
         service_label = self._service_label_from_host(normalized)
         if service_label:
+            with self._lock:
+                self._domain_app_cache[normalized] = {
+                    "name": service_label,
+                    "category": infer_app_category(service_label, normalized),
+                    "source": "domain_intelligence",
+                    "is_override": False,
+                    "confidence": 0.95,
+                }
             return service_label
+
+        # Layer 1C: Check Umbrella Providers (Google, Microsoft)
+        for application, allowed_domains in UMBRELLA_APP_RULES.items():
+            for allowed_domain in allowed_domains:
+                if (
+                    base_domain == allowed_domain
+                    or normalized == allowed_domain
+                    or normalized.endswith(f".{allowed_domain}")
+                ):
+                    with self._lock:
+                        self._domain_app_cache[normalized] = {
+                            "name": application,
+                            "category": infer_app_category(application, normalized),
+                            "source": "seed_rule",
+                            "is_override": False,
+                            "confidence": 1.0,
+                        }
+                    return application
 
         if base_domain in SHARED_INFRA_BASE_DOMAINS:
             return None
+
+        # Layer 2: Dynamic SLD / Multi-Tenant Subdomain Decomposition
+        dynamic_name, category = clean_domain_to_app_name(normalized)
+        if dynamic_name and dynamic_name not in UNCLASSIFIED_SENTINELS and dynamic_name != "Unknown":
+            with self._lock:
+                self._domain_app_cache[normalized] = {
+                    "name": dynamic_name,
+                    "category": category,
+                    "source": "sld_heuristics",
+                    "is_override": False,
+                    "confidence": 0.85,
+                }
+            self._async_persist_discovery(
+                organization_id,
+                normalized,
+                dynamic_name,
+                category=category,
+                source_layer="sld_heuristics",
+                confidence=0.85,
+            )
+            return dynamic_name
 
         return "Other"
 
@@ -280,81 +447,109 @@ class ApplicationService:
     def classify_by_tls_fingerprint(self, fingerprint: str | None) -> Optional[dict]:
         return lookup_ja4_signature(fingerprint)
 
-    def classify_app(self, row: Any) -> str:
+    def classify_app(self, row: Any, organization_id: str = "default-org-id") -> str:
         """
-        Classification priority:
+        Classification hierarchy:
         1. Malicious JA4
-        2. Domain/SNI
-        3. Standard/Suspicious JA4
-        4. ASN Fallback
-        5. Transport/protocol hints
-        6. Unknown/Other separation
+        2. Local Process Name (Layer 3 - desktop non-browser apps)
+        3. Domain / SNI with Admin Overrides & Seed Rules (Layer 0 & Layer 1 Seed)
+        4. Web Page Title / Open Graph (Layer 1 Dynamic)
+        5. Dynamic SLD & Multi-Tenant Subdomain Heuristics (Layer 2)
+        6. TLS Cert Organization (Layer 4 - with CDN denylist)
+        7. Standard JA4
+        8. ASN Fallback
+        9. Transport hint / Unknown
         """
-        # Retrieve JA4/TLS client fingerprint if present
+        # 1. Malicious JA4
         fingerprint = (
             self._row_value(row, "ja4")
             or self._row_value(row, "ja4_fingerprint")
             or self._row_value(row, "tls_fingerprint")
         )
         fp_info = self.classify_by_tls_fingerprint(fingerprint)
-        
-        # 1. Malicious JA4
         if fp_info and fp_info.get("is_malicious"):
             return fp_info["application_name"]
-            
-        # 2. Domain / SNI
+
+        # 2. Local Process Name (Layer 3)
+        process_name = self._row_value(row, "process_name")
+        if process_name:
+            proc_app, _ = clean_process_to_app_name(process_name)
+            if proc_app and proc_app not in {"Unknown", "Google Chrome", "Mozilla Firefox", "Microsoft Edge"}:
+                return proc_app
+
+        # 3. Domain / SNI (Admin Overrides & Seed Rules & Curated Intel)
         host = self._preferred_host(row)
         if host:
-            domain_app = self.classify_by_domain(host)
+            domain_app = self.classify_by_domain(host, organization_id=organization_id)
             if domain_app and domain_app != "Other":
                 return domain_app
-                
-        # 3. Standard / Suspicious JA4
+
+        # 4. Web Page Title (Layer 1 Dynamic)
+        page_title = self._row_value(row, "page_title") or self._row_value(row, "title")
+        if page_title:
+            title_app = clean_title_to_app_name(page_title)
+            if title_app and title_app not in UNCLASSIFIED_SENTINELS and len(title_app) >= 2:
+                if host:
+                    self._async_persist_discovery(
+                        organization_id,
+                        host,
+                        title_app,
+                        category=infer_app_category(title_app, host),
+                        source_layer="dpi_title",
+                        confidence=0.9,
+                    )
+                return title_app
+
+        # 5. Dynamic SLD / Multi-Tenant (handled in classify_by_domain fallback)
+
+        # 6. TLS Cert Organization (Layer 4)
+        cert_org = self._row_value(row, "cert_org") or self._row_value(row, "issuer_org")
+        if cert_org:
+            clean_org = clean_cert_org_to_app_name(cert_org)
+            if clean_org:
+                return clean_org
+
+        # 7. Standard JA4
         if fp_info:
             return fp_info["application_name"]
-            
-        # 4. ASN Fallback
+
+        # 8. ASN Fallback
         transport_app = self._transport_label(row)
         asn_app = self.classify_by_asn(self._preferred_external_ip(row))
-        
+
         if host:
             if asn_app:
                 return asn_app
             if transport_app:
                 return transport_app
             return "Other"
-            
+
         if transport_app in CONTROL_TRANSPORT_LABELS:
             return transport_app
-            
+
         if asn_app:
             return asn_app
-            
+
         if transport_app:
             return transport_app
-            
-        debug_key = (
-            str(self._row_value(row, "dst_ip") or self._row_value(row, "src_ip") or ""),
-            self._row_value(row, "network_scope"),
-        )
-        with self._lock:
-            in_cache = debug_key in self._unknown_debug_cache
-            cache_len = len(self._unknown_debug_cache)
-            if not in_cache and cache_len < 512:
-                self._unknown_debug_cache.add(debug_key)
-                should_log = True
-            else:
-                should_log = False
 
-        if should_log:
-            logger.debug(
-                "Unknown traffic: src=%s dst=%s domain=%s sni=%s",
-                self._row_value(row, "src_ip"),
-                self._row_value(row, "dst_ip"),
-                self._row_value(row, "domain"),
-                self._row_value(row, "sni"),
-            )
         return "Unknown"
+
+
+    def resolve_application_label(self, row: Any, organization_id: str = "default-org-id") -> str:
+        stored_application = str(self._row_value(row, "application") or "").strip()
+        if (
+            stored_application
+            and stored_application not in UNCLASSIFIED_SENTINELS
+            and not self.is_generic_transport_application(stored_application)
+        ):
+            return stored_application
+
+        classified = self.classify_app(row, organization_id=organization_id)
+        if classified in UNCLASSIFIED_SENTINELS:
+            return stored_application or "Unknown"
+        return classified
+
 
     def _is_trackable_device_ip(self, value: str | None) -> bool:
         return is_rfc1918_device_ip(value)
@@ -426,29 +621,95 @@ class ApplicationService:
                     s.total_bytes,
                     s.first_seen,
                     s.last_seen,
-                    COALESCE(flow_ports.src_port, 0) AS src_port,
-                    COALESCE(flow_ports.dst_port, 0) AS dst_port
+                    0 AS src_port,
+                    0 AS dst_port
                 FROM sessions s
-                LEFT JOIN (
-                    SELECT
-                        session_id,
-                        MAX(src_port) AS src_port,
-                        MAX(dst_port) AS dst_port
-                    FROM flow_logs
-                    WHERE session_id IS NOT NULL AND session_id != ''
-                    GROUP BY session_id
-                ) AS flow_ports
-                    ON flow_ports.session_id = s.session_id
                 WHERE s.last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s MINUTE)
             """
             if organization_id:
                 query += " AND s.organization_id = %s"
                 params.append(organization_id)
-            query += " ORDER BY s.last_seen DESC"
+            query += " ORDER BY s.last_seen DESC LIMIT 5000"
             cursor.execute(query, tuple(params))
-            return cursor.fetchall()
+            return cursor.fetchall() or []
         finally:
             cursor.close()
+
+    def _fetch_recent_web_events(
+        self,
+        db_conn,
+        organization_id: Optional[str],
+        window_minutes: int,
+    ) -> list[dict]:
+        if db_conn is None:
+            return []
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params: list = [window_minutes]
+            query = """
+                SELECT
+                    device_ip,
+                    process_name,
+                    browser_name,
+                    base_domain,
+                    page_title,
+                    content_category,
+                    COALESCE(request_bytes, 0) AS request_bytes,
+                    COALESCE(response_bytes, 0) AS response_bytes,
+                    COALESCE(event_count, 1) AS event_count,
+                    first_seen,
+                    last_seen
+                FROM web_events
+                WHERE last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s MINUTE)
+            """
+            if organization_id:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            query += " ORDER BY last_seen DESC LIMIT 5000"
+            cursor.execute(query, tuple(params))
+            return cursor.fetchall() or []
+        finally:
+            cursor.close()
+
+    def _fetch_unassigned_flow_logs(
+        self,
+        db_conn,
+        organization_id: Optional[str],
+        window_minutes: int,
+    ) -> list[dict]:
+        if db_conn is None:
+            return []
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params: list = [window_minutes]
+            query = """
+                SELECT
+                    src_ip,
+                    dst_ip,
+                    internal_device_ip,
+                    external_endpoint_ip,
+                    domain,
+                    sni,
+                    application,
+                    protocol,
+                    src_port,
+                    dst_port,
+                    COALESCE(byte_count, 0) AS byte_count,
+                    start_time,
+                    last_seen
+                FROM flow_logs
+                WHERE (session_id IS NULL OR session_id = '')
+                  AND last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s MINUTE)
+            """
+            if organization_id:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            query += " ORDER BY last_seen DESC LIMIT 3000"
+            cursor.execute(query, tuple(params))
+            return cursor.fetchall() or []
+        finally:
+            cursor.close()
+
 
     def _is_meaningful_session(self, row: dict) -> bool:
         device_ip = normalize_ip(row.get("device_ip"))
@@ -473,7 +734,7 @@ class ApplicationService:
 
         return True
 
-    def _resolve_session_application(self, row: dict) -> str:
+    def _resolve_session_application(self, row: dict, organization_id: str = "default-org-id") -> str:
         return self.resolve_application_label(
             {
                 "src_ip": row.get("device_ip"),
@@ -485,7 +746,8 @@ class ApplicationService:
                 "dst_port": row.get("dst_port"),
                 "external_endpoint_ip": row.get("external_ip"),
                 "application": row.get("application"),
-            }
+            },
+            organization_id=organization_id,
         )
 
     def _matches_application_name(self, app_name: str, row: dict) -> bool:
@@ -502,12 +764,14 @@ class ApplicationService:
             str(row.get("page_title") or "").strip().lower(),
             str(row.get("content_id") or "").strip().lower(),
             str(row.get("search_query") or "").strip().lower(),
+            str(row.get("application") or "").strip().lower(),
         }
-        return normalized in candidates
+        return normalized in candidates or any(normalized in c for c in candidates if c)
 
     def _build_sessions(self, db_conn, organization_id: Optional[str], window_minutes: int) -> list[dict]:
         rows = self._fetch_recent_sessions(db_conn, organization_id, window_minutes)
         sessions: list[dict] = []
+        org_id = organization_id or "default-org-id"
 
         for row in rows:
             if not self._is_meaningful_session(row):
@@ -517,7 +781,7 @@ class ApplicationService:
             sessions.append(
                 {
                     "device_ip": normalize_ip(row.get("device_ip")),
-                    "application": self._resolve_session_application(row),
+                    "application": self._resolve_session_application(row, organization_id=org_id),
                     "domain": self.get_base_domain(host) if host else "-",
                     "src_port": int(row.get("src_port") or 0),
                     "dst_port": int(row.get("dst_port") or 0),
@@ -552,50 +816,6 @@ class ApplicationService:
             (settings.DB_NAME, table_name, index_name),
         )
         return cursor.fetchone() is not None
-
-    def _backfill_applications(self, db_conn, batch_size: int = 1000) -> None:
-        """
-        Safe backfill:
-        - does not overwrite specifically classified rows
-        - updates missing/legacy Other/Unknown rows using the new classifier
-        """
-        select_cursor = db_conn.cursor(dictionary=True)
-        update_cursor = db_conn.cursor()
-        try:
-            last_id = 0
-            while True:
-                select_cursor.execute(
-                    """
-                    SELECT id, src_ip, dst_ip, src_port, dst_port, protocol, external_endpoint_ip, domain, sni, application
-                    FROM flow_logs
-                    WHERE id > %s
-                      AND (application IS NULL OR application = '' OR application = 'Other' OR application = 'Unknown')
-                    ORDER BY id
-                    LIMIT %s
-                    """,
-                    (last_id, batch_size),
-                )
-                rows = select_cursor.fetchall()
-                if not rows:
-                    break
-
-                updates = []
-                for row in rows:
-                    classified = self.classify_app(row)
-                    if classified != (row.get("application") or ""):
-                        updates.append((classified, row["id"]))
-
-                if updates:
-                    update_cursor.executemany(
-                        "UPDATE flow_logs SET application = %s WHERE id = %s",
-                        updates,
-                    )
-                    db_conn.commit()
-
-                last_id = rows[-1]["id"]
-        finally:
-            select_cursor.close()
-            update_cursor.close()
 
     def ensure_schema(self, db_conn) -> None:
         if self._schema_ready:
@@ -638,11 +858,7 @@ class ApplicationService:
     def _runtime_seconds(self, first_seen, last_seen) -> int:
         first_seen = self._coerce_utc_datetime(first_seen)
         last_seen = self._coerce_utc_datetime(last_seen)
-        if not last_seen and not first_seen:
-            return 0
-        if not first_seen:
-            return 0
-        if not last_seen:
+        if not last_seen or not first_seen:
             return 0
         try:
             delta = last_seen - first_seen
@@ -666,16 +882,30 @@ class ApplicationService:
         organization_id: Optional[str] = None,
         window_minutes: int = DEFAULT_APPLICATION_WINDOW_MINUTES,
         active_window_seconds: int = DEFAULT_ACTIVE_APPLICATION_WINDOW_SECONDS,
+        force_refresh: bool = False,
     ) -> list[dict]:
         self.ensure_schema(db_conn)
+        self._load_overrides_if_needed(db_conn, organization_id)
+        org_id = organization_id or "default-org-id"
+        cache_key = (org_id, window_minutes, active_window_seconds)
+        now_ts = time.time()
+
+        if not force_refresh:
+            with self._lock:
+                cached_entry = self._summary_cache.get(cache_key)
+                if cached_entry and (now_ts - cached_entry[0]) < self._summary_cache_ttl:
+                    return [dict(item) for item in cached_entry[1]]
+
         active_cutoff = datetime.now(timezone.utc) - timedelta(seconds=active_window_seconds)
         grouped: dict[str, dict] = {}
+
+        # 1. Process L4 Sessions
         for session in self._build_sessions(db_conn, organization_id, window_minutes):
             application = session["application"]
-            entry = grouped.get(application)
             first_seen = self._coerce_utc_datetime(session.get("first_seen"))
             last_seen = self._coerce_utc_datetime(session.get("last_seen"))
             is_active = bool(last_seen and last_seen >= active_cutoff)
+            entry = grouped.get(application)
             if entry is None:
                 grouped[application] = {
                     "application": application,
@@ -690,6 +920,77 @@ class ApplicationService:
                 if is_active:
                     entry["active_device_ips"].add(session["device_ip"])
                 entry["bandwidth_bytes"] += session["bandwidth_bytes"]
+                entry["runtime_seconds"] += self._runtime_seconds(first_seen, last_seen)
+                if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
+                    entry["last_seen"] = last_seen
+
+        # 2. Process DPI Web Events (Claude, ChatGPT, Gemini, Google Play, etc.)
+        for event in self._fetch_recent_web_events(db_conn, organization_id, window_minutes):
+            app = self.classify_app(
+                {
+                    "base_domain": event.get("base_domain"),
+                    "page_title": event.get("page_title"),
+                    "process_name": event.get("process_name"),
+                },
+                organization_id=org_id,
+            )
+            device_ip = normalize_ip(event.get("device_ip"))
+            if not self._is_trackable_device_ip(device_ip):
+                continue
+
+            first_seen = self._coerce_utc_datetime(event.get("first_seen"))
+            last_seen = self._coerce_utc_datetime(event.get("last_seen"))
+            is_active = bool(last_seen and last_seen >= active_cutoff)
+            bytes_total = int(event.get("request_bytes", 0) + event.get("response_bytes", 0))
+            if bytes_total == 0:
+                bytes_total = max(int(event.get("event_count", 1)) * 1024, 1024)
+
+            entry = grouped.get(app)
+            if entry is None:
+                grouped[app] = {
+                    "application": app,
+                    "device_ips": {device_ip},
+                    "active_device_ips": {device_ip} if is_active else set(),
+                    "bandwidth_bytes": bytes_total,
+                    "runtime_seconds": self._runtime_seconds(first_seen, last_seen),
+                    "last_seen": last_seen,
+                }
+            else:
+                entry["device_ips"].add(device_ip)
+                if is_active:
+                    entry["active_device_ips"].add(device_ip)
+                entry["bandwidth_bytes"] += bytes_total
+                entry["runtime_seconds"] += self._runtime_seconds(first_seen, last_seen)
+                if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
+                    entry["last_seen"] = last_seen
+
+        # 3. Process Unassigned Flow Logs (e.g. Sentry, Microsoft, App Insights)
+        for flow in self._fetch_unassigned_flow_logs(db_conn, organization_id, window_minutes):
+            app = self.resolve_application_label(flow, organization_id=org_id)
+            device_ip = self._select_device_ip(flow)
+            if not self._is_trackable_device_ip(device_ip):
+                continue
+
+            first_seen = self._coerce_utc_datetime(flow.get("start_time") or flow.get("last_seen"))
+            last_seen = self._coerce_utc_datetime(flow.get("last_seen"))
+            is_active = bool(last_seen and last_seen >= active_cutoff)
+            byte_count = int(flow.get("byte_count") or 0)
+
+            entry = grouped.get(app)
+            if entry is None:
+                grouped[app] = {
+                    "application": app,
+                    "device_ips": {device_ip},
+                    "active_device_ips": {device_ip} if is_active else set(),
+                    "bandwidth_bytes": byte_count,
+                    "runtime_seconds": self._runtime_seconds(first_seen, last_seen),
+                    "last_seen": last_seen,
+                }
+            else:
+                entry["device_ips"].add(device_ip)
+                if is_active:
+                    entry["active_device_ips"].add(device_ip)
+                entry["bandwidth_bytes"] += byte_count
                 entry["runtime_seconds"] += self._runtime_seconds(first_seen, last_seen)
                 if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
                     entry["last_seen"] = last_seen
@@ -711,13 +1012,18 @@ class ApplicationService:
 
         results.sort(
             key=lambda item: (
-                1 if item["application"] in UNCLASSIFIED_SENTINELS or self.is_generic_transport_application(item["application"]) else 0,
+                1
+                if item["application"] in UNCLASSIFIED_SENTINELS
+                or self.is_generic_transport_application(item["application"])
+                else 0,
                 -item["active_device_count"],
                 -item["device_count"],
                 -item["bandwidth_bytes"],
                 item["application"],
             )
         )
+        with self._lock:
+            self._summary_cache[cache_key] = (now_ts, results)
         return results
 
     def get_application_devices(
@@ -729,18 +1035,22 @@ class ApplicationService:
         active_window_seconds: int = DEFAULT_ACTIVE_APPLICATION_WINDOW_SECONDS,
     ) -> list[dict]:
         self.ensure_schema(db_conn)
+        self._load_overrides_if_needed(db_conn, organization_id)
+        org_id = organization_id or "default-org-id"
         active_cutoff = datetime.now(timezone.utc) - timedelta(seconds=active_window_seconds)
         device_lookup = {
             device.get("ip"): device
             for device in device_service.get_devices(db_conn, organization_id=organization_id)
         }
+
+        grouped: dict[str, dict] = {}
+
+        # 1. Search Sessions
         sessions = [
             session
             for session in self._build_sessions(db_conn, organization_id, window_minutes)
             if session["application"] == app_name
         ]
-        grouped: dict[str, dict] = {}
-
         for session in sessions:
             device_ip = session.get("device_ip")
             if not device_ip:
@@ -764,17 +1074,66 @@ class ApplicationService:
                     "active_session_count": 1 if is_active else 0,
                     "management_mode": device.get("management_mode") or "byod",
                 }
+            else:
+                entry["bandwidth_bytes"] += int(session.get("bandwidth_bytes") or 0)
+                entry["session_count"] += 1
+                if is_active:
+                    entry["active_session_count"] += 1
+                if first_seen and (entry["first_seen"] is None or first_seen < entry["first_seen"]):
+                    entry["first_seen"] = first_seen
+                if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
+                    entry["last_seen"] = last_seen
+                entry["status"] = "Active" if entry["active_session_count"] > 0 else "Idle"
+
+        # 2. Search Web Events
+        web_events = self._fetch_recent_web_events(db_conn, organization_id, window_minutes)
+        for event in web_events:
+            classified_app = self.classify_app(
+                {
+                    "base_domain": event.get("base_domain"),
+                    "page_title": event.get("page_title"),
+                    "process_name": event.get("process_name"),
+                },
+                organization_id=org_id,
+            )
+            if classified_app != app_name:
                 continue
 
-            entry["bandwidth_bytes"] += int(session.get("bandwidth_bytes") or 0)
-            entry["session_count"] += 1
-            if is_active:
-                entry["active_session_count"] += 1
-            if first_seen and (entry["first_seen"] is None or first_seen < entry["first_seen"]):
-                entry["first_seen"] = first_seen
-            if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
-                entry["last_seen"] = last_seen
-            entry["status"] = "Active" if entry["active_session_count"] > 0 else "Idle"
+            device_ip = normalize_ip(event.get("device_ip"))
+            if not device_ip:
+                continue
+
+            device = device_lookup.get(device_ip, {})
+            first_seen = self._coerce_utc_datetime(event.get("first_seen"))
+            last_seen = self._coerce_utc_datetime(event.get("last_seen"))
+            is_active = bool(last_seen and last_seen >= active_cutoff)
+            bytes_total = int(event.get("request_bytes", 0) + event.get("response_bytes", 0))
+            if bytes_total == 0:
+                bytes_total = max(int(event.get("event_count", 1)) * 1024, 1024)
+
+            entry = grouped.get(device_ip)
+            if entry is None:
+                grouped[device_ip] = {
+                    "device_ip": device_ip,
+                    "hostname": device.get("hostname") or "Unknown",
+                    "status": "Active" if is_active else "Idle",
+                    "bandwidth_bytes": bytes_total,
+                    "first_seen": first_seen,
+                    "last_seen": last_seen,
+                    "session_count": 1,
+                    "active_session_count": 1 if is_active else 0,
+                    "management_mode": device.get("management_mode") or "byod",
+                }
+            else:
+                entry["bandwidth_bytes"] += bytes_total
+                entry["session_count"] += 1
+                if is_active:
+                    entry["active_session_count"] += 1
+                if first_seen and (entry["first_seen"] is None or first_seen < entry["first_seen"]):
+                    entry["first_seen"] = first_seen
+                if last_seen and (entry["last_seen"] is None or last_seen > entry["last_seen"]):
+                    entry["last_seen"] = last_seen
+                entry["status"] = "Active" if entry["active_session_count"] > 0 else "Idle"
 
         results = []
         for entry in grouped.values():
@@ -856,6 +1215,115 @@ class ApplicationService:
                 "group_count": len(grouped_events),
             },
         }
+
+    # =========================================================
+    # ADMIN OVERRIDE MANAGEMENT (LAYER 0)
+    # =========================================================
+
+    def get_admin_overrides(self, db_conn, organization_id: Optional[str] = None) -> list[dict]:
+        self.ensure_schema(db_conn)
+        cursor = db_conn.cursor(dictionary=True)
+        try:
+            params = []
+            query = """
+                SELECT id, domain, application_name, category, source_layer, confidence, is_override, updated_at
+                FROM discovered_applications
+                WHERE is_override = 1
+            """
+            if organization_id:
+                query += " AND organization_id = %s"
+                params.append(organization_id)
+            query += " ORDER BY domain ASC"
+            cursor.execute(query, tuple(params))
+            return cursor.fetchall() or []
+        finally:
+            cursor.close()
+
+    def set_admin_override(
+        self,
+        db_conn,
+        domain: str,
+        app_name: str,
+        category: str = "web",
+        organization_id: Optional[str] = None,
+    ) -> dict:
+        self.ensure_schema(db_conn)
+        org_id = organization_id or "default-org-id"
+        normalized_domain = self._normalize_domain(domain)
+        if not normalized_domain:
+            raise ValueError(f"Invalid domain: '{domain}'")
+        clean_name = str(app_name).strip()
+        if not clean_name:
+            raise ValueError("Application name cannot be empty.")
+
+        cursor = db_conn.cursor()
+        try:
+            cursor.execute(
+                """
+                INSERT INTO discovered_applications
+                    (organization_id, domain, application_name, category, source_layer, confidence, is_override)
+                VALUES
+                    (%s, %s, %s, %s, 'override', 1.0, 1)
+                ON DUPLICATE KEY UPDATE
+                    application_name = VALUES(application_name),
+                    category = VALUES(category),
+                    source_layer = 'override',
+                    confidence = 1.0,
+                    is_override = 1,
+                    updated_at = NOW()
+                """,
+                (org_id, normalized_domain, clean_name, category),
+            )
+            db_conn.commit()
+
+            with self._lock:
+                self._domain_app_cache[normalized_domain] = {
+                    "name": clean_name,
+                    "category": category,
+                    "source": "override",
+                    "is_override": True,
+                    "confidence": 1.0,
+                }
+                self._summary_cache.clear()
+
+            return {
+                "organization_id": org_id,
+                "domain": normalized_domain,
+                "application_name": clean_name,
+                "category": category,
+                "is_override": True,
+            }
+        finally:
+            cursor.close()
+
+    def delete_admin_override(self, db_conn, domain: str, organization_id: Optional[str] = None) -> bool:
+        self.ensure_schema(db_conn)
+        org_id = organization_id or "default-org-id"
+        normalized_domain = self._normalize_domain(domain)
+        if not normalized_domain:
+            return False
+
+        cursor = db_conn.cursor()
+        try:
+            cursor.execute(
+                """
+                DELETE FROM discovered_applications
+                WHERE organization_id = %s AND domain = %s AND is_override = 1
+                """,
+                (org_id, normalized_domain),
+            )
+            db_conn.commit()
+            deleted = cursor.rowcount > 0
+
+            with self._lock:
+                if normalized_domain in self._domain_app_cache:
+                    del self._domain_app_cache[normalized_domain]
+                self._summary_cache.clear()
+
+            return deleted
+        finally:
+            cursor.close()
+
 
     def get_top_other_domains(
         self,

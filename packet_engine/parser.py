@@ -1,3 +1,5 @@
+import time
+import socket
 try:
     import dpkt
 except ImportError:

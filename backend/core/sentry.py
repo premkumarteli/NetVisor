@@ -1,17 +1,31 @@
 import logging
 import os
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
+
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    from sentry_sdk.integrations.logging import LoggingIntegration
+    HAS_SENTRY = True
+except ImportError:
+    sentry_sdk = None
+    FastApiIntegration = None
+    StarletteIntegration = None
+    LoggingIntegration = None
+    HAS_SENTRY = False
 
 logger = logging.getLogger("netvisor.sentry")
+
 
 DEFAULT_SENTRY_DSN = "https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224"
 
 
 def init_sentry(dsn: str | None = None, environment: str = "production") -> bool:
     """Initialize Sentry Error Monitoring and Tracing SDK for NetVisor."""
+    if not HAS_SENTRY:
+        logger.info("sentry_sdk package not installed. Sentry monitoring disabled.")
+        return False
+
     target_dsn = (
         dsn
         or os.getenv("NETVISOR_SENTRY_DSN")
@@ -48,10 +62,12 @@ def init_sentry(dsn: str | None = None, environment: str = "production") -> bool
 
 def capture_sample_event(message: str = "NetVisor Sentry Integration Test Event") -> str:
     """Trigger an explicit sample error event to verify Sentry dashboard connection."""
+    if not HAS_SENTRY or sentry_sdk is None:
+        return "sentry-sdk-not-installed"
     try:
-        # Trigger verification error per Sentry onboarding docs
         division_by_zero = 1 / 0
     except ZeroDivisionError as exc:
         event_id = sentry_sdk.capture_exception(exc)
         logger.info("Captured test exception in Sentry with Event ID: %s", event_id)
         return str(event_id)
+

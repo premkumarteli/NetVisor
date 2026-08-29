@@ -1,6 +1,13 @@
-import argparse
-import sys
 import os
+import sys
+from pathlib import Path
+
+# Add project root to sys.path at index 0 before any submodule imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path or sys.path[0] != str(PROJECT_ROOT):
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import argparse
 import threading
 import time
 import requests
@@ -11,14 +18,11 @@ import uuid
 import psutil
 import platform
 import ipaddress
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from colorama import Fore, Style
 import logging
 
-# Add parent directory to sys.path to allow importing modules from root
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.device_detector import DeviceDetector
 from agent.security import AgentApiClient, verify_agent_code_integrity

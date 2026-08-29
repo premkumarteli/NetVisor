@@ -121,6 +121,9 @@ export const systemService = {
   getGlobalWebEvidenceGroups: (limit = 15) =>
     api.get("/web/activity/groups", { params: { limit } }),
   getAppsSummary: () => api.get("/apps/summary"),
+  getAppOverrides: () => api.get("/apps/overrides"),
+  setAppOverride: (payload) => api.post("/apps/overrides", payload),
+  deleteAppOverride: (domain) => api.delete(`/apps/overrides/${encodeURIComponent(domain)}`),
   getDpiGlobalStatus: () => api.get("/dpi/status"),
   getAppDevices: (appName) => api.get(`/apps/${encodeURIComponent(appName)}/devices`),
   getAppWorkspace: (appName) => api.get(`/apps/${encodeURIComponent(appName)}/workspace`),

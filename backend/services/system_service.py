@@ -55,7 +55,9 @@ class SystemService:
         "telemetry_logs",
         "enrollment_events",
         "enrollment_state_tracking",
+        "discovered_applications",
     ))
+
 
     _ALLOWED_TABLES = frozenset(OPERATIONAL_TABLES)
 
