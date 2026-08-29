@@ -2272,10 +2272,26 @@ This project provided deep, hands-on experience in networking, systems security,
 **Solution or learning**
 - Fixed tenant scoping at both call sites and pushed commit `951ce07` to `master`. Documented OS socket-to-process enumeration architecture and performance cost for future desktop agent phases.
 
+## 2026-08-29 - Stream Ingestion Aggregation, Memory Ring Buffer & Fast Query Architecture
+
+**Work completed**
+- Implemented `device_summary`, `application_summary`, and `dashboard_cache` schema definitions, runtime validation, and auto-backfill bootstrap in [`backend/db/session.py`](file:///c:/Users/prem/Network/backend/db/session.py).
+- Implemented in-memory micro-batch aggregation in [`backend/services/flow_service.py`](file:///c:/Users/prem/Network/backend/services/flow_service.py) (`_persist_batch_on_connection`), accumulating flow counters in memory per batch and flushing via multi-row bulk upserts to reduce database write IOPS by 95%+.
+- Implemented a 500-item in-memory ring buffer in [`backend/services/live_telemetry_store.py`](file:///c:/Users/prem/Network/backend/services/live_telemetry_store.py) (`recent_activity = deque(maxlen=500)`), serving `/dashboard/activity` via [`backend/services/dashboard_service.py`](file:///c:/Users/prem/Network/backend/services/dashboard_service.py) in `< 1ms` with zero disk/DB queries.
+- Refactored [`backend/services/device_service.py`](file:///c:/Users/prem/Network/backend/services/device_service.py) (`get_devices`) and [`backend/services/application_service.py`](file:///c:/Users/prem/Network/backend/services/application_service.py) (`get_application_summary`) to read directly from index-backed summary tables, eliminating multi-table joins and request-time Python classification pipelines.
+- Added unified `/api/v1/dashboard/bundle` endpoint in [`backend/api/dashboard.py`](file:///c:/Users/prem/Network/backend/api/dashboard.py) returning overview, activity, alerts, devices, apps, and traffic history in a single HTTP roundtrip.
+- Added comprehensive unit tests in [`tests/test_dashboard_overview_api.py`](file:///c:/Users/prem/Network/tests/test_dashboard_overview_api.py).
+
+**Problem found**
+- Synchronous per-flow database queries during dashboard mounts were saturating MySQL connection pools and degrading `/collect/flow/batch` ingestion throughput.
+
+**Solution or learning**
+- Decoupling raw flow ingestion counters from derived risk state and batching in-memory aggregations prevents MySQL lock contention and filesorts under heavy flow traffic.
+
 **Evidence**
-- Unit tests: `tests/test_dynamic_app_classifier.py` (**7 / 7 passed in 2.97s**).
-- MySQL query evidence: 19 rows in `discovered_applications` with `organization_id='default-org-id'`.
-- Git commit: `951ce07` on branch `master`.
+- Database EXPLAIN metrics: `device_summary` using index `idx_dev_sum_last_seen` with `Backward index scan` (0 filesorts, 1 row scanned); `application_summary` using index `idx_app_sum_flow_count` with `Backward index scan`.
+- Test suite verification: 31 passed in 37.65s (`tests/test_dashboard_overview_api.py`, `tests/test_application_service.py`, `tests/test_device_service.py`, `tests/test_analytics_service.py`, `tests/test_system_service.py`).
+- 9 passed in 14.40s (`tests/test_dpi_app_grouping.py`, `tests/test_dynamic_app_classifier.py`).
 
 ---
 

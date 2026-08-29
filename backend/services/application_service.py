@@ -207,9 +207,10 @@ class ApplicationService:
                             (organization_id, domain, application_name, category, source_layer, confidence, is_override)
                         VALUES
                             (%s, %s, %s, %s, %s, %s, 0)
+                        AS new_row
                         ON DUPLICATE KEY UPDATE
-                            application_name = IF(is_override = 1, application_name, VALUES(application_name)),
-                            category = IF(is_override = 1, category, VALUES(category)),
+                            application_name = IF(discovered_applications.is_override = 1, discovered_applications.application_name, new_row.application_name),
+                            category = IF(discovered_applications.is_override = 1, discovered_applications.category, new_row.category),
                             updated_at = NOW()
                         """,
                         (organization_id, domain.lower(), app_name, category, source_layer, confidence),
@@ -219,7 +220,7 @@ class ApplicationService:
                     cursor.close()
                     conn.close()
             except Exception as e:
-                logger.debug("Failed async discovery persistence for %s: %s", domain, e)
+                logger.warning("Failed async discovery persistence for %s: %s", domain, e)
 
         self._persist_executor.submit(_persist_task)
 

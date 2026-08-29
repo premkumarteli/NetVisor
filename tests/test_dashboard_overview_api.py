@@ -115,3 +115,50 @@ def test_live_telemetry_store_incorporates_summaries():
     assert "fleet_summary" in stats
     assert stats["agents_summary"]["online"] >= 0
     assert stats["gateways_summary"]["online"] >= 0
+
+
+def test_dashboard_bundle_endpoint_returns_200_and_all_sections(authenticated_client):
+    """
+    Verify GET /api/v1/dashboard/bundle returns 200 OK and includes all core sections.
+    """
+    response = authenticated_client.get("/api/v1/dashboard/bundle")
+    assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
+
+    data = response.json()
+    assert isinstance(data, dict), "Response must be a JSON object"
+    assert "overview" in data
+    assert "activity" in data
+    assert "alerts" in data
+    assert "devices" in data
+    assert "apps" in data
+    assert "traffic_history" in data
+    assert isinstance(data["overview"], dict)
+    assert isinstance(data["activity"], list)
+    assert isinstance(data["alerts"], list)
+    assert isinstance(data["devices"], list)
+    assert isinstance(data["apps"], list)
+    assert isinstance(data["traffic_history"], list)
+
+
+def test_live_telemetry_store_activity_ring_buffer_behavior():
+    """
+    Verify LiveTelemetryStore ring buffer records activity and caps at maxlen.
+    """
+    org_id = "test-ring-buffer-org"
+    for i in range(600):
+        live_telemetry_store.record_recent_activity(
+            org_id,
+            {
+                "src_ip": f"192.168.1.{i % 250}",
+                "dst_ip": "8.8.8.8",
+                "application": "DNS",
+                "byte_count": 100 + i,
+                "severity": "LOW",
+            },
+        )
+
+    recent = live_telemetry_store.get_recent_activity(org_id, limit=500)
+    assert len(recent) == 500
+    # Most recent should be byte_count 699 (index 599)
+    assert recent[0]["byte_count"] == 699
+
