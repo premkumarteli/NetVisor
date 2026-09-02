@@ -50,38 +50,91 @@ def _browser_from_name(name: str) -> tuple[str, str]:
     lowered = str(name or "").strip().lower()
     if not lowered:
         return "Unknown", "unknown"
+    if "antigravity" in lowered:
+        return "Antigravity", "antigravity.exe"
+    if "whatsapp" in lowered:
+        return "WhatsApp", "WhatsApp.exe"
     if "edge" in lowered or "edg" in lowered:
         return "Edge", "msedge.exe"
     if "chrome" in lowered or "chromium" in lowered:
         return "Chrome", "chrome.exe"
+    if "brave" in lowered:
+        return "Brave", "brave.exe"
+    if "opera" in lowered or "opr" in lowered:
+        return "Opera", "opera.exe"
     if "firefox" in lowered:
         return "Firefox", "firefox.exe"
-    if "safari" in lowered and "chrome" not in lowered:
-        return "Safari", "safari.exe"
+    if "postman" in lowered:
+        return "Postman", "postman.exe"
+    if "slack" in lowered:
+        return "Slack", "slack.exe"
+    if "teams" in lowered:
+        return "Microsoft Teams", "ms-teams.exe"
+    if "outlook" in lowered:
+        return "Outlook", "outlook.exe"
+    if "code" in lowered or "vscode" in lowered:
+        return "VS Code", "code.exe"
+    if "electron" in lowered:
+        return "Electron App", "electron.exe"
     if "python" in lowered:
         return "Python", "python.exe"
-    return "Unknown", "unknown"
+    if "curl" in lowered:
+        return "cURL", "curl.exe"
+    if "go" in lowered:
+        return "Go Client", "go.exe"
+    if "safari" in lowered and "chrome" not in lowered:
+        return "Safari", "safari.exe"
+    return "System App", f"{lowered}.exe"
 
 
 def infer_browser_identity(headers) -> tuple[str, str]:
-    sec_ch_ua = _find_header(headers, "sec-ch-ua")
-    for marker in ("Microsoft Edge", "Google Chrome", "Chromium", "Firefox", "Safari"):
-        if marker.lower() in sec_ch_ua.lower():
-            return _browser_from_name(marker)
+    sec_ch_ua = _find_header(headers, "sec-ch-ua").lower()
+    user_agent = _find_header(headers, "user-agent").lower()
+    combined = f"{sec_ch_ua} {user_agent}"
 
-    user_agent = _find_header(headers, "user-agent")
-    lowered_user_agent = user_agent.lower()
-    if "edg/" in lowered_user_agent:
+    if "antigravity" in combined:
+        return "Antigravity", "antigravity.exe"
+    if "whatsapp" in combined:
+        return "WhatsApp", "WhatsApp.exe"
+    if "edg/" in combined or "edge" in combined:
         return "Edge", "msedge.exe"
-    if "chrome/" in lowered_user_agent or "chromium/" in lowered_user_agent:
+    if "brave" in combined:
+        return "Brave", "brave.exe"
+    if "opera" in combined or "opr/" in combined:
+        return "Opera", "opera.exe"
+    if "chrome/" in combined or "chromium" in combined:
         return "Chrome", "chrome.exe"
-    if "firefox/" in lowered_user_agent:
+    if "firefox/" in combined:
         return "Firefox", "firefox.exe"
-    if "safari/" in lowered_user_agent and "chrome/" not in lowered_user_agent:
-        return "Safari", "safari.exe"
-    if "python" in lowered_user_agent:
+    if "postman" in combined or "postmanruntime" in combined:
+        return "Postman", "postman.exe"
+    if "slack" in combined:
+        return "Slack", "slack.exe"
+    if "teams" in combined:
+        return "Microsoft Teams", "ms-teams.exe"
+    if "outlook" in combined:
+        return "Outlook", "outlook.exe"
+    if "code/" in combined or "vscode" in combined:
+        return "VS Code", "code.exe"
+    if "electron" in combined:
+        return "Electron App", "electron.exe"
+    if "python" in combined:
         return "Python", "python.exe"
-    return "Unknown", "unknown"
+    if "curl" in combined:
+        return "cURL", "curl.exe"
+    if "go-http-client" in combined:
+        return "Go Client", "go.exe"
+    if "safari/" in combined and "chrome/" not in combined:
+        return "Safari", "safari.exe"
+
+    if user_agent:
+        parts = user_agent.split()
+        if parts:
+            token = parts[0].split("/")[0].strip()
+            if token and len(token) < 30 and token.replace("-", "").replace("_", "").isalnum():
+                return token.title(), f"{token.lower()}.exe"
+
+    return "System App", "system.exe"
 
 
 def _preferred_domain_label(host: str | None) -> str | None:

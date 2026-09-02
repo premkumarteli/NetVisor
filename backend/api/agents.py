@@ -330,66 +330,80 @@ async def agent_heartbeat(
     _rate_limited: bool = Depends(agent_control_rate_limit),
     auth_context: dict = Depends(validate_agent_key),
 ):
-    conn = get_db_connection()
-    cursor = None
-    try:
-        agent_id = _require_authenticated_agent_id(auth_context, hb.get("agent_id"), source="request payload")
-
-        cursor = conn.cursor(dictionary=True)
-        org_id = _resolve_org_id(cursor, hb.get("organization_id"))
-        cursor.close()
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = get_db_connection()
         cursor = None
+        try:
+            agent_id = _require_authenticated_agent_id(auth_context, hb.get("agent_id"), source="request payload")
 
-        agent_service.upsert_agent(
-            conn,
-            agent_id=agent_id,
-            organization_id=org_id,
-            api_key=None,
-            hostname=hb.get("hostname"),
-            ip_address=hb.get("device_ip"),
-            os_family=hb.get("os"),
-            version=hb.get("version"),
-            inspection_state=hb.get("web_inspection"),
-            cpu_usage=float(hb.get("cpu_usage") or 0.0),
-            ram_usage=float(hb.get("ram_usage") or 0.0),
-            integrity_status=hb.get("integrity_status"),
-            manifest_hash=hb.get("manifest_hash"),
-        )
-
-        managed_device_service.upsert_device(
-            conn,
-            agent_id=agent_id,
-            organization_id=org_id,
-            device_ip=hb.get("device_ip"),
-            device_mac=hb.get("device_mac"),
-            hostname=hb.get("hostname"),
-            os_family=hb.get("os"),
-        )
-        device_service.touch_device_seen(
-            conn,
-            ip=hb.get("device_ip"),
-            organization_id=org_id,
-            seen_at=hb.get("time"),
-            agent_id=agent_id,
-            hostname=hb.get("hostname"),
-            mac=hb.get("device_mac"),
-            vendor="Managed Agent",
-            device_type="Managed Device",
-            os_family=hb.get("os"),
-            create_if_missing=True,
-        )
-        conn.commit()
-        return _collect_response(
-            auth_context=auth_context,
-            organization_id=org_id,
-        )
-    except Exception as exc:
-        conn.rollback()
-        raise
-    finally:
-        if cursor:
+            cursor = conn.cursor(dictionary=True)
+            org_id = _resolve_org_id(cursor, hb.get("organization_id"))
             cursor.close()
-        conn.close()
+            cursor = None
+
+            agent_service.upsert_agent(
+                conn,
+                agent_id=agent_id,
+                organization_id=org_id,
+                api_key=None,
+                hostname=hb.get("hostname"),
+                ip_address=hb.get("device_ip"),
+                os_family=hb.get("os"),
+                version=hb.get("version"),
+                inspection_state=hb.get("web_inspection"),
+                cpu_usage=float(hb.get("cpu_usage") or 0.0),
+                ram_usage=float(hb.get("ram_usage") or 0.0),
+                integrity_status=hb.get("integrity_status"),
+                manifest_hash=hb.get("manifest_hash"),
+            )
+
+            managed_device_service.upsert_device(
+                conn,
+                agent_id=agent_id,
+                organization_id=org_id,
+                device_ip=hb.get("device_ip"),
+                device_mac=hb.get("device_mac"),
+                hostname=hb.get("hostname"),
+                os_family=hb.get("os"),
+            )
+            device_service.touch_device_seen(
+                conn,
+                ip=hb.get("device_ip"),
+                organization_id=org_id,
+                seen_at=hb.get("time"),
+                agent_id=agent_id,
+                hostname=hb.get("hostname"),
+                mac=hb.get("device_mac"),
+                vendor="Managed Agent",
+                device_type="Managed Device",
+                os_family=hb.get("os"),
+                create_if_missing=True,
+            )
+            conn.commit()
+            return _collect_response(
+                auth_context=auth_context,
+                organization_id=org_id,
+            )
+        except mysql.connector.Error as exc:
+            conn.rollback()
+            if exc.errno == 1213 and attempt < max_retries - 1:
+                logger.warning("Deadlock encountered in agent_heartbeat, retrying (attempt %s/%s)...", attempt + 1, max_retries)
+                await asyncio.sleep(0.1 * (attempt + 1))
+                continue
+            logger.error("Failed agent heartbeat: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to process heartbeat")
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed agent heartbeat: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to process heartbeat")
+        finally:
+            if cursor:
+                cursor.close()
+            conn.close()
 
 
 @router.get("/web-policy")
@@ -533,6 +547,7 @@ async def rotate_agent_credential(
 @router.post("/devices/batch")
 async def receive_devices(
     devices: list = Body(...),
+    request: Request = None,
     _rate_limited: bool = Depends(agent_control_rate_limit),
     auth_context: dict = Depends(validate_agent_key),
 ):
@@ -566,15 +581,18 @@ async def receive_devices(
             cursor.close()
             cursor = None
 
+            source_ip = _resolve_source_ip(request)
             count = 0
             for dev in devices:
                 logger.debug("Upserting device: %s for org %s", dev.get("ip"), dev.get("organization_id"))
+                dev_ip = dev.get("ip")
+                dev_agent_id = authenticated_agent_id if dev_ip and dev_ip == source_ip else None
                 if device_service.touch_device_seen(
                     conn,
-                    ip=dev.get("ip"),
+                    ip=dev_ip,
                     organization_id=org_id,
                     seen_at=dev.get("last_seen"),
-                    agent_id=authenticated_agent_id,
+                    agent_id=dev_agent_id,
                     hostname=dev.get("hostname"),
                     mac=dev.get("mac"),
                     vendor=dev.get("vendor"),

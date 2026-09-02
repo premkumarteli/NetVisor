@@ -1080,7 +1080,7 @@ class FlowService:
                                             logger.warning("Message %s failed %s times. Routing to dead-letter.", msg_id, delivery_count)
                                             msgs = await self._run_in_executor(r.xrange, stream_name, min=msg_id, max=msg_id)
                                             if msgs:
-                                                await self._run_in_executor(r.xadd, f"{stream_name}:deadletter", msgs[0][1])
+                                                await self._run_in_executor(lambda m=msgs[0][1]: r.xadd(f"{stream_name}:deadletter", m, maxlen=10000, approximate=True))
                                             # ACK to remove from pending PEL
                                             await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
                                             await self._run_in_executor(r.xdel, stream_name, msg_id)
@@ -1261,12 +1261,6 @@ class FlowService:
             self._refresh_queue_depth()
 
 
-    async def _persist_batch(self, batch):
-        """No longer used directly, superseded by _sync_persist_batch + to_thread."""
-        events_to_emit = await self._run_in_executor(self._sync_persist_batch, batch)
-        for event_name, payload in events_to_emit:
-            await emit_event(event_name, payload)
-
     def _persist_batch_on_connection(self, conn, cursor, batch) -> list[tuple[str, dict]]:
         events_to_emit = []
         managed_ip_cache = {}
@@ -1304,6 +1298,8 @@ class FlowService:
             )
             existing_hashes = {row["ingest_hash"] for row in cursor.fetchall() or []}
 
+        sessions_to_upsert = []
+        prepared_flows = []
         for org_id, sanitized in sanitized_batch:
             if sanitized.ingest_hash in existing_hashes:
                 self._increment_metric("deduplicated_flows_total")
@@ -1421,24 +1417,32 @@ class FlowService:
                 }
             )
 
+            if sanitized.internal_device_ip:
+                sessions_to_upsert.append({
+                    "organization_id": org_id,
+                    "device_ip": sanitized.internal_device_ip,
+                    "device_mac": sanitized.internal_device_mac,
+                    "external_ip": sanitized.external_endpoint_ip,
+                    "application": application,
+                    "domain": sanitized.sni or sanitized.domain,
+                    "protocol": sanitized.protocol,
+                    "source_type": source_type,
+                    "packet_count": sanitized.packet_count,
+                    "byte_count": sanitized.byte_count,
+                    "start_time": self._mysql_timestamp(sanitized.start_time),
+                    "last_seen": self._mysql_timestamp(sanitized.last_seen),
+                    "duration": sanitized.duration,
+                })
+
+            prepared_flows.append((org_id, sanitized, application, report, breakdown, management_mode, source_type))
+
+        session_map = session_service.upsert_sessions_batch(cursor, sessions_to_upsert)
+
+        for org_id, sanitized, application, report, breakdown, management_mode, source_type in prepared_flows:
             session_id = None
             if sanitized.internal_device_ip:
-                session_id = session_service.upsert_session(
-                    conn,
-                    organization_id=org_id,
-                    device_ip=sanitized.internal_device_ip,
-                    device_mac=sanitized.internal_device_mac,
-                    external_ip=sanitized.external_endpoint_ip,
-                    application=application,
-                    domain=sanitized.sni or sanitized.domain,
-                    protocol=sanitized.protocol,
-                    source_type=source_type,
-                    packet_count=sanitized.packet_count,
-                    byte_count=sanitized.byte_count,
-                    start_time=self._mysql_timestamp(sanitized.start_time),
-                    last_seen=self._mysql_timestamp(sanitized.last_seen),
-                    duration=sanitized.duration,
-                )
+                session_key = (org_id, sanitized.internal_device_ip, application, sanitized.sni or sanitized.domain, sanitized.external_endpoint_ip)
+                session_id = session_map.get(session_key)
 
             external_endpoint_service.observe_endpoint(
                 conn,

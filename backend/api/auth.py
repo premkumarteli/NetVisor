@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import datetime, timedelta, timezone
 import secrets
-from ..core.security import create_access_token
+from ..core.security import create_access_token, verify_access_token
 from ..core.dependencies import get_current_user, request_rate_limit
 from ..db.session import get_db_connection
 from ..schemas.user_schema import UserCreate, User, GenericResponse
@@ -256,15 +256,8 @@ async def logout(request: Request, response: Response):
         token = cookies.get(settings.AUTH_COOKIE_NAME) if cookies else None
         ip = _resolve_source_ip(request)
         if token:
-            from jose import jwt
-            payload = jwt.decode(
-                token,
-                settings.SECRET_KEY,
-                algorithms=["HS256"],
-                issuer="netvisor-backend",
-                audience="netvisor-clients",
-            )
-            user_id = payload.get("sub")
+            payload = verify_access_token(token)
+            user_id = payload.get("sub") or payload.get("user_id") or payload.get("id")
             username = payload.get("username") or "unknown"
             org_id = payload.get("organization_id")
             audit_service.log_auth_attempt(

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { authService } from "../services/api";
 import { isAdminRole } from "../utils/roles";
 import { AuthContext } from "./auth-context";
-import { ensureRealtimeConnection } from "../socket";
+import { ensureRealtimeConnection, disconnectRealtime } from "../socket";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -16,9 +16,12 @@ export const AuthProvider = ({ children }) => {
       setUser(authenticatedUser);
       if (authenticatedUser) {
         ensureRealtimeConnection(true);
+      } else {
+        disconnectRealtime();
       }
     } catch {
       setUser(null);
+      disconnectRealtime();
     } finally {
       setLoading(false);
     }
@@ -29,6 +32,7 @@ export const AuthProvider = ({ children }) => {
       await authService.logout();
     } finally {
       setUser(null);
+      disconnectRealtime();
     }
   };
 
@@ -37,6 +41,7 @@ export const AuthProvider = ({ children }) => {
 
     const handleAuthExpired = () => {
       setUser(null);
+      disconnectRealtime();
     };
 
     window.addEventListener("netvisor:auth-expired", handleAuthExpired);

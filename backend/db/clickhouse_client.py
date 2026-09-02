@@ -5,32 +5,38 @@ from backend.core.config import settings
 
 logger = logging.getLogger("netvisor.db.clickhouse")
 
+import threading
+
 _clickhouse_client = None
+_ch_lock = threading.Lock()
 
 def get_clickhouse_client():
     """Returns the shared ClickHouse client instance, initializing it and applying DDL on first call."""
     global _clickhouse_client
     if _clickhouse_client is None:
-        logger.info(
-            "Initializing ClickHouse connection: %s:%s (DB: %s)",
-            settings.CLICKHOUSE_HOST,
-            settings.CLICKHOUSE_PORT,
-            settings.CLICKHOUSE_DB
-        )
-        try:
-            _clickhouse_client = clickhouse_connect.get_client(
-                host=settings.CLICKHOUSE_HOST,
-                port=settings.CLICKHOUSE_PORT,
-                username=settings.CLICKHOUSE_USER,
-                password=settings.CLICKHOUSE_PASSWORD,
-                database=settings.CLICKHOUSE_DB,
-                connect_timeout=1,
-            )
-            # Apply initial schema DDL
-            init_clickhouse_schema(_clickhouse_client)
-        except Exception as e:
-            logger.error("Failed to connect or initialize ClickHouse: %s", e)
-            raise e
+        with _ch_lock:
+            if _clickhouse_client is None:
+                logger.info(
+                    "Initializing ClickHouse connection: %s:%s (DB: %s)",
+                    settings.CLICKHOUSE_HOST,
+                    settings.CLICKHOUSE_PORT,
+                    settings.CLICKHOUSE_DB
+                )
+                try:
+                    client = clickhouse_connect.get_client(
+                        host=settings.CLICKHOUSE_HOST,
+                        port=settings.CLICKHOUSE_PORT,
+                        username=settings.CLICKHOUSE_USER,
+                        password=settings.CLICKHOUSE_PASSWORD,
+                        database=settings.CLICKHOUSE_DB,
+                        connect_timeout=1,
+                    )
+                    # Apply initial schema DDL
+                    init_clickhouse_schema(client)
+                    _clickhouse_client = client
+                except Exception as e:
+                    logger.error("Failed to connect or initialize ClickHouse: %s", e)
+                    raise e
     return _clickhouse_client
 
 def init_clickhouse_schema(client) -> None:

@@ -64,7 +64,6 @@ class GatewayService:
                     capture_mode or "promiscuous",
                 ),
             )
-            db_conn.commit()
         finally:
             cursor.close()
 

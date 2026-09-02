@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import hmac
 import logging
+import mysql.connector
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
@@ -243,39 +245,53 @@ async def gateway_heartbeat(
     _rate_limited: bool = Depends(gateway_control_rate_limit),
     auth_context: dict = Depends(validate_gateway_request),
 ):
-    conn = get_db_connection()
-    cursor = None
-    try:
-        gateway_id = _require_authenticated_gateway_id(auth_context, hb.get("gateway_id"), source="request payload")
-
-        cursor = conn.cursor(dictionary=True)
-        org_id = _resolve_org_id(
-            cursor,
-            hb.get("organization_id") or _lookup_gateway_organization_id(cursor, gateway_id),
-        )
-        cursor.close()
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = get_db_connection()
         cursor = None
+        try:
+            gateway_id = _require_authenticated_gateway_id(auth_context, hb.get("gateway_id"), source="request payload")
 
-        gateway_service.upsert_gateway(
-            conn,
-            gateway_id=gateway_id,
-            organization_id=org_id,
-            hostname=hb.get("hostname"),
-            capture_mode=hb.get("capture_mode"),
-        )
-        conn.commit()
-        return _collect_response(
-            auth_context=auth_context,
-            organization_id=org_id,
-            message="Gateway heartbeat recorded.",
-        )
-    except Exception as exc:
-        conn.rollback()
-        raise
-    finally:
-        if cursor:
+            cursor = conn.cursor(dictionary=True)
+            org_id = _resolve_org_id(
+                cursor,
+                hb.get("organization_id") or _lookup_gateway_organization_id(cursor, gateway_id),
+            )
             cursor.close()
-        conn.close()
+            cursor = None
+
+            gateway_service.upsert_gateway(
+                conn,
+                gateway_id=gateway_id,
+                organization_id=org_id,
+                hostname=hb.get("hostname"),
+                capture_mode=hb.get("capture_mode"),
+            )
+            conn.commit()
+            return _collect_response(
+                auth_context=auth_context,
+                organization_id=org_id,
+                message="Gateway heartbeat recorded.",
+            )
+        except mysql.connector.Error as exc:
+            conn.rollback()
+            if exc.errno == 1213 and attempt < max_retries - 1:
+                logger.warning("Deadlock encountered in gateway_heartbeat, retrying (attempt %s/%s)...", attempt + 1, max_retries)
+                await asyncio.sleep(0.1 * (attempt + 1))
+                continue
+            logger.error("Failed gateway heartbeat: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to process gateway heartbeat")
+        except HTTPException:
+            conn.rollback()
+            raise
+        except Exception as exc:
+            conn.rollback()
+            logger.error("Failed gateway heartbeat: %s", exc, exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to process gateway heartbeat")
+        finally:
+            if cursor:
+                cursor.close()
+            conn.close()
 
 
 @router.post("/devices/batch", response_model=GenericResponse)

@@ -27,12 +27,20 @@ class SystemService:
         "alerts",
         "agent_enrollment_requests",
         "devices",
+        "device_summary",
+        "application_summary",
+        "discovered_applications",
         "device_ip_history",
         "device_aliases",
         "device_risks",
+        "risk_events",
         "managed_devices",
         "web_events",
         "audit_logs",
+        "dashboard_cache",
+        "flow_ingest_batches",
+        "telemetry_logs",
+        "device_baselines",
     )
 
     ALL_KNOWN_TABLES = frozenset(OPERATIONAL_TABLES + (
@@ -431,7 +439,11 @@ class SystemService:
         }
 
     def clear_runtime_data(self, db_conn, organization_id: Optional[str] = None) -> dict:
-        auto_increment_tables = {"flow_logs", "alerts", "devices", "device_ip_history", "device_aliases", "web_events", "audit_logs"}
+        auto_increment_tables = {
+            "flow_logs", "alerts", "devices", "device_summary", "application_summary",
+            "discovered_applications", "device_ip_history", "device_aliases", "web_events",
+            "audit_logs", "risk_events", "dashboard_cache", "flow_ingest_batches", "telemetry_logs"
+        }
         max_attempts = 3
         for attempt in range(max_attempts):
             cursor = db_conn.cursor(dictionary=True)
@@ -452,6 +464,7 @@ class SystemService:
                     if not organization_id and table_name in auto_increment_tables:
                         cursor.execute("ALTER TABLE {} AUTO_INCREMENT = 1".format(table_name))
                 db_conn.commit()
+                self._clear_caches_and_analytics()
                 if not organization_id:
                     self._clear_runtime_files()
                 return cleared_counts
@@ -463,6 +476,31 @@ class SystemService:
                 raise
             finally:
                 cursor.close()
+
+    def _clear_caches_and_analytics(self) -> None:
+        try:
+            from ..db.clickhouse_client import get_clickhouse_client
+            ch = get_clickhouse_client()
+            if ch:
+                ch.command("TRUNCATE TABLE IF EXISTS flow_logs")
+                ch.command("TRUNCATE TABLE IF EXISTS web_events")
+        except Exception as exc:
+            logger.debug("ClickHouse truncate during reset skipped/failed: %s", exc)
+
+        try:
+            from ..db.redis_client import get_redis_connection
+            r = get_redis_connection()
+            if r:
+                r.flushdb()
+        except Exception as exc:
+            logger.debug("Redis flush during reset skipped/failed: %s", exc)
+
+        try:
+            from .live_telemetry_store import live_telemetry_store
+            with live_telemetry_store._global_lock:
+                live_telemetry_store._states.clear()
+        except Exception as exc:
+            logger.debug("LiveTelemetryStore reset skipped/failed: %s", exc)
 
     def _clear_runtime_files(self) -> None:
         for path in self._volatile_runtime_files:

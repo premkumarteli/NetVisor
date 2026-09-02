@@ -238,7 +238,7 @@ export const systemService = {
     return {
       data: {
         device_ip: deviceIp,
-        hostname: device?.hostname || "Unknown Device",
+        hostname: device?.hostname && !["Unknown", "Unknown-Device", ""].includes(device.hostname) ? device.hostname : `Device ${deviceIp}`,
         status: device?.status || "Offline",
         management_mode: device?.management_mode || "byod",
         risk_level: device?.risk_level || "LOW",

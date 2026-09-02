@@ -262,6 +262,11 @@ app.add_middleware(
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
+
+@app.get("/api/v1/ping")
+def direct_ping():
+    return {"status": "ok", "service": "NetVisor"}
+
 def redact_secrets_from_string(text: str) -> str:
     if not text:
         return ""

@@ -18,7 +18,18 @@ const UNKNOWN_NAMES = new Set(['Unknown', 'Unknown-Device', 'Unnamed Device', ''
 
 const isNamedDevice = (device) => Boolean(device?.hostname) && !UNKNOWN_NAMES.has(device.hostname);
 
-const deviceDisplayName = (device) => (isNamedDevice(device) ? device.hostname : 'Unnamed Device');
+const deviceDisplayName = (device) => {
+  if (isNamedDevice(device)) {
+    return device.hostname;
+  }
+  if (device?.ip) {
+    return `Device ${device.ip}`;
+  }
+  if (device?.mac && device.mac !== '-') {
+    return `Device ${device.mac}`;
+  }
+  return 'Unnamed Device';
+};
 
 const cleanPart = (part) => {
   const value = String(part || '').trim();
@@ -27,7 +38,12 @@ const cleanPart = (part) => {
 
 const deviceTypeLabel = (device) => {
   if (!device) return 'Identity still being learned';
-  const parts = [device.vendor, device.device_type, device.os_family].map(cleanPart).filter(Boolean);
+  const parts = [
+    device.vendor,
+    device.device_type,
+    device.os_family,
+    device.is_private_mac ? 'Private Wi-Fi MAC' : null,
+  ].map(cleanPart).filter(Boolean);
   return parts.length ? parts.join(' · ') : 'Identity still being learned';
 };
 

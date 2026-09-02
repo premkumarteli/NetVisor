@@ -119,5 +119,73 @@ class SessionService:
         finally:
             cursor.close()
 
+    def upsert_sessions_batch(self, cursor, sessions_data: list[dict]) -> dict[tuple, str]:
+        if not sessions_data:
+            return {}
+
+        params_list = []
+        session_map = {}
+        for s in sessions_data:
+            sid = self.build_session_id(
+                organization_id=s.get("organization_id"),
+                device_ip=s.get("device_ip"),
+                application=s.get("application"),
+                domain=s.get("domain"),
+                external_ip=s.get("external_ip"),
+            )
+            key = (s.get("organization_id"), s.get("device_ip"), s.get("application"), s.get("domain"), s.get("external_ip"))
+            session_map[key] = sid
+            params_list.append((
+                sid,
+                s.get("organization_id"),
+                s.get("device_ip"),
+                s.get("device_mac"),
+                s.get("external_ip"),
+                s.get("application") or "Other",
+                s.get("domain"),
+                s.get("protocol"),
+                s.get("source_type"),
+                max(int(s.get("packet_count") or 0), 0),
+                max(int(s.get("byte_count") or 0), 0),
+                s.get("start_time"),
+                s.get("last_seen"),
+                max(float(s.get("duration") or 0), 0.0),
+            ))
+
+        cursor.executemany(
+            """
+            INSERT INTO sessions (
+                session_id,
+                organization_id,
+                device_ip,
+                device_mac,
+                external_ip,
+                application,
+                domain,
+                protocol,
+                source_type,
+                total_packets,
+                total_bytes,
+                first_seen,
+                last_seen,
+                duration
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                device_mac = COALESCE(NULLIF(VALUES(device_mac), ''), device_mac),
+                external_ip = COALESCE(NULLIF(VALUES(external_ip), ''), external_ip),
+                domain = COALESCE(NULLIF(VALUES(domain), ''), domain),
+                protocol = COALESCE(NULLIF(VALUES(protocol), ''), protocol),
+                source_type = VALUES(source_type),
+                total_packets = total_packets + VALUES(total_packets),
+                total_bytes = total_bytes + VALUES(total_bytes),
+                first_seen = LEAST(first_seen, VALUES(first_seen)),
+                last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                duration = GREATEST(duration, VALUES(duration))
+            """,
+            params_list,
+        )
+        return session_map
+
 
 session_service = SessionService()

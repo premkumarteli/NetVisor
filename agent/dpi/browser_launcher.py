@@ -16,6 +16,15 @@ BROWSER_CANDIDATES = {
         Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "Microsoft/Edge/Application/msedge.exe",
         Path(os.environ.get("LocalAppData", "")) / "Microsoft/Edge/Application/msedge.exe",
     ],
+    "brave.exe": [
+        Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "BraveSoftware/Brave-Browser/Application/brave.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "BraveSoftware/Brave-Browser/Application/brave.exe",
+        Path(os.environ.get("LocalAppData", "")) / "BraveSoftware/Brave-Browser/Application/brave.exe",
+    ],
+    "firefox.exe": [
+        Path(os.environ.get("ProgramFiles", "C:\\Program Files")) / "Mozilla Firefox/firefox.exe",
+        Path(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")) / "Mozilla Firefox/firefox.exe",
+    ],
 }
 
 
@@ -46,7 +55,12 @@ class BrowserLauncher:
 
     def create_wrappers(self) -> dict[str, str]:
         wrapper_paths = {}
-        for process_name, label in (("chrome.exe", "chrome"), ("msedge.exe", "edge")):
+        for process_name, label in (
+            ("chrome.exe", "chrome"),
+            ("msedge.exe", "edge"),
+            ("brave.exe", "brave"),
+            ("firefox.exe", "firefox"),
+        ):
             executable = self._find_executable(process_name)
             wrapper_path = self.runtime_dir / f"launch_{label}_netvisor.cmd"
             profile_dir = self._profile_dir(label)

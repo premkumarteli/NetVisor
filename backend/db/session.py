@@ -565,8 +565,13 @@ def get_db_connection():
         try:
             return _ensure_connection_ready(pool.get_connection())
         except Exception as exc:
-            logger.warning("Discarding stale pooled connection and retrying direct DB connect: %s", exc)
-            _initialize_pool(force=True)
+            logger.warning("Discarding stale pooled connection and re-initializing pool: %s", exc)
+            pool = _initialize_pool(force=True)
+            if pool is not None:
+                try:
+                    return _ensure_connection_ready(pool.get_connection())
+                except Exception as retry_exc:
+                    logger.warning("Pooled connection retry failed, falling back to direct connect: %s", retry_exc)
 
     conn = _connect_direct()
     return _ensure_connection_ready(conn)

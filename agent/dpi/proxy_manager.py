@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -16,6 +18,66 @@ from .mitm_addon import EVENT_PREFIX
 from .cert_manager import CertificateManager
 
 logger = logging.getLogger(__name__)
+
+
+def _verify_port_listening(port: int, host: str = "127.0.0.1") -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1.0):
+            return True
+    except Exception:
+        return False
+
+
+class SystemProxyManager:
+    """Manages Windows System (WinINET) Proxy Settings to capture all system applications."""
+    REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+
+    @classmethod
+    def enable_proxy(cls, host: str = "127.0.0.1", port: int = 8899) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, cls.REG_PATH, 0, winreg.KEY_WRITE)
+            winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 1)
+            winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, f"http={host}:{port};https={host}:{port}")
+            winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ, f"{host};<local>")
+            winreg.CloseKey(key)
+            try:
+                import ctypes
+                ctypes.windll.Wininet.InternetSetOptionW(0, 39, 0, 0)
+                ctypes.windll.Wininet.InternetSetOptionW(0, 37, 0, 0)
+            except Exception:
+                pass
+            logger.info("Windows System Proxy enabled: %s:%d", host, port)
+            return True
+        except Exception as e:
+            logger.warning("Failed to enable Windows System Proxy: %s", e)
+            return False
+
+    @classmethod
+    def disable_proxy(cls) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, cls.REG_PATH, 0, winreg.KEY_WRITE)
+            winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 0)
+            winreg.CloseKey(key)
+            try:
+                import ctypes
+                ctypes.windll.Wininet.InternetSetOptionW(0, 39, 0, 0)
+                ctypes.windll.Wininet.InternetSetOptionW(0, 37, 0, 0)
+            except Exception:
+                pass
+            logger.info("Windows System Proxy disabled")
+            return True
+        except Exception as e:
+            logger.warning("Failed to disable Windows System Proxy: %s", e)
+            return False
+
+
+atexit.register(SystemProxyManager.disable_proxy)
 
 
 class ProxyManager:
@@ -116,7 +178,7 @@ class ProxyManager:
             cmd = [
                 mitmdump,
                 "--set", f"confdir={self.runtime_dir}",
-                "--mode", "local:chrome.exe,msedge.exe,firefox.exe",
+                "--mode", "local:chrome.exe,msedge.exe,firefox.exe,brave.exe,opera.exe,antigravity.exe,WhatsApp.exe,electron.exe",
                 "-q",
                 "-s", str(self.addon_path),
             ]
@@ -148,46 +210,37 @@ class ProxyManager:
                     snippet_max_bytes=snippet_max_bytes,
                 ),
             )
-        except OSError as exc:
-            self.last_error = str(exc)
-            self.process = None
-            return False, self.last_error
 
-        with self._metrics_lock:
-            self._started_at = self._utc_now()
-            self._last_event_at = None
-            self._last_stderr_at = None
-            self._captured_event_count = 0
+            self._stdout_thread = threading.Thread(target=self._stdout_worker, daemon=True)
+            self._stderr_thread = threading.Thread(target=self._stderr_worker, daemon=True)
+            self._stdout_thread.start()
+            self._stderr_thread.start()
 
-        self._stdout_thread = threading.Thread(target=self._stdout_worker, daemon=True)
-        self._stdout_thread.start()
-        self._stderr_thread = threading.Thread(target=self._stderr_worker, daemon=True)
-        self._stderr_thread.start()
-
-        self.ready_event.wait(timeout=self.startup_timeout)
-
-        if self.process.poll() is not None:
-            self.last_error = self._startup_error or f"mitmdump exited with code {self.process.returncode}"
-            self.stop()
-            return False, self.last_error
-
-        if self._startup_error:
-            self.last_error = self._startup_error
-            self.stop()
-            return False, self.last_error
-
-        if self.ready_event.is_set():
-            time.sleep(0.5)
-            if self.process.poll() is not None:
-                self.last_error = "mitmdump crashed shortly after starting"
+            ready = self.ready_event.wait(timeout=self.startup_timeout)
+            if self._startup_error:
+                self.last_error = self._startup_error
                 self.stop()
                 return False, self.last_error
-            return True, None
 
-        logger.warning("Startup readiness timeout elapsed; assuming mitmdump is running.")
-        return True, None
+            if self.process.poll() is not None:
+                self.last_error = f"mitmdump exited unexpectedly with code {self.process.returncode}"
+                self.stop()
+                return False, self.last_error
+
+            with self._metrics_lock:
+                self._started_at = self._utc_now()
+
+            # Enable Windows System Proxy for all applications
+            SystemProxyManager.enable_proxy("127.0.0.1", self.port)
+
+            return True, None
+        except Exception as exc:
+            self.last_error = str(exc)
+            self.stop()
+            return False, self.last_error
 
     def stop(self) -> None:
+        SystemProxyManager.disable_proxy()
         if not self.process:
             self.cert_manager.cleanup_runtime_bundle(self.runtime_dir)
             return

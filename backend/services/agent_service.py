@@ -159,7 +159,6 @@ class AgentService:
                     manifest_hash,
                 ),
             )
-            db_conn.commit()
             
             # Audit log for CA installation changes
             if organization_id and previous_ca_installed is not None:

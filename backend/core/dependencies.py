@@ -263,10 +263,10 @@ def request_rate_limit(
 
                 request_times.append(now)
 
-                if len(_rate_limit_buckets) > 10000:
+                if len(_rate_limit_buckets) > 1000:
                     stale_keys = [
                         key
-                        for key, timestamps in _rate_limit_buckets.items()
+                        for key, timestamps in list(_rate_limit_buckets.items())
                         if not timestamps or timestamps[-1] <= cutoff
                     ]
                     for key in stale_keys:

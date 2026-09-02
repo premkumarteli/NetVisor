@@ -47,6 +47,10 @@ gateway_id.txt
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+netvisor_frontend_3.0/node_modules/
+netvisor_frontend_3.0/dist/
+netvisor_frontend_3.0/.vite/
+
 
 # Build
 build/
@@ -82,9 +86,12 @@ app/correlation_engine/rust/target/
 # Large binaries, archives, and database dumps
 *.zip
 *.exe
+*.docx
+*.pdf
 db_dump/
 database_data_dump.txt
 database_export.txt
 python
 zeek/
+
 

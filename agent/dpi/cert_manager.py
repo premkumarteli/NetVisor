@@ -261,18 +261,25 @@ class CertificateManager:
                 self._write_metadata(metadata)
             return True, None
         
-        if self.trust_scope == "LocalMachine":
-            cmd = ["certutil", "-addstore", "Root", str(self.cert_path)]
-        else:
-            cmd = ["certutil", "-user", "-addstore", "Root", str(self.cert_path)]
+        # Install to both User and System Root stores for complete application coverage (Edge, Chrome, Brave, Antigravity, WhatsApp, etc.)
+        cmd_user = ["certutil", "-user", "-addstore", "Root", str(self.cert_path)]
+        cmd_machine = ["certutil", "-addstore", "Root", str(self.cert_path)]
 
         try:
             result = subprocess.run(
-                cmd,
+                cmd_user,
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=120,
+            )
+            # Try machine store as well if permitted
+            subprocess.run(
+                cmd_machine,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
             )
         except subprocess.TimeoutExpired:
             logger.warning("Timed out waiting for NetVisor CA install confirmation.")

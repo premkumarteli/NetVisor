@@ -6,6 +6,7 @@ from ..core.config import settings
 from ..db.session import require_runtime_schema
 from ..utils.network import is_rfc1918_device_ip, normalize_ip, normalize_mac
 from .managed_device_service import managed_device_service
+from .device_enrichment_service import device_enrichment_service
 
 logger = logging.getLogger("netvisor.devices")
 
@@ -63,59 +64,92 @@ class DeviceService:
             params = []
             org_filter = ""
             if organization_id:
-                org_filter = "WHERE ds.organization_id = %s"
+                org_filter = "WHERE d.organization_id = %s"
                 params.append(organization_id)
 
             query = f"""
                 SELECT
-                    ds.device_id AS id,
-                    ds.device_id AS agent_id,
-                    ds.ip,
-                    COALESCE(NULLIF(ds.mac, ''), '-') AS mac,
-                    COALESCE(NULLIF(ds.hostname, 'Unknown'), 'Unknown') AS hostname,
-                    COALESCE(NULLIF(ds.vendor, 'Unknown'), 'Unknown') AS vendor,
-                    COALESCE(NULLIF(ds.device_type, 'Unknown'), 'Unknown') AS device_type,
-                    COALESCE(NULLIF(ds.os_family, 'Unknown'), 'Unknown') AS os_family,
-                    ds.management_mode,
-                    ds.top_application,
-                    ds.top_domain,
-                    ds.total_flows,
-                    ds.total_bytes,
-                    ds.first_seen,
-                    ds.last_seen,
-                    ds.organization_id,
-                    COALESCE(r.current_score, 0) AS risk_score,
-                    COALESCE(r.risk_level, 'LOW') AS risk_level,
-                    CASE WHEN ds.management_mode = 'managed' THEN 'high' ELSE 'medium' END AS confidence
-                FROM device_summary ds
-                LEFT JOIN device_risks r ON ds.ip = r.device_id AND (ds.organization_id = r.organization_id OR ds.organization_id IS NULL)
+                    COALESCE(d.agent_id, d.ip) AS id,
+                    MAX(COALESCE(md.agent_id, d.agent_id, ds.device_id)) AS agent_id,
+                    d.ip,
+                    COALESCE(
+                        MAX(NULLIF(d.mac, '')),
+                        MAX(NULLIF(ds.mac, '')),
+                        MAX(NULLIF(md.device_mac, '')),
+                        '-'
+                    ) AS mac,
+                    COALESCE(
+                        MAX(NULLIF(d.hostname, 'Unknown')),
+                        MAX(NULLIF(ds.hostname, 'Unknown')),
+                        MAX(NULLIF(md.hostname, 'Unknown')),
+                        MAX(NULLIF(a.hostname, 'Unknown')),
+                        'Unknown'
+                    ) AS hostname,
+                    COALESCE(
+                        MAX(NULLIF(d.vendor, 'Unknown')),
+                        MAX(NULLIF(ds.vendor, 'Unknown')),
+                        CASE WHEN MAX(ds.management_mode) = 'managed' OR MAX(md.agent_id) IS NOT NULL OR MAX(d.agent_id) IS NOT NULL THEN 'Managed Agent' ELSE 'Unknown' END
+                    ) AS vendor,
+                    COALESCE(
+                        MAX(NULLIF(d.device_type, 'Unknown')),
+                        MAX(NULLIF(ds.device_type, 'Unknown')),
+                        CASE WHEN MAX(ds.management_mode) = 'managed' OR MAX(md.agent_id) IS NOT NULL OR MAX(d.agent_id) IS NOT NULL THEN 'Managed Device' ELSE 'Unknown' END
+                    ) AS device_type,
+                    COALESCE(
+                        MAX(NULLIF(d.os_family, 'Unknown')),
+                        MAX(NULLIF(ds.os_family, 'Unknown')),
+                        MAX(NULLIF(md.os_family, 'Unknown')),
+                        MAX(NULLIF(a.os_family, 'Unknown')),
+                        'Unknown'
+                    ) AS os_family,
+                    COALESCE(MAX(ds.management_mode), CASE WHEN MAX(md.agent_id) IS NOT NULL OR MAX(d.agent_id) IS NOT NULL THEN 'managed' ELSE 'byod' END) AS management_mode,
+                    MAX(ds.top_application) AS top_application,
+                    MAX(ds.top_domain) AS top_domain,
+                    MAX(ds.total_flows) AS total_flows,
+                    MAX(ds.total_bytes) AS total_bytes,
+                    MIN(COALESCE(d.first_seen, ds.first_seen, md.first_seen)) AS first_seen,
+                    MAX(GREATEST(COALESCE(d.last_seen, '1970-01-01'), COALESCE(ds.last_seen, '1970-01-01'))) AS last_seen,
+                    d.organization_id,
+                    COALESCE(MAX(r.current_score), 0) AS risk_score,
+                    COALESCE(MAX(r.risk_level), 'LOW') AS risk_level,
+                    CASE WHEN MAX(ds.management_mode) = 'managed' OR MAX(md.agent_id) IS NOT NULL OR MAX(d.agent_id) IS NOT NULL THEN 'high' ELSE 'medium' END AS confidence
+                FROM devices d
+                LEFT JOIN device_summary ds ON d.ip = ds.ip AND (d.organization_id = ds.organization_id OR d.organization_id IS NULL)
+                LEFT JOIN managed_devices md ON d.ip = md.device_ip AND (d.organization_id = md.organization_id OR d.organization_id IS NULL)
+                LEFT JOIN agents a ON (d.ip = a.ip_address OR md.agent_id = a.id OR d.agent_id = a.id) AND (d.organization_id = a.organization_id OR d.organization_id IS NULL)
+                LEFT JOIN device_risks r ON d.ip = r.device_id AND (d.organization_id = r.organization_id OR d.organization_id IS NULL)
                 {org_filter}
-                ORDER BY ds.last_seen DESC
+                GROUP BY d.id, d.organization_id, d.ip
+                ORDER BY d.last_seen DESC
             """
             cursor.execute(query, tuple(params))
             rows = cursor.fetchall() or []
             if rows:
                 formatted = self._format_device_rows(rows, brand="Managed")
                 if not include_observed:
-                    formatted = [
+                    filtered = [
                         d for d in formatted
-                        if d.get("management_mode") == "managed" or (d.get("status") == "Online" and d.get("top_application"))
+                        if d.get("management_mode") == "managed" or d.get("agent_id") or d.get("status") == "Online" or d.get("top_application")
                     ]
+                    if filtered:
+                        return filtered
                 return formatted
         except Exception as exc:
             logger.debug("device_summary fast query notice: %s", exc)
         finally:
             cursor.close()
 
-        # Fallback to legacy path if device_summary is still initializing
+        # Fallback to legacy path if devices query is still initializing
         managed = self._get_managed_devices(db_conn, organization_id)
         discovered_only = self._get_observed_devices(db_conn, organization_id)
         merged = self._merge_devices(managed + discovered_only)
         if not include_observed:
-            merged = [
+            filtered = [
                 d for d in merged
-                if d.get("management_mode") == "managed" or (d.get("status") == "Online" and d.get("top_application"))
+                if d.get("management_mode") == "managed" or d.get("agent_id") or d.get("status") == "Online" or d.get("top_application")
             ]
+            if filtered:
+                return filtered
         merged.sort(key=lambda d: d.get("last_seen") or "", reverse=True)
         return merged
 
@@ -559,6 +593,21 @@ class DeviceService:
             d["first_seen"] = self._format_timestamp(d.get("first_seen"))
             d["brand"] = brand
             d["mac_address"] = d.get("mac", "-")
+
+            enriched = device_enrichment_service.enrich_device(
+                None,
+                ip=d.get("ip"),
+                mac=d.get("mac"),
+                hostname=d.get("hostname"),
+                vendor=d.get("vendor"),
+                device_type=d.get("device_type"),
+                os_family=d.get("os_family"),
+            )
+            d["hostname"] = enriched["hostname"]
+            d["vendor"] = enriched["vendor"]
+            d["device_type"] = enriched["device_type"]
+            d["os_family"] = enriched["os_family"]
+            d["is_private_mac"] = enriched["is_private_mac"]
         return rows
 
     def get_device_risk(self, db_conn, device_id: str, organization_id: Optional[str] = None) -> Optional[dict]:

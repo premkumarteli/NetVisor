@@ -4,6 +4,7 @@ from fastapi.responses import Response
 from ..core.dependencies import require_org_admin
 from ..db.session import get_db
 from ..services.analytics_service import analytics_service
+from ..utils.cache import cached_response
 
 router = APIRouter()
 
@@ -16,7 +17,12 @@ def get_analytics_overview(
     limit: int = Query(8, ge=1, le=25),
 ):
     org_id = current_user.get("organization_id")
-    return analytics_service.get_overview(conn, organization_id=org_id, hours=hours, limit=limit)
+    cache_key = f"analytics:overview:{org_id}:{hours}:{limit}"
+    return cached_response(
+        cache_key,
+        3,
+        lambda: analytics_service.get_overview(conn, organization_id=org_id, hours=hours, limit=limit)
+    )
 
 
 @router.get("/export")

@@ -100,7 +100,24 @@ class ManagedDeviceService:
                     os_family or "Unknown",
                 ),
             )
-            db_conn.commit()
+
+            if hostname and hostname != "Unknown":
+                cursor.execute(
+                    """
+                    UPDATE device_summary
+                    SET hostname = %s, os_family = CASE WHEN %s <> 'Unknown' THEN %s ELSE os_family END
+                    WHERE ip = %s
+                    """,
+                    (hostname, os_family or "Unknown", os_family or "Unknown", device_ip),
+                )
+                cursor.execute(
+                    """
+                    UPDATE devices
+                    SET hostname = %s, os_family = CASE WHEN %s <> 'Unknown' THEN %s ELSE os_family END
+                    WHERE ip = %s
+                    """,
+                    (hostname, os_family or "Unknown", os_family or "Unknown", device_ip),
+                )
         finally:
             cursor.close()
 

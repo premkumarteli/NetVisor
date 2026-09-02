@@ -14,6 +14,11 @@ from ..services.metrics_service import metrics_service
 router = APIRouter()
 
 
+@router.get("/ping")
+def ping():
+    return {"status": "ok", "service": "NetVisor"}
+
+
 @router.get("/status")
 def get_status(conn = Depends(get_db)):
     active_pins = agent_auth_service.transport_pins()

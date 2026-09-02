@@ -58,7 +58,7 @@ def validate_csrf_request(request: Request) -> None:
     csrf_cookie = request.cookies.get(settings.CSRF_COOKIE_NAME)
     csrf_header = request.headers.get(settings.CSRF_HEADER_NAME)
 
-    if not csrf_cookie or not csrf_header or csrf_cookie != csrf_header:
+    if not csrf_cookie or not csrf_header or not secrets.compare_digest(csrf_cookie, csrf_header):
         metrics_service.increment("csrf_rejections_total", path=request.url.path, method=request.method.upper())
         logger.warning("Rejected CSRF-protected request for %s", request.url.path)
         raise CSRFProtectionError("CSRF validation failed")
