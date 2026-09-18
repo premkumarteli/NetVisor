@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { systemService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useWebSocket } from '../hooks/useWebSocket';
 import TrafficChart from '../components/Dashboard/TrafficChart';
 import PageHeader from '../components/V2/PageHeader';
 import SectionCard from '../components/V2/SectionCard';
@@ -93,6 +94,9 @@ const ActivityPage = () => {
             cleanTs = cleanTs.replace(' ', 'T') + 'Z';
           }
           const d = new Date(cleanTs);
+          if (!cleanTs || Number.isNaN(d.getTime())) {
+            return '--:--';
+          }
           const hh = String(d.getHours()).padStart(2, '0');
           const mm = String(d.getMinutes()).padStart(2, '0');
           return `${hh}:${mm}`;
@@ -112,6 +116,22 @@ const ActivityPage = () => {
   }, [fetchTraffic]);
 
   useVisibilityPolling(() => fetchTraffic({ background: true }), 15000);
+
+  const handlePacketEvent = useCallback((event) => {
+    if (!event) return;
+    setLogs((prev) => {
+      const eventId = event.id || `${event.timestamp || event.time}-${event.src_ip}-${event.dst_ip}-${event.port || event.dst_port}`;
+      const exists = prev.some((l) => (l.id || `${l.timestamp || l.time}-${l.src_ip}-${l.dst_ip}-${l.port || l.dst_port}`) === eventId);
+      if (exists) return prev;
+      return [event, ...prev.slice(0, 99)];
+    });
+    const bytes = Number(event.byte_count || event.size || 0);
+    if (bytes > 0) {
+      updateTrafficChart(bytes);
+    }
+  }, [updateTrafficChart]);
+
+  useWebSocket('packet_event', handlePacketEvent);
 
   const signalCounts = useMemo(() => ({
     high: logs.filter((entry) => entry.severity === 'HIGH' || entry.severity === 'CRITICAL').length,

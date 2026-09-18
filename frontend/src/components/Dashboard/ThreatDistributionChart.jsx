@@ -112,7 +112,7 @@ const ThreatDistributionChart = ({ distribution = {}, height = 180, legendPositi
 
   return (
     <div className="nv-chart-shell" style={{ '--nv-chart-height': `${height}px`, position: 'relative', width: '100%' }}>
-      <div className="nv-chart-shell__canvas" style={{ position: 'relative', height: `${height}px` }}>
+      <div className="nv-chart-shell__canvas" style={{ position: 'relative', height: `${height}px`, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Doughnut data={data} options={options} />
       </div>
     </div>

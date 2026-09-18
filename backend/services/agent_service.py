@@ -422,10 +422,14 @@ class AgentService:
                 FROM agents a
                 LEFT JOIN managed_devices md ON md.agent_id = a.id
                 LEFT JOIN agent_enrollment_requests aer ON aer.agent_id = a.id
+                    AND (aer.organization_id = a.organization_id OR aer.organization_id IS NULL OR a.organization_id IS NULL)
             """
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 query += " WHERE a.organization_id = %s OR a.organization_id IS NULL"
                 params.append(organization_id)
+            else:
+                query += " WHERE a.organization_id = %s"
+                params.append(None)
             query += " ORDER BY a.last_seen DESC"
             cursor.execute(query, tuple(params))
             return self._filter_placeholder_agents(cursor.fetchall())
@@ -440,10 +444,14 @@ class AgentService:
             params: list = []
             managed_filter = ""
             observed_filter = "WHERE agent_id IS NOT NULL"
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 managed_filter = " WHERE organization_id = %s OR organization_id IS NULL"
                 observed_filter += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.extend([organization_id, organization_id])
+            else:
+                managed_filter = " WHERE organization_id = %s"
+                observed_filter += " AND organization_id = %s"
+                params.extend([None, None])
 
             cursor.execute(
                 f"""
@@ -640,9 +648,12 @@ class AgentService:
                 FROM managed_devices md
                 WHERE md.agent_id = %s
             """
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 managed_query += " AND (md.organization_id = %s OR md.organization_id IS NULL)"
                 managed_params.append(organization_id)
+            else:
+                managed_query += " AND md.organization_id = %s"
+                managed_params.append(None)
             managed_cursor.execute(managed_query, tuple(managed_params))
             managed_rows = managed_cursor.fetchall()
 
@@ -661,9 +672,12 @@ class AgentService:
                 FROM devices d
                 WHERE d.agent_id = %s
             """
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 observed_query += " AND (d.organization_id = %s OR d.organization_id IS NULL)"
                 observed_params.append(organization_id)
+            else:
+                observed_query += " AND d.organization_id = %s"
+                observed_params.append(None)
             observed_query += " ORDER BY d.last_seen DESC"
             observed_cursor.execute(observed_query, tuple(observed_params))
             observed_rows = observed_cursor.fetchall()

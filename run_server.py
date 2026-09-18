@@ -12,6 +12,22 @@ import requests
 
 
 def perform_health_check() -> int:
+    # Check if a server instance is already running on port 8000
+    try:
+        ping_check = requests.get("http://127.0.0.1:8000/ping", timeout=1)
+        if ping_check.status_code == 200:
+            ready_resp = requests.get("http://127.0.0.1:8000/api/v1/health/ready", timeout=2)
+            status_resp = requests.get("http://127.0.0.1:8000/api/v1/health/status", timeout=5)
+            payload = {
+                "ping": ping_check.json(),
+                "ready": ready_resp.json() if ready_resp.status_code == 200 else {"error": ready_resp.text},
+                "status": status_resp.json() if status_resp.status_code == 200 else {"error": status_resp.text},
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0 if ready_resp.status_code == 200 and status_resp.status_code == 200 else 1
+    except Exception:
+        pass
+
     previous_shutdown_setting = os.getenv("NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN")
     os.environ["NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN"] = "false"
     server = None
@@ -92,7 +108,7 @@ def cleanup_runtime_on_process_exit():
             print("[*] Full database export to db_dump completed successfully.")
 
             # Clear runtime data if backup and reset on shutdown is enabled
-            if os.getenv("NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN", "true").lower() == "true":
+            if os.getenv("NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN", "false").lower() == "true":
                 result = system_service.backup_and_reset_runtime_data(conn, reason="process_exit")
                 print(f"[*] Process-exit runtime cleanup: {result['message']}")
         finally:
@@ -136,7 +152,7 @@ if __name__ == "__main__":
     limit_concurrency = int(os.getenv("NETVISOR_LIMIT_CONCURRENCY", "1000"))
     backlog = int(os.getenv("NETVISOR_SERVER_BACKLOG", "2048"))
     timeout_keep_alive = int(os.getenv("NETVISOR_TIMEOUT_KEEP_ALIVE", "30"))
-    timeout_graceful_shutdown = int(os.getenv("NETVISOR_TIMEOUT_GRACEFUL_SHUTDOWN", "5"))
+    timeout_graceful_shutdown = int(os.getenv("NETVISOR_TIMEOUT_GRACEFUL_SHUTDOWN", "15"))
 
     print("[*] Netvisor Server Starting...")
     print("[*] Local Access:   http://127.0.0.1:8000")
@@ -146,6 +162,7 @@ if __name__ == "__main__":
     if public_hostname:
         print(f"[*] Public Host:    https://{public_hostname}")
     print(f"[*] Proxy Headers:  {'enabled' if trust_proxy_headers else 'disabled'}")
+    print(" Project id Devloped by Premkumar")
     try:
         uvicorn.run(
             "backend.main:app",

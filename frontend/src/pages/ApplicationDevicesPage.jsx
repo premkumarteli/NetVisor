@@ -116,7 +116,12 @@ const deviceUsageSummary = (row, appName) => {
 const ApplicationDevicesPage = () => {
   const navigate = useNavigate();
   const { appName } = useParams();
-  const decodedAppName = decodeURIComponent(appName || 'Other');
+  let decodedAppName = 'Other';
+  try {
+    decodedAppName = decodeURIComponent(appName || 'Other');
+  } catch {
+    decodedAppName = appName || 'Other';
+  }
   const isNetworkService = isNetworkServiceApplication(decodedAppName);
   const [loading, setLoading] = useState(true);
   const [devices, setDevices] = useState([]);

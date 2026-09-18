@@ -30,8 +30,7 @@ INGESTION_QUEUE_LAG = Gauge(
 
 DATABASE_OP_LATENCY = Histogram(
     "netvisor_database_op_duration_seconds",
-    "Database operation latency in seconds",
-    ["operation"]
+    "Database operation latency in seconds"
 )
 
 SYSTEM_CPU_USAGE = Gauge("netvisor_system_cpu_usage", "System CPU usage percentage")
@@ -83,9 +82,26 @@ FLOWS_DROPPED = Counter(
     "netvisor_flows_dropped_total",
     "Total number of flows dropped due to queue backpressure or validation failures"
 )
+QUEUE_OVERFLOW_TOTAL = Counter(
+    "netvisor_queue_overflow_total",
+    "Total number of queue overflow events (control or data queue full)"
+)
+CLICKHOUSE_FAILED_WRITES = Counter(
+    "netvisor_clickhouse_failed_writes_total",
+    "Total number of ClickHouse write failures"
+)
 WORKER_RESTART_COUNT = Counter(
     "netvisor_worker_restarts_total",
     "Total number of background queue worker task restarts"
+)
+
+DETECTION_LATENCY = Histogram(
+    "netvisor_detection_latency_seconds",
+    "Time from flow context to detection findings (engine registry analysis)"
+)
+ALERT_WRITE_LATENCY = Histogram(
+    "netvisor_alert_write_latency_seconds",
+    "Time to write a single alert to MySQL"
 )
 
 class PrometheusMiddleware(BaseHTTPMiddleware):

@@ -16,6 +16,9 @@ class SMBLateralMovementDetector:
     cross-subnet RPC calls, and host fan-out across SMB ports 445 / 139 / 135.
     """
 
+    _MAX_SESSIONS_PER_SRC = 200
+    _MAX_SRCS = 1000
+
     def __init__(self, config: EngineConfig | None = None) -> None:
         self.config = config if config is not None else EngineConfig()
         # State: src_ip -> list of (timestamp, dst_ip, byte_count)
@@ -31,7 +34,10 @@ class SMBLateralMovementDetector:
     def analyze(self, flow: Any, observed_at: datetime) -> Optional[Finding]:
         src_ip = get_flow_field(flow, "src_ip")
         dst_ip = get_flow_field(flow, "dst_ip")
-        dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        try:
+            dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        except (ValueError, TypeError):
+            dst_port = 0
         bytes_sent = int(get_flow_field(flow, "bytes_sent", 0) or 0)
         app_proto = str(get_flow_field(flow, "application_protocol", "") or "").upper()
 
@@ -48,11 +54,26 @@ class SMBLateralMovementDetector:
             cutoff = ts_sec - 300.0
             self._smb_sessions[src_ip] = [s for s in self._smb_sessions[src_ip] if s["ts"] >= cutoff]
 
+            # Cap total tracked sources to prevent unbounded key growth
+            if len(self._smb_sessions) >= self._MAX_SRCS and src_ip not in self._smb_sessions:
+                oldest_src = min(
+                    self._smb_sessions,
+                    key=lambda k: self._last_alert_ts.get(k, 0.0),
+                    default=None,
+                )
+                if oldest_src is not None:
+                    self._smb_sessions.pop(oldest_src, None)
+                    self._last_alert_ts.pop(oldest_src, None)
+
             self._smb_sessions[src_ip].append({
                 "ts": ts_sec,
                 "dst_ip": dst_ip,
                 "bytes": bytes_sent,
             })
+
+            # Cap per-source sessions to prevent unbounded list growth
+            if len(self._smb_sessions[src_ip]) > self._MAX_SESSIONS_PER_SRC:
+                self._smb_sessions[src_ip] = self._smb_sessions[src_ip][-self._MAX_SESSIONS_PER_SRC:]
 
             sessions = self._smb_sessions[src_ip]
             unique_targets = {s["dst_ip"] for s in sessions}

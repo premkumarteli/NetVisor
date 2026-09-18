@@ -262,6 +262,8 @@ REQUIRED_RUNTIME_TABLES = (
     "device_summary",
     "application_summary",
     "dashboard_cache",
+    "device_mac_addresses",
+    "device_identity_conflicts",
 )
 
 
@@ -306,6 +308,7 @@ REQUIRED_RUNTIME_COLUMNS = {
     },
     "devices": {
         "agent_id",
+        "device_uuid",
         "first_seen",
         "last_seen",
     },
@@ -401,6 +404,7 @@ REQUIRED_RUNTIME_INDEXES = {
     "devices": {
         "idx_devices_org_last_seen",
         "idx_devices_agent_org_last_seen",
+        "uq_device_uuid_org",
     },
     "device_ip_history": {
         "uq_device_ip_history",
@@ -566,12 +570,7 @@ def get_db_connection():
             return _ensure_connection_ready(pool.get_connection())
         except Exception as exc:
             logger.warning("Discarding stale pooled connection and re-initializing pool: %s", exc)
-            pool = _initialize_pool(force=True)
-            if pool is not None:
-                try:
-                    return _ensure_connection_ready(pool.get_connection())
-                except Exception as retry_exc:
-                    logger.warning("Pooled connection retry failed, falling back to direct connect: %s", retry_exc)
+            _initialize_pool(force=True)
 
     conn = _connect_direct()
     return _ensure_connection_ready(conn)

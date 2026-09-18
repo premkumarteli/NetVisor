@@ -41,7 +41,7 @@ class _Cursor:
 
     def execute(self, query, params=None):
         normalized = " ".join(query.split())
-        if normalized == "SELECT id FROM organizations LIMIT 1":
+        if normalized == "SELECT id FROM organizations LIMIT 1" or normalized.startswith("SELECT id FROM organizations WHERE id = %s"):
             self._result = {"id": self.conn.default_org_id}
             return
         if normalized.startswith("SELECT organization_id FROM gateways WHERE gateway_id = %s LIMIT 1"):

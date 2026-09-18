@@ -1,3 +1,6 @@
+import hashlib
+import math
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -6,6 +9,80 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Minimum entropy requirements for critical secrets (in bits)
+_MIN_SECRET_KEY_BITS = 64
+_MIN_API_KEY_BITS = 48
+_MIN_MASTER_KEY_BITS = 64
+
+# Well-known insecure values that must be rejected
+_INSECURE_SECRETS = frozenset({
+    "",
+    "change_me",
+    "generate_a_secure_key_here",
+    "generate_a_separate_agent_master_key_here",
+    "generate_a_separate_gateway_master_key_here",
+    "generate_an_agent_key_here",
+    "generate_a_gateway_bootstrap_key_here",
+    "very_secure_agent_key_for_communication",
+    "very_secure_gateway_key_for_communication",
+    "super_secure_secret_key_must_be_long_12345",
+    "secret",
+    "password",
+    "admin",
+    "test",
+    "dev",
+    "changeme",
+    "default",
+})
+
+
+def _shannon_entropy_bits(value: str) -> float:
+    """Calculate Shannon entropy of a string in bits."""
+    if not value:
+        return 0.0
+    freq: dict[str, int] = {}
+    for ch in value:
+        freq[ch] = freq.get(ch, 0) + 1
+    length = len(value)
+    entropy = 0.0
+    for count in freq.values():
+        p = count / length
+        if p > 0:
+            entropy -= p * math.log2(p)
+    return entropy * length
+
+
+def _min_entropy_bits(value: str) -> float:
+    """Estimate min-entropy (worst-case) of a string in bits."""
+    if not value:
+        return 0.0
+    freq: dict[str, int] = {}
+    for ch in value:
+        freq[ch] = freq.get(ch, 0) + 1
+    max_count = max(freq.values())
+    if max_count == 0:
+        return 0.0
+    return -math.log2(max_count / len(value)) * len(value)
+
+
+def validate_secret_strength(name: str, value: str, min_bits: int) -> list[str]:
+    """Validate a secret has sufficient entropy and isn't a known weak value."""
+    errors = []
+    if not value:
+        errors.append(f"{name} must not be empty.")
+        return errors
+    if value.lower().strip() in _INSECURE_SECRETS or value in _INSECURE_SECRETS:
+        errors.append(f"{name} is a well-known insecure value. Generate a cryptographically random secret.")
+    if len(value) < 16:
+        errors.append(f"{name} must be at least 16 characters (got {len(value)}).")
+    entropy = _shannon_entropy_bits(value)
+    min_entropy = _min_entropy_bits(value)
+    if entropy < min_bits:
+        errors.append(f"{name} has insufficient entropy ({entropy:.1f} bits, need {min_bits}).")
+    if min_entropy < min_bits * 0.5:
+        errors.append(f"{name} has low min-entropy ({min_entropy:.1f} bits) — too predictable.")
+    return errors
 
 
 class Settings(BaseSettings):
@@ -84,6 +161,8 @@ class Settings(BaseSettings):
     # Redis Configurations
     REDIS_HOST: str = Field(default="localhost", validation_alias="NETVISOR_REDIS_HOST")
     REDIS_PORT: int = Field(default=6379, validation_alias="NETVISOR_REDIS_PORT")
+    REDIS_PASSWORD: str = Field(default="", validation_alias="NETVISOR_REDIS_PASSWORD")
+    REDIS_DB: int = Field(default=0, validation_alias="NETVISOR_REDIS_DB")
     
     # Correlation & Bounds Configurations
     NETVISOR_MAX_EDGES_PER_ORG: int = Field(default=100000, validation_alias="NETVISOR_MAX_EDGES_PER_ORG")
@@ -208,6 +287,27 @@ class Settings(BaseSettings):
         if self.FLOW_INGEST_MAX_PENDING_FLOWS < 100:
             errors.append("NETVISOR_FLOW_INGEST_MAX_PENDING_FLOWS must be >= 100 (got {})".format(self.FLOW_INGEST_MAX_PENDING_FLOWS))
         
+        # Secret strength validation
+        errors.extend(validate_secret_strength("NETVISOR_SECRET_KEY", self.SECRET_KEY, _MIN_SECRET_KEY_BITS))
+        errors.extend(validate_secret_strength("AGENT_API_KEY", self.AGENT_API_KEY, _MIN_API_KEY_BITS))
+        errors.extend(validate_secret_strength("GATEWAY_API_KEY", self.GATEWAY_API_KEY, _MIN_API_KEY_BITS))
+        errors.extend(validate_secret_strength("NETVISOR_AGENT_MASTER_KEY", self.AGENT_MASTER_KEY, _MIN_MASTER_KEY_BITS))
+        errors.extend(validate_secret_strength("NETVISOR_GATEWAY_MASTER_KEY", self.GATEWAY_MASTER_KEY, _MIN_MASTER_KEY_BITS))
+        
+        # Reject identical agent/gateway API keys
+        if self.AGENT_API_KEY and self.GATEWAY_API_KEY and self.AGENT_API_KEY == self.GATEWAY_API_KEY:
+            errors.append("AGENT_API_KEY and GATEWAY_API_KEY must be distinct secrets.")
+        
+        # Reject identical master keys
+        if self.AGENT_MASTER_KEY and self.GATEWAY_MASTER_KEY and self.AGENT_MASTER_KEY == self.GATEWAY_MASTER_KEY:
+            errors.append("NETVISOR_AGENT_MASTER_KEY and NETVISOR_GATEWAY_MASTER_KEY must be distinct secrets.")
+        
+        # Bootstrap password validation
+        if not self.BOOTSTRAP_ADMIN_PASSWORD:
+            errors.append("NETVISOR_BOOTSTRAP_ADMIN_PASSWORD must be set.")
+        elif len(self.BOOTSTRAP_ADMIN_PASSWORD) < 12:
+            errors.append("NETVISOR_BOOTSTRAP_ADMIN_PASSWORD must be at least 12 characters.")
+        
         # JWT key validation for RS256
         if self.JWT_ALGORITHM.upper() == "RS256":
             has_private_key = bool(self.JWT_PRIVATE_KEY or self.JWT_PRIVATE_KEY_PATH)
@@ -216,11 +316,6 @@ class Settings(BaseSettings):
                 errors.append("RS256 requires NETVISOR_JWT_PRIVATE_KEY or NETVISOR_JWT_PRIVATE_KEY_PATH")
             if not has_public_key:
                 errors.append("RS256 requires NETVISOR_JWT_PUBLIC_KEY or NETVISOR_JWT_PUBLIC_KEY_PATH")
-        
-        # Magic number documentation (Issue #18)
-        # 30 min session: Reasonable for security; configurable per deployment
-        # 50K pending flows: Prevents unbounded queue growth; tune based on DB throughput
-        # 1 day enrollment TTL: Prevents stale agent enrollments; security best practice
         
         return errors
 

@@ -35,8 +35,9 @@ DEFAULT_ACTIVE_APPLICATION_WINDOW_SECONDS = 5 * 60
 # Specific canonical applications checked first
 CANONICAL_APP_RULES: dict[str, list[str]] = {
     "Claude": ["anthropic.com", "claude.ai"],
-    "ChatGPT": ["openai.com", "chatgpt.com"],
+    "ChatGPT": ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
     "Gemini": ["gemini.google.com", "bard.google.com"],
+    "Docker": ["docker.com", "docker.io"],
     "YouTube": ["youtube.com", "youtu.be", "ytimg.com", "googlevideo.com"],
     "Netflix": ["netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com"],
     "Instagram": ["instagram.com"],
@@ -561,6 +562,10 @@ class ApplicationService:
 
 
     def _is_trackable_device_ip(self, value: str | None) -> bool:
+        if not value:
+            return False
+        if value in {"127.0.0.1", "::1", "localhost"}:
+            return True
         return is_rfc1918_device_ip(value)
 
     def _is_noise_flow(self, row: dict) -> bool:
@@ -934,13 +939,14 @@ class ApplicationService:
                 )
                 rows = cursor.fetchall() or []
                 if rows:
-                    res = []
+                    res_map: dict[str, dict] = {}
                     for r in rows:
                         last_dt = self._coerce_utc_datetime(r.get("last_seen"))
                         is_active = bool(last_dt and last_dt >= active_cutoff)
                         b_bytes = float(r.get("bandwidth_bytes") or 0)
-                        res.append({
-                            "application": r["application"],
+                        app_name = r["application"]
+                        res_map[app_name] = {
+                            "application": app_name,
                             "device_count": 1,
                             "device_ips": [],
                             "active_devices": 1 if is_active else 0,
@@ -954,7 +960,60 @@ class ApplicationService:
                             "runtime_seconds": 60,
                             "runtime_formatted": "Active",
                             "category": r.get("category") or "web",
-                        })
+                        }
+
+                    # Merge recent web events (e.g. Claude, ChatGPT, Antigravity, Docker, etc.)
+                    for event in self._fetch_recent_web_events(db_conn, organization_id, window_minutes):
+                        app = self.classify_app(
+                            {
+                                "base_domain": event.get("base_domain"),
+                                "page_title": event.get("page_title"),
+                                "process_name": event.get("process_name"),
+                            },
+                            organization_id=org_id,
+                        )
+                        device_ip = normalize_ip(event.get("device_ip"))
+                        if not self._is_trackable_device_ip(device_ip):
+                            continue
+
+                        last_dt = self._coerce_utc_datetime(event.get("last_seen"))
+                        is_active = bool(last_dt and last_dt >= active_cutoff)
+                        bytes_total = int(event.get("request_bytes", 0) + event.get("response_bytes", 0))
+                        if bytes_total == 0:
+                            bytes_total = max(int(event.get("event_count", 1)) * 1024, 1024)
+                        ev_count = int(event.get("event_count") or 1)
+
+                        if app in res_map:
+                            item = res_map[app]
+                            item["bandwidth_bytes"] += bytes_total
+                            item["bandwidth_formatted"] = self._format_bytes(item["bandwidth_bytes"])
+                            item["flow_count"] += ev_count
+                            item["session_count"] += ev_count
+                            if is_active:
+                                item["is_active"] = True
+                                item["active_devices"] = max(item["active_devices"], 1)
+                            if last_dt and (not item.get("last_seen") or self._coerce_utc_datetime(item["last_seen"]) < last_dt):
+                                item["last_seen"] = self._format_timestamp(last_dt)
+                        else:
+                            res_map[app] = {
+                                "application": app,
+                                "device_count": 1,
+                                "device_ips": [device_ip] if device_ip else [],
+                                "active_devices": 1 if is_active else 0,
+                                "is_active": is_active,
+                                "bandwidth_bytes": float(bytes_total),
+                                "bandwidth_formatted": self._format_bytes(bytes_total),
+                                "session_count": ev_count,
+                                "flow_count": ev_count,
+                                "first_seen": self._format_timestamp(self._coerce_utc_datetime(event.get("first_seen")) or last_dt),
+                                "last_seen": self._format_timestamp(last_dt),
+                                "runtime_seconds": 60,
+                                "runtime_formatted": "Active",
+                                "category": infer_app_category(app, event.get("base_domain")),
+                            }
+
+                    res = list(res_map.values())
+                    res.sort(key=lambda x: (x["is_active"], x["flow_count"]), reverse=True)
                     with self._lock:
                         self._summary_cache[cache_key] = (now_ts, res)
                     return res

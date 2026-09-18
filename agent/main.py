@@ -24,7 +24,7 @@ from colorama import Fore, Style
 import logging
 
 
-from agent.device_detector import DeviceDetector
+from agent.device_detector import DeviceDetector, enumerate_local_interfaces, normalize_mac
 from agent.security import AgentApiClient, verify_agent_code_integrity
 from packet_engine import (
     DomainHintCache,
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "agent.json"
-AGENT_RUNTIME_DIR = PROJECT_ROOT / "runtime" / "agent"
+AGENT_RUNTIME_DIR = Path(os.getenv("NETVISOR_AGENT_RUNTIME_DIR") or (PROJECT_ROOT / "runtime" / "agent"))
 
 # =========================================================
 # THREAD SAFE DEVICE INVENTORY (PERSISTENT)
@@ -58,8 +58,9 @@ AGENT_RUNTIME_DIR = PROJECT_ROOT / "runtime" / "agent"
 class DeviceInventory:
     def __init__(self, storage_file=None):
         self.lock = threading.Lock()
-        AGENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-        self.storage_file = Path(storage_file) if storage_file else AGENT_RUNTIME_DIR / "device_inventory.json"
+        runtime_dir = Path(os.getenv("NETVISOR_AGENT_RUNTIME_DIR") or AGENT_RUNTIME_DIR)
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.storage_file = Path(storage_file) if storage_file else runtime_dir / "device_inventory.json"
         self.devices = {}
         self._dirty = False
         self.load_inventory()
@@ -141,6 +142,7 @@ class NetworkAgent:
         self.web_events_url = base + "/api/v1/collect/web-events/batch"
 
         self.agent_id = self._init_agent_id()
+        self.device_uuid = self._init_device_uuid()
         self.organization_id = self._resolve_initial_organization_id()
         self.api_key = str(os.getenv("AGENT_API_KEY") or self.config.get("api_key") or "").strip()
         self.heartbeat_interval = int(os.getenv("NETVISOR_AGENT_HEARTBEAT_SECONDS", "10"))
@@ -160,8 +162,9 @@ class NetworkAgent:
             or os.getenv("NETVISOR_CAPTURE_BACKEND")
             or "auto"
         ).strip() or "auto"
+        runtime_dir = Path(os.getenv("NETVISOR_AGENT_RUNTIME_DIR") or AGENT_RUNTIME_DIR)
         self.api_client = AgentApiClient(
-            state_path=AGENT_RUNTIME_DIR / "security" / "agent_transport_state.dpapi",
+            state_path=runtime_dir / "security" / "agent_transport_state.dpapi",
             bootstrap_api_key=self.api_key,
             initial_pins=self._load_initial_backend_pins(),
         )
@@ -171,7 +174,8 @@ class NetworkAgent:
         self.integrity_status = integrity_check["status"]
         self.manifest_hash = integrity_check.get("manifest_hash")
         self.local_ip = self._detect_local_ip()
-        self.local_mac = self._detect_local_mac()
+        self.primary_mac, self.all_macs = self._detect_interfaces(self.local_ip)
+        self.local_mac = self.primary_mac
 
         self.is_running = True
         self.verbose = str(os.getenv("NETVISOR_PACKET_TRACE", "false")).strip().lower() in {"1", "true", "yes", "on"}
@@ -239,8 +243,9 @@ class NetworkAgent:
             logger.info("Agent background workers disabled for probe mode.")
 
     def _init_agent_id(self):
-        AGENT_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-        id_file = AGENT_RUNTIME_DIR / "agent_id.txt"
+        runtime_dir = Path(os.getenv("NETVISOR_AGENT_RUNTIME_DIR") or AGENT_RUNTIME_DIR)
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        id_file = runtime_dir / "agent_id.txt"
         if id_file.exists():
             with id_file.open("r", encoding="utf-8") as f:
                 return f.read().strip()
@@ -248,6 +253,26 @@ class NetworkAgent:
         with id_file.open("w", encoding="utf-8") as f:
             f.write(new_id)
         return new_id
+
+    def _init_device_uuid(self) -> str:
+        """
+        Load persistent RFC 4122 UUID4 device identifier from AGENT_RUNTIME_DIR / 'device_uuid.txt'.
+        If missing, empty, or corrupt, generate a new UUID4, write to disk, and return it.
+        """
+        runtime_dir = Path(os.getenv("NETVISOR_AGENT_RUNTIME_DIR") or AGENT_RUNTIME_DIR)
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        uuid_file = runtime_dir / "device_uuid.txt"
+        if uuid_file.exists():
+            try:
+                raw = uuid_file.read_text(encoding="utf-8").strip()
+                parsed = uuid.UUID(raw, version=4)
+                if str(parsed).lower() == raw.lower():
+                    return str(parsed).lower()
+            except Exception:
+                pass
+        new_uuid = str(uuid.uuid4()).lower()
+        uuid_file.write_text(new_uuid, encoding="utf-8")
+        return new_uuid
 
     def _load_config(self, path):
         try:
@@ -335,13 +360,21 @@ class NetworkAgent:
     def status_snapshot(self):
         web_inspection = self.web_inspection.status_snapshot() if hasattr(self, "web_inspection") else {}
         hardening_findings = self._hardening_findings()
+        primary_mac = getattr(self, "primary_mac", getattr(self, "local_mac", None))
+        all_macs = getattr(self, "all_macs", None)
+        if all_macs is None:
+            all_macs = [primary_mac] if primary_mac else []
         return {
-            "agent_id": self.agent_id,
-            "hostname": self.hostname,
-            "version": self.agent_version,
-            "organization_id": self.organization_id,
-            "local_ip": self.local_ip,
-            "local_mac": self.local_mac,
+            "agent_id": getattr(self, "agent_id", None),
+            "device_uuid": getattr(self, "device_uuid", None),
+            "primary_mac": primary_mac,
+            "all_macs": all_macs,
+            "device_mac": primary_mac,
+            "hostname": getattr(self, "hostname", None),
+            "version": getattr(self, "agent_version", None),
+            "organization_id": getattr(self, "organization_id", None),
+            "local_ip": getattr(self, "local_ip", None),
+            "local_mac": getattr(self, "local_mac", None),
             "background_workers_enabled": self._background_workers_enabled,
             "running": self.is_running,
             "enrollment_status": self._enrollment_status,
@@ -452,11 +485,14 @@ class NetworkAgent:
             try:
                 payload = {
                     "agent_id": self.agent_id,
+                    "device_uuid": self.device_uuid,
+                    "primary_mac": self.primary_mac,
+                    "all_macs": self.all_macs,
                     "hostname": self.hostname,
                     "os": platform.system(),
                     "version": self.agent_version,
                     "device_ip": self.local_ip,
-                    "device_mac": self.local_mac,
+                    "device_mac": self.primary_mac,
                     "time": datetime.now().isoformat(),
                     "organization_id": self.organization_id,
                     "reenroll": bool(force_reenroll),
@@ -628,11 +664,14 @@ class NetworkAgent:
                 ram = psutil.virtual_memory().percent
                 payload = {
                     "agent_id": self.agent_id,
+                    "device_uuid": self.device_uuid,
+                    "primary_mac": self.primary_mac,
+                    "all_macs": self.all_macs,
                     "hostname": self.hostname,
                     "os": platform.system(),
                     "version": self.agent_version,
                     "device_ip": self.local_ip,
-                    "device_mac": self.local_mac,
+                    "device_mac": self.primary_mac,
                     "status": "online",
                     "dropped_packets": 0,
                     "cpu_usage": cpu,
@@ -667,7 +706,20 @@ class NetworkAgent:
         except Exception:
             return "127.0.0.1"
 
+    _normalize_mac = staticmethod(normalize_mac)
+
+    def _detect_interfaces(self, outbound_ip=None):
+        if outbound_ip is None:
+            outbound_ip = getattr(self, "local_ip", None)
+        return enumerate_local_interfaces(outbound_ip=outbound_ip)
+
     def _detect_local_mac(self):
+        try:
+            primary_mac, _ = self._detect_interfaces(getattr(self, "local_ip", None))
+            if primary_mac and primary_mac != "-":
+                return primary_mac
+        except Exception:
+            pass
         try:
             node = uuid.getnode()
             return ":".join(f"{(node >> shift) & 0xff:02x}" for shift in range(40, -1, -8))

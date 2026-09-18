@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..core.config import settings
 from ..db.session import require_runtime_schema
 
 
@@ -106,9 +105,12 @@ class GatewayService:
         try:
             params: list = []
             where_clause = ""
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 where_clause = " WHERE g.organization_id = %s OR g.organization_id IS NULL"
                 params.append(organization_id)
+            else:
+                where_clause = " WHERE g.organization_id = %s"
+                params.append(None)
 
             query = f"""
                 SELECT

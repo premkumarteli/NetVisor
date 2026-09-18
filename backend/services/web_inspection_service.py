@@ -857,6 +857,58 @@ class WebInspectionService:
                         row
                     )
                 stored_count += 1
+
+            # Also synchronize to application_summary for real-time dashboard accuracy
+            try:
+                from .application_service import application_service
+                from intel.app_classifier import infer_app_category
+                app_counts: dict[tuple[str, str], dict] = {}
+                for event in events:
+                    org_id = event.get("organization_id") or "default-org-id"
+                    app_name = application_service.classify_app({
+                        "base_domain": event.get("base_domain"),
+                        "page_title": event.get("page_title"),
+                        "process_name": event.get("process_name"),
+                    }, organization_id=org_id)
+                    if not app_name or app_name in {"Unknown", "Other"}:
+                        continue
+                    key = (org_id, app_name)
+                    bytes_total = int(event.get("request_bytes", 0) + event.get("response_bytes", 0))
+                    if bytes_total == 0:
+                        bytes_total = max(int(event.get("event_count", 1)) * 1024, 1024)
+                    ev_count = int(event.get("event_count") or 1)
+                    last_seen_val = event.get("last_seen") or event.get("timestamp")
+
+                    if key not in app_counts:
+                        app_counts[key] = {
+                            "category": infer_app_category(app_name, event.get("base_domain")),
+                            "flow_count": 0,
+                            "total_bytes": 0,
+                            "last_seen": last_seen_val,
+                        }
+                    app_counts[key]["flow_count"] += ev_count
+                    app_counts[key]["total_bytes"] += bytes_total
+                    if last_seen_val:
+                        app_counts[key]["last_seen"] = last_seen_val
+
+                if app_counts:
+                    app_upsert_sql = """
+                        INSERT INTO application_summary (
+                            organization_id, application_name, category, flow_count, total_bytes, last_seen, updated_at
+                        ) VALUES (%s, %s, %s, %s, %s, %s, UTC_TIMESTAMP())
+                        ON DUPLICATE KEY UPDATE
+                            flow_count = flow_count + VALUES(flow_count),
+                            total_bytes = total_bytes + VALUES(total_bytes),
+                            last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                            updated_at = UTC_TIMESTAMP()
+                    """
+                    for (org_id, app_name), v in app_counts.items():
+                        cursor.execute(
+                            app_upsert_sql,
+                            (org_id, app_name, v["category"], v["flow_count"], v["total_bytes"], v["last_seen"])
+                        )
+            except Exception as app_sync_err:
+                logger.debug("Failed to sync web events to application_summary: %s", app_sync_err)
             
             db_conn.commit()
             return stored_count

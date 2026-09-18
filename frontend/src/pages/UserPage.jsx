@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, Navigate } from 'react-router-dom';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { systemService } from '../services/api';
 import { formatRuntime, getApplicationVisual } from '../utils/apps';
 import { formatUtcTimestampToLocal } from '../utils/time';
@@ -30,7 +31,12 @@ const formatConfidence = (value) => {
 
 const UserPage = () => {
   const { deviceIp } = useParams();
-  const normalizedDeviceIp = deviceIp ? decodeURIComponent(deviceIp) : null;
+  let normalizedDeviceIp = null;
+  try {
+    normalizedDeviceIp = deviceIp ? decodeURIComponent(deviceIp) : null;
+  } catch {
+    normalizedDeviceIp = deviceIp;
+  }
 
   if (!normalizedDeviceIp) {
     return <Navigate to="/dashboard" replace />;
@@ -76,6 +82,25 @@ const DeviceWorkspace = ({ deviceIp }) => {
   }, [fetchProfile]);
 
   useVisibilityPolling(() => fetchProfile({ background: true }), 15000);
+
+  const handleDpiEvent = useCallback((event) => {
+    if (!event) return;
+    const targetIp = event.device_ip || event.client_ip || event.src_ip;
+    if (targetIp === deviceIp) {
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const currentActivity = Array.isArray(prev.web_activity) ? prev.web_activity : [];
+        const exists = currentActivity.some((item) => (item.id && item.id === event.id) || (item.timestamp === event.timestamp && item.page_url === event.page_url));
+        if (exists) return prev;
+        return {
+          ...prev,
+          web_activity: [event, ...currentActivity.slice(0, 99)],
+        };
+      });
+    }
+  }, [deviceIp]);
+
+  useWebSocket('dpi_event', handleDpiEvent);
 
   const inspectionStatus = profile?.inspection_status || null;
   const webActivity = useMemo(() => profile?.web_activity || [], [profile?.web_activity]);

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
@@ -28,6 +29,9 @@ class DualRingBuffer:
         self.control_capacity = control_capacity
         self.data_capacity = data_capacity
 
+        # Thread-safe counter lock (separate from queue mutexes)
+        self._counter_lock = threading.Lock()
+
         # Operational Counters
         self.packets_received_total = 0
         self.packets_processed_total = 0
@@ -35,10 +39,15 @@ class DualRingBuffer:
         self.data_drops_total = 0
         self.capture_loop_exceptions_total = 0
 
+    def _increment_counter(self, name: str, amount: int = 1) -> None:
+        """Thread-safe counter increment."""
+        with self._counter_lock:
+            setattr(self, name, getattr(self, name) + amount)
+
     def push(self, raw_bytes: bytes, priority: int = 2, timestamp: float | None = None) -> bool:
         ts = timestamp if timestamp is not None else time.time()
         envelope = RawPacketEnvelope(raw_bytes=raw_bytes, timestamp=ts, priority=priority)
-        self.packets_received_total += 1
+        self._increment_counter("packets_received_total")
 
         if priority == 0:
             # Control Traffic: Strict push. Drops packet only if Control Queue is 100% full.
@@ -46,7 +55,7 @@ class DualRingBuffer:
                 self.control_queue.put_nowait(envelope)
                 return True
             except queue.Full:
-                self.control_drops_total += 1
+                self._increment_counter("control_drops_total")
                 logger.warning("Control Queue 100%% full! Dropping high-priority control frame.")
                 return False
         else:
@@ -55,7 +64,7 @@ class DualRingBuffer:
                 self.data_queue.put_nowait(envelope)
                 return True
             except queue.Full:
-                self.data_drops_total += 1
+                self._increment_counter("data_drops_total")
                 try:
                     # Tail-drop oldest data packet to make space
                     self.data_queue.get_nowait()
@@ -67,7 +76,7 @@ class DualRingBuffer:
     def pop_control_nowait(self) -> RawPacketEnvelope | None:
         try:
             item = self.control_queue.get_nowait()
-            self.packets_processed_total += 1
+            self._increment_counter("packets_processed_total")
             return item
         except queue.Empty:
             return None
@@ -75,7 +84,7 @@ class DualRingBuffer:
     def pop_data_nowait(self) -> RawPacketEnvelope | None:
         try:
             item = self.data_queue.get_nowait()
-            self.packets_processed_total += 1
+            self._increment_counter("packets_processed_total")
             return item
         except queue.Empty:
             return None

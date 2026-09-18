@@ -18,6 +18,9 @@ class PassTheHashDetector:
     3. Remote execution pipe calls (svcctl, winreg, wmiexec, psexec).
     """
 
+    _MAX_IPS_PER_SRC = 100
+    _MAX_SRCS = 1000
+
     def __init__(self, config: EngineConfig | None = None) -> None:
         self.config = config if config is not None else EngineConfig()
         # State: src_ip -> set of destination IPs authenticated over SMB/NTLM
@@ -33,7 +36,10 @@ class PassTheHashDetector:
     def analyze(self, flow: Any, observed_at: datetime) -> Optional[Finding]:
         src_ip = get_flow_field(flow, "src_ip")
         dst_ip = get_flow_field(flow, "dst_ip")
-        dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        try:
+            dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        except (ValueError, TypeError):
+            dst_port = 0
         app_proto = str(get_flow_field(flow, "application_protocol", "") or "").upper()
         signals = get_flow_field(flow, "analysis_signals") or ()
         
@@ -51,8 +57,22 @@ class PassTheHashDetector:
         with self._lock:
             ts_sec = observed_at.timestamp() if isinstance(observed_at, datetime) else float(observed_at)
             
+            # Cap total tracked sources to prevent unbounded key growth
+            if len(self._smb_authentications) >= self._MAX_SRCS and src_ip not in self._smb_authentications:
+                oldest_src = min(
+                    self._smb_authentications,
+                    key=lambda k: self._last_alert_ts.get(k, 0.0),
+                    default=None,
+                )
+                if oldest_src is not None:
+                    self._smb_authentications.pop(oldest_src, None)
+
             # Record SMB authentication destination IP
             self._smb_authentications[src_ip].add(dst_ip)
+
+            # Cap per-source IPs to prevent unbounded set growth
+            if len(self._smb_authentications[src_ip]) > self._MAX_IPS_PER_SRC:
+                self._smb_authentications[src_ip] = set(list(self._smb_authentications[src_ip])[-self._MAX_IPS_PER_SRC:])
             target_count = len(self._smb_authentications[src_ip])
 
             last_alert = self._last_alert_ts.get(src_ip, 0.0)

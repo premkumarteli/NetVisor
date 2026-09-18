@@ -145,10 +145,15 @@ const DevicesPage = () => {
   useVisibilityPolling(() => fetchDevices({ background: true }), 5000);
 
   const handleDeviceEvent = useCallback((eventData) => {
-    const update = eventData?.data;
-    if (!update || !update.ip) return;
+    const update = eventData?.data || eventData;
+    if (!update || (!update.id && !update.mac && !update.ip)) return;
     setDevices((prev) => {
-      const idx = prev.findIndex((device) => device.ip === update.ip);
+      const idx = prev.findIndex((device) => {
+        if (update.id && device.id && device.id === update.id) return true;
+        if (update.mac && device.mac && String(device.mac).toLowerCase() === String(update.mac).toLowerCase()) return true;
+        if (update.ip && device.ip && device.ip === update.ip) return true;
+        return false;
+      });
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = { ...next[idx], ...update };
@@ -173,10 +178,6 @@ const DevicesPage = () => {
 
   const visibleDevices = useMemo(() => {
     return devices.filter((device) => {
-      // Exclude passive observed ARP devices without active signals
-      if (device.management_mode === 'byod' && !device.top_application && !device.is_online) {
-        return false;
-      }
       const matchesMode = modeFilter === 'all' || device.management_mode === modeFilter;
       const haystack = [
         device.hostname,

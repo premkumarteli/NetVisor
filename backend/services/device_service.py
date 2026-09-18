@@ -309,6 +309,27 @@ class DeviceService:
             (mac, ip, organization_id, seen_dt, seen_dt),
         )
 
+    def _clean_unicast_mac(self, mac: Optional[str]) -> Optional[str]:
+        if not mac:
+            return None
+        normalized = normalize_mac(mac)
+        if not normalized:
+            return None
+        parts = normalized.split(":")
+        if len(parts) != 6:
+            return None
+        try:
+            first_byte = int(parts[0], 16)
+        except ValueError:
+            return None
+        if normalized == "00:00:00:00:00:00":
+            return None
+        if normalized == "ff:ff:ff:ff:ff:ff":
+            return None
+        if (first_byte & 1) != 0:
+            return None
+        return normalized
+
     def touch_device_seen(
         self,
         db_conn,
@@ -323,6 +344,9 @@ class DeviceService:
         device_type: Optional[str] = None,
         os_family: Optional[str] = None,
         create_if_missing: bool = False,
+        device_uuid: Optional[str] = None,
+        primary_mac: Optional[str] = None,
+        all_macs: Optional[List[str]] = None,
     ) -> bool:
         normalized_ip = normalize_ip(ip)
         if not self._is_trackable_device_ip(normalized_ip):
@@ -331,159 +355,563 @@ class DeviceService:
         self.ensure_schema(db_conn)
         seen_dt = self._parse_timestamp(seen_at) or datetime.now(timezone.utc)
         hostname_value = self._meaningful_value(hostname, {"Unknown", "Unknown-Device", "-"})
-        mac_value = normalize_mac(mac)
         vendor_value = self._meaningful_value(vendor, {"Unknown", "-"})
         device_type_value = self._meaningful_value(device_type, {"Unknown", "Unknown Type", "-"})
         os_family_value = self._meaningful_value(os_family, {"Unknown", "-"})
         agent_id_value = self._meaningful_value(agent_id, {"Unknown", "-"})
 
+        resolved_primary_mac = self._clean_unicast_mac(primary_mac) or self._clean_unicast_mac(mac)
+        mac_value = resolved_primary_mac or normalize_mac(mac)
+
         cursor = db_conn.cursor(dictionary=True)
         try:
-            if mac_value:
-                # Check if device is new for audit logging purposes
-                cursor.execute(
-                    """
-                    SELECT 1 FROM devices 
-                    WHERE mac = %s 
-                      AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
-                    LIMIT 1
-                    """,
-                    (mac_value, organization_id, organization_id)
-                )
-                is_new_device = cursor.fetchone() is None
-
-                cursor.execute(
-                    """
-                    INSERT INTO devices (
-                        ip,
-                        mac,
-                        hostname,
-                        vendor,
-                        device_type,
-                        os_family,
-                        is_online,
-                        organization_id,
-                        agent_id,
-                        first_seen,
-                        last_seen
+            if not device_uuid:
+                # Gateway discovery or unmanaged device path
+                if mac_value:
+                    # Check if this MAC belongs to an enrolled device_uuid in device_mac_addresses
+                    cursor.execute(
+                        """
+                        SELECT device_uuid FROM device_mac_addresses
+                        WHERE mac = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                          AND consecutive_misses < 30
+                        LIMIT 1
+                        """,
+                        (mac_value, organization_id, organization_id),
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        ip = VALUES(ip),
-                        hostname = CASE WHEN VALUES(hostname) <> 'Unknown' THEN VALUES(hostname) ELSE hostname END,
-                        vendor = CASE WHEN VALUES(vendor) <> 'Unknown' THEN VALUES(vendor) ELSE vendor END,
-                        device_type = CASE WHEN VALUES(device_type) <> 'Unknown' THEN VALUES(device_type) ELSE device_type END,
-                        os_family = CASE WHEN VALUES(os_family) <> 'Unknown' THEN VALUES(os_family) ELSE os_family END,
-                        agent_id = COALESCE(VALUES(agent_id), agent_id),
-                        last_seen = GREATEST(last_seen, VALUES(last_seen)),
-                        is_online = TRUE
-                    """,
-                    (
-                        normalized_ip,
-                        mac_value,
-                        hostname_value or "Unknown",
-                        vendor_value or "Unknown",
-                        device_type_value or "Unknown",
-                        os_family_value or "Unknown",
-                        organization_id,
-                        agent_id_value,
-                        seen_dt,
-                        seen_dt,
-                    )
-                )
-
-                self._record_ip_history(
-                    cursor,
-                    mac=mac_value,
-                    ip=normalized_ip,
-                    organization_id=organization_id,
-                    seen_dt=seen_dt,
-                )
-
-                try:
-                    if organization_id:
-                        from ..services.live_telemetry_store import live_telemetry_store
-                        live_telemetry_store.register_known_ip(organization_id, normalized_ip)
-                except Exception as exc:
-                    logger.debug(f"Failed to register known IP in live telemetry: {exc}")
-
-                if is_new_device and organization_id:
-                    try:
-                        from ..services.live_telemetry_store import live_telemetry_store
-                        live_telemetry_store.increment_device_count(organization_id)
-                    except Exception as exc:
-                        logger.debug(f"Failed to increment live telemetry device count: {exc}")
-
-                    try:
-                        from ..services.audit_service import audit_service
-                        audit_service.log_agent_registration(
-                            organization_id=str(organization_id),
-                            username="system",
-                            agent_id=agent_id_value or "unknown",
-                            action="device_discovered",
-                            details=f"ip: {normalized_ip}; mac: {mac_value}; hostname: {hostname_value or 'unknown'}"
+                    mac_mapping = cursor.fetchone()
+                    if mac_mapping and mac_mapping.get("device_uuid"):
+                        matched_uuid = mac_mapping["device_uuid"]
+                        # Map telemetry to canonical device row
+                        cursor.execute(
+                            """
+                            UPDATE devices
+                            SET last_seen = GREATEST(last_seen, %s),
+                                is_online = TRUE
+                            WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                            """,
+                            (seen_dt, matched_uuid, organization_id, organization_id),
                         )
-                    except ImportError:
-                        pass
-                    except Exception as exc:
-                        logger.debug(f"Audit logging failed for device discovery: {exc}")
-                return True
-            else:
-                existing = self._find_existing_device(
-                    cursor,
-                    organization_id=organization_id,
-                    mac=None,
-                    hostname=hostname_value,
-                    ip=normalized_ip,
-                )
-                if not existing:
-                    return False
+                        cursor.execute(
+                            """
+                            UPDATE device_mac_addresses
+                            SET last_seen = GREATEST(last_seen, %s)
+                            WHERE device_uuid = %s AND mac = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                            """,
+                            (seen_dt, matched_uuid, mac_value, organization_id, organization_id),
+                        )
+                        self._record_ip_history(
+                            cursor,
+                            mac=mac_value,
+                            ip=normalized_ip,
+                            organization_id=organization_id,
+                            seen_dt=seen_dt,
+                        )
+                        return True
 
-                existing_last_seen = self._parse_timestamp(existing.get("last_seen"))
-                merged_last_seen = seen_dt if not existing_last_seen else max(existing_last_seen, seen_dt)
-                merged_first_seen = existing.get("first_seen") or seen_dt
-                resolved_mac = normalize_mac(existing.get("mac")) or existing.get("mac")
+                    # Unmanaged gateway discovery row
+                    cursor.execute(
+                        """
+                        SELECT 1 FROM devices 
+                        WHERE mac = %s 
+                          AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                        LIMIT 1
+                        """,
+                        (mac_value, organization_id, organization_id),
+                    )
+                    is_new_device = cursor.fetchone() is None
 
+                    cursor.execute(
+                        """
+                        INSERT INTO devices (
+                            ip,
+                            mac,
+                            hostname,
+                            vendor,
+                            device_type,
+                            os_family,
+                            is_online,
+                            organization_id,
+                            agent_id,
+                            first_seen,
+                            last_seen,
+                            device_uuid
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            ip = VALUES(ip),
+                            hostname = CASE WHEN VALUES(hostname) <> 'Unknown' THEN VALUES(hostname) ELSE hostname END,
+                            vendor = CASE WHEN VALUES(vendor) <> 'Unknown' THEN VALUES(vendor) ELSE vendor END,
+                            device_type = CASE WHEN VALUES(device_type) <> 'Unknown' THEN VALUES(device_type) ELSE device_type END,
+                            os_family = CASE WHEN VALUES(os_family) <> 'Unknown' THEN VALUES(os_family) ELSE os_family END,
+                            agent_id = COALESCE(VALUES(agent_id), agent_id),
+                            last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                            is_online = TRUE
+                        """,
+                        (
+                            normalized_ip,
+                            mac_value,
+                            hostname_value or "Unknown",
+                            vendor_value or "Unknown",
+                            device_type_value or "Unknown",
+                            os_family_value or "Unknown",
+                            organization_id,
+                            agent_id_value,
+                            seen_dt,
+                            seen_dt,
+                            device_uuid or None,
+                        ),
+                    )
+
+                    self._record_ip_history(
+                        cursor,
+                        mac=mac_value,
+                        ip=normalized_ip,
+                        organization_id=organization_id,
+                        seen_dt=seen_dt,
+                    )
+
+                    if is_new_device and organization_id:
+                        try:
+                            from ..services.live_telemetry_store import live_telemetry_store
+                            live_telemetry_store.increment_device_count(organization_id)
+                        except Exception as exc:
+                            logger.debug(f"Failed to increment live telemetry device count: {exc}")
+
+                        try:
+                            from ..services.audit_service import audit_service
+                            audit_service.log_agent_registration(
+                                organization_id=str(organization_id),
+                                username="system",
+                                agent_id=agent_id_value or "unknown",
+                                action="device_discovered",
+                                details=f"ip: {normalized_ip}; mac: {mac_value}; hostname: {hostname_value or 'unknown'}",
+                            )
+                        except ImportError:
+                            pass
+                        except Exception as exc:
+                            logger.debug(f"Audit logging failed for device discovery: {exc}")
+                    return True
+                else:
+                    existing = self._find_existing_device(
+                        cursor,
+                        organization_id=organization_id,
+                        mac=None,
+                        hostname=hostname_value,
+                        ip=normalized_ip,
+                    )
+                    if not existing:
+                        return False
+
+                    existing_last_seen = self._parse_timestamp(existing.get("last_seen"))
+                    merged_last_seen = seen_dt if not existing_last_seen else max(existing_last_seen, seen_dt)
+                    merged_first_seen = existing.get("first_seen") or seen_dt
+                    resolved_mac = normalize_mac(existing.get("mac")) or existing.get("mac")
+
+                    cursor.execute(
+                        """
+                        UPDATE devices
+                        SET
+                            hostname = %s,
+                            mac = %s,
+                            ip = %s,
+                            vendor = %s,
+                            device_type = %s,
+                            os_family = %s,
+                            organization_id = %s,
+                            agent_id = %s,
+                            first_seen = %s,
+                            last_seen = %s,
+                            is_online = TRUE
+                        WHERE id = %s
+                        """,
+                        (
+                            hostname_value or existing.get("hostname") or "Unknown",
+                            resolved_mac,
+                            normalized_ip,
+                            vendor_value or existing.get("vendor") or "Unknown",
+                            device_type_value or existing.get("device_type") or "Unknown",
+                            os_family_value or existing.get("os_family") or "Unknown",
+                            existing.get("organization_id") or organization_id,
+                            agent_id_value or existing.get("agent_id"),
+                            merged_first_seen,
+                            merged_last_seen,
+                            existing["id"],
+                        ),
+                    )
+
+                    self._record_ip_history(
+                        cursor,
+                        mac=resolved_mac,
+                        ip=normalized_ip,
+                        organization_id=existing.get("organization_id") or organization_id,
+                        seen_dt=merged_last_seen,
+                    )
+                    return True
+
+            # device_uuid is provided: Agent enrollment / heartbeat path
+            cleaned_macs = []
+            if all_macs:
+                for m in all_macs:
+                    cm = self._clean_unicast_mac(m)
+                    if cm and cm not in cleaned_macs:
+                        cleaned_macs.append(cm)
+            if resolved_primary_mac and resolved_primary_mac not in cleaned_macs:
+                cleaned_macs.insert(0, resolved_primary_mac)
+            if not cleaned_macs and resolved_primary_mac:
+                cleaned_macs = [resolved_primary_mac]
+
+            # Primary match on (device_uuid, organization_id)
+            cursor.execute(
+                """
+                SELECT * FROM devices
+                WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                LIMIT 1
+                """,
+                (device_uuid, organization_id, organization_id),
+            )
+            device_by_uuid = cursor.fetchone()
+
+            effective_uuid = device_uuid
+            if device_by_uuid:
+                # Update existing row
                 cursor.execute(
                     """
                     UPDATE devices
-                    SET
-                        hostname = %s,
-                        mac = %s,
-                        ip = %s,
-                        vendor = %s,
-                        device_type = %s,
-                        os_family = %s,
-                        organization_id = %s,
-                        agent_id = %s,
-                        first_seen = %s,
-                        last_seen = %s,
+                    SET ip = %s,
+                        mac = COALESCE(%s, mac),
+                        hostname = CASE WHEN %s <> 'Unknown' THEN %s ELSE hostname END,
+                        vendor = CASE WHEN %s <> 'Unknown' THEN %s ELSE vendor END,
+                        device_type = CASE WHEN %s <> 'Unknown' THEN %s ELSE device_type END,
+                        os_family = CASE WHEN %s <> 'Unknown' THEN %s ELSE os_family END,
+                        agent_id = COALESCE(%s, agent_id),
+                        last_seen = GREATEST(last_seen, %s),
                         is_online = TRUE
-                    WHERE id = %s
+                    WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
                     """,
                     (
-                        hostname_value or existing.get("hostname") or "Unknown",
-                        resolved_mac,
                         normalized_ip,
-                        vendor_value or existing.get("vendor") or "Unknown",
-                        device_type_value or existing.get("device_type") or "Unknown",
-                        os_family_value or existing.get("os_family") or "Unknown",
-                        existing.get("organization_id") or organization_id,
-                        agent_id_value or existing.get("agent_id"),
-                        merged_first_seen,
-                        merged_last_seen,
-                        existing["id"],
+                        resolved_primary_mac or device_by_uuid.get("mac"),
+                        hostname_value or "Unknown",
+                        hostname_value or "Unknown",
+                        vendor_value or "Unknown",
+                        vendor_value or "Unknown",
+                        device_type_value or "Unknown",
+                        device_type_value or "Unknown",
+                        os_family_value or "Unknown",
+                        os_family_value or "Unknown",
+                        agent_id_value,
+                        seen_dt,
+                        device_uuid,
+                        organization_id,
+                        organization_id,
                     ),
                 )
 
-                self._record_ip_history(
-                    cursor,
-                    mac=resolved_mac,
-                    ip=normalized_ip,
-                    organization_id=existing.get("organization_id") or organization_id,
-                    seen_dt=merged_last_seen,
+                # Cancel/delete any pending conflicting claims for this authoritative device or MAC
+                target_mac = resolved_primary_mac or device_by_uuid.get("mac")
+                if target_mac:
+                    cursor.execute(
+                        """
+                        DELETE FROM device_identity_conflicts
+                        WHERE (existing_device_uuid = %s OR conflict_mac = %s)
+                          AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                          AND status = 'pending'
+                        """,
+                        (device_uuid, target_mac, organization_id, organization_id),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        DELETE FROM device_identity_conflicts
+                        WHERE existing_device_uuid = %s
+                          AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                          AND status = 'pending'
+                        """,
+                        (device_uuid, organization_id, organization_id),
+                    )
+            else:
+                # Check for reconciliation with existing row matching primary or secondary MACs
+                check_macs = [resolved_primary_mac] if resolved_primary_mac else []
+                for m in cleaned_macs:
+                    if m not in check_macs:
+                        check_macs.append(m)
+
+                device_by_mac = None
+                matched_mac = None
+                for m in check_macs:
+                    cursor.execute(
+                        """
+                        SELECT * FROM devices
+                        WHERE mac = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                        LIMIT 1
+                        """,
+                        (m, organization_id, organization_id),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        device_by_mac = row
+                        matched_mac = m
+                        break
+
+                if device_by_mac:
+                    existing_uuid = device_by_mac.get("device_uuid")
+                    if not existing_uuid:
+                        # Reconcile in-place onto existing unmanaged row
+                        cursor.execute(
+                            """
+                            UPDATE devices
+                            SET device_uuid = %s,
+                                ip = %s,
+                                mac = COALESCE(%s, mac),
+                                hostname = CASE WHEN %s <> 'Unknown' THEN %s ELSE hostname END,
+                                vendor = CASE WHEN %s <> 'Unknown' THEN %s ELSE vendor END,
+                                device_type = CASE WHEN %s <> 'Unknown' THEN %s ELSE device_type END,
+                                os_family = CASE WHEN %s <> 'Unknown' THEN %s ELSE os_family END,
+                                agent_id = COALESCE(%s, agent_id),
+                                last_seen = GREATEST(last_seen, %s),
+                                is_online = TRUE
+                            WHERE id = %s
+                            """,
+                            (
+                                device_uuid,
+                                normalized_ip,
+                                resolved_primary_mac or device_by_mac.get("mac"),
+                                hostname_value or "Unknown",
+                                hostname_value or "Unknown",
+                                vendor_value or "Unknown",
+                                vendor_value or "Unknown",
+                                device_type_value or "Unknown",
+                                device_type_value or "Unknown",
+                                os_family_value or "Unknown",
+                                os_family_value or "Unknown",
+                                agent_id_value,
+                                seen_dt,
+                                device_by_mac["id"],
+                            ),
+                        )
+                        effective_uuid = device_uuid
+                    elif existing_uuid == device_uuid:
+                        effective_uuid = device_uuid
+                    else:
+                        # UUID Conflict Handling
+                        logger.warning(
+                            "Device UUID conflict: incoming device_uuid %s conflicts with existing %s on mac %s",
+                            device_uuid,
+                            existing_uuid,
+                            matched_mac,
+                        )
+                        cursor.execute(
+                            """
+                            SELECT id, consecutive_heartbeats, last_seen, status
+                            FROM device_identity_conflicts
+                            WHERE (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                              AND existing_device_uuid = %s
+                              AND incoming_device_uuid = %s
+                              AND conflict_mac = %s
+                            LIMIT 1
+                            """,
+                            (organization_id, organization_id, existing_uuid, device_uuid, matched_mac),
+                        )
+                        conflict_row = cursor.fetchone()
+                        if conflict_row:
+                            new_hb_count = conflict_row.get("consecutive_heartbeats", 1) + 1
+                            cursor.execute(
+                                """
+                                UPDATE device_identity_conflicts
+                                SET consecutive_heartbeats = %s,
+                                    last_seen = %s
+                                WHERE id = %s
+                                """,
+                                (new_hb_count, seen_dt, conflict_row["id"]),
+                            )
+                        else:
+                            new_hb_count = 1
+                            cursor.execute(
+                                """
+                                INSERT INTO device_identity_conflicts (
+                                    organization_id, existing_device_uuid, incoming_device_uuid,
+                                    conflict_mac, consecutive_heartbeats, first_seen, last_seen, status
+                                )
+                                VALUES (%s, %s, %s, %s, 1, %s, %s, 'pending')
+                                """,
+                                (organization_id, existing_uuid, device_uuid, matched_mac, seen_dt, seen_dt),
+                            )
+
+                        REPROVISIONING_THRESHOLD = 5
+                        if new_hb_count >= REPROVISIONING_THRESHOLD:
+                            logger.info(
+                                "Re-provisioning threshold reached (%d heartbeats) for incoming device_uuid %s over %s",
+                                new_hb_count,
+                                device_uuid,
+                                existing_uuid,
+                            )
+                            cursor.execute(
+                                """
+                                UPDATE devices
+                                SET device_uuid = %s,
+                                    ip = %s,
+                                    mac = COALESCE(%s, mac),
+                                    hostname = CASE WHEN %s <> 'Unknown' THEN %s ELSE hostname END,
+                                    vendor = CASE WHEN %s <> 'Unknown' THEN %s ELSE vendor END,
+                                    device_type = CASE WHEN %s <> 'Unknown' THEN %s ELSE device_type END,
+                                    os_family = CASE WHEN %s <> 'Unknown' THEN %s ELSE os_family END,
+                                    agent_id = COALESCE(%s, agent_id),
+                                    last_seen = GREATEST(last_seen, %s),
+                                    is_online = TRUE
+                                WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                                """,
+                                (
+                                    device_uuid,
+                                    normalized_ip,
+                                    resolved_primary_mac or device_by_mac.get("mac"),
+                                    hostname_value or "Unknown",
+                                    hostname_value or "Unknown",
+                                    vendor_value or "Unknown",
+                                    vendor_value or "Unknown",
+                                    device_type_value or "Unknown",
+                                    device_type_value or "Unknown",
+                                    os_family_value or "Unknown",
+                                    os_family_value or "Unknown",
+                                    agent_id_value,
+                                    seen_dt,
+                                    existing_uuid,
+                                    organization_id,
+                                    organization_id,
+                                ),
+                            )
+                            cursor.execute(
+                                """
+                                UPDATE device_mac_addresses
+                                SET device_uuid = %s
+                                WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                                """,
+                                (device_uuid, existing_uuid, organization_id, organization_id),
+                            )
+                            cursor.execute(
+                                """
+                                UPDATE device_identity_conflicts
+                                SET status = 'resolved', last_seen = %s
+                                WHERE (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                                  AND existing_device_uuid = %s
+                                  AND incoming_device_uuid = %s
+                                  AND conflict_mac = %s
+                                """,
+                                (seen_dt, organization_id, organization_id, existing_uuid, device_uuid, matched_mac),
+                            )
+                            effective_uuid = device_uuid
+                        else:
+                            cursor.execute(
+                                """
+                                UPDATE devices
+                                SET last_seen = GREATEST(last_seen, %s), is_online = TRUE
+                                WHERE device_uuid = %s AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                                """,
+                                (seen_dt, existing_uuid, organization_id, organization_id),
+                            )
+                            effective_uuid = existing_uuid
+                else:
+                    # Insert brand new device row with device_uuid
+                    cursor.execute(
+                        """
+                        INSERT INTO devices (
+                            ip,
+                            mac,
+                            hostname,
+                            vendor,
+                            device_type,
+                            os_family,
+                            is_online,
+                            organization_id,
+                            agent_id,
+                            first_seen,
+                            last_seen,
+                            device_uuid
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, TRUE, %s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            ip = VALUES(ip),
+                            mac = COALESCE(VALUES(mac), mac),
+                            hostname = CASE WHEN VALUES(hostname) <> 'Unknown' THEN VALUES(hostname) ELSE hostname END,
+                            vendor = CASE WHEN VALUES(vendor) <> 'Unknown' THEN VALUES(vendor) ELSE vendor END,
+                            device_type = CASE WHEN VALUES(device_type) <> 'Unknown' THEN VALUES(device_type) ELSE device_type END,
+                            os_family = CASE WHEN VALUES(os_family) <> 'Unknown' THEN VALUES(os_family) ELSE os_family END,
+                            agent_id = COALESCE(VALUES(agent_id), agent_id),
+                            device_uuid = VALUES(device_uuid),
+                            last_seen = GREATEST(last_seen, VALUES(last_seen)),
+                            is_online = TRUE
+                        """,
+                        (
+                            normalized_ip,
+                            resolved_primary_mac or mac_value or "-",
+                            hostname_value or "Unknown",
+                            vendor_value or "Unknown",
+                            device_type_value or "Unknown",
+                            os_family_value or "Unknown",
+                            organization_id,
+                            agent_id_value,
+                            seen_dt,
+                            seen_dt,
+                            device_uuid,
+                        ),
+                    )
+                    effective_uuid = device_uuid
+
+            # Populate/update secondary MAC mappings in device_mac_addresses and active pruning
+            if effective_uuid == device_uuid and cleaned_macs:
+                for m in cleaned_macs:
+                    is_prim = (m == resolved_primary_mac)
+                    cursor.execute(
+                        """
+                        INSERT INTO device_mac_addresses (
+                            device_uuid, mac, organization_id, is_primary, last_seen, consecutive_misses
+                        )
+                        VALUES (%s, %s, %s, %s, %s, 0)
+                        ON DUPLICATE KEY UPDATE
+                            device_uuid = VALUES(device_uuid),
+                            is_primary = VALUES(is_primary),
+                            last_seen = VALUES(last_seen),
+                            consecutive_misses = 0
+                        """,
+                        (device_uuid, m, organization_id, is_prim, seen_dt),
+                    )
+
+                format_strings = ','.join(['%s'] * len(cleaned_macs))
+                cursor.execute(
+                    f"""
+                    UPDATE device_mac_addresses
+                    SET consecutive_misses = consecutive_misses + 1
+                    WHERE device_uuid = %s 
+                      AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                      AND mac NOT IN ({format_strings})
+                    """,
+                    tuple([device_uuid, organization_id, organization_id] + cleaned_macs),
                 )
-                return True
+                cursor.execute(
+                    """
+                    DELETE FROM device_mac_addresses
+                    WHERE device_uuid = %s 
+                      AND (organization_id = %s OR (%s IS NULL AND organization_id IS NULL))
+                      AND consecutive_misses >= 30
+                    """,
+                    (device_uuid, organization_id, organization_id),
+                )
+
+            self._record_ip_history(
+                cursor,
+                mac=resolved_primary_mac or mac_value,
+                ip=normalized_ip,
+                organization_id=organization_id,
+                seen_dt=seen_dt,
+            )
+
+            try:
+                if organization_id:
+                    from ..services.live_telemetry_store import live_telemetry_store
+                    live_telemetry_store.register_known_ip(organization_id, normalized_ip)
+            except Exception as exc:
+                logger.debug(f"Failed to register known IP in live telemetry: {exc}")
+
+            return True
         finally:
             cursor.close()
 
@@ -613,13 +1041,10 @@ class DeviceService:
     def get_device_risk(self, db_conn, device_id: str, organization_id: Optional[str] = None) -> Optional[dict]:
         cursor = db_conn.cursor(dictionary=True)
         try:
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                cursor.execute(
-                    "SELECT * FROM device_risks WHERE device_id = %s AND organization_id = %s",
-                    (device_id, organization_id),
-                )
-            else:
-                cursor.execute("SELECT * FROM device_risks WHERE device_id = %s", (device_id,))
+            cursor.execute(
+                "SELECT * FROM device_risks WHERE device_id = %s AND organization_id = %s",
+                (device_id, organization_id),
+            )
             return cursor.fetchone()
         finally:
             cursor.close()

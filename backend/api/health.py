@@ -10,6 +10,7 @@ from ..services.gateway_auth_service import gateway_auth_service
 from ..services.release_service import release_service
 from ..services.system_service import system_service
 from ..services.metrics_service import metrics_service
+from ..services.worker_supervisor import worker_supervisor
 
 router = APIRouter()
 
@@ -154,4 +155,17 @@ def trigger_sentry_test():
         "status": "success",
         "message": "Sentry sample error event captured and dispatched.",
         "sentry_event_id": event_id,
+    }
+
+
+@router.get("/workers")
+def get_worker_health():
+    """Return status of all supervised background workers."""
+    workers = worker_supervisor.get_status()
+    all_healthy = all(w.get("running", False) for w in workers) if workers else True
+    return {
+        "status": "healthy" if all_healthy else "degraded",
+        "workers": workers,
+        "total_workers": len(workers),
+        "healthy_workers": sum(1 for w in workers if w.get("running", False)),
     }

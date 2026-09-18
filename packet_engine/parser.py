@@ -10,7 +10,14 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .classifier import analyze_packet, TCP_SIGNATURE_PORTS, UDP_SIGNATURE_PORTS
-from .metadata import DomainHintCache, _extract_tls_sni, _extract_http_host, extract_ja4_fingerprint
+from .metadata import (
+    DomainHintCache,
+    _extract_tls_sni,
+    _extract_http_host,
+    extract_ja4_fingerprint,
+    _normalize_domain,
+    _is_trackable_private_ip,
+)
 
 
 @lru_cache(maxsize=1)
@@ -323,9 +330,28 @@ class PacketObservation:
                     app_proto = "TLS"
                     confidence = 1.00
                     signals.append("tls_sni")
-                ja4 = extract_ja4_fingerprint(raw_bytes, transport_protocol="TCP")
+                ja4 = extract_ja4_fingerprint(payload, transport_protocol="TCP")
                 if ja4:
                     signals.append("ja4_fingerprint")
+            elif port == 53 and payload and len(payload) > 2:
+                try:
+                    dns = dpkt.dns.DNS(payload[2:])
+                    if dns.qd:
+                        domain = _normalize_domain(dns.qd[0].name)
+                        signals.append("dns_query")
+                    if domain_cache and dns.an:
+                        for ans in dns.an:
+                            ans_name = getattr(ans, "name", None)
+                            ans_domain = _normalize_domain(ans_name) if ans_name else domain
+                            ans_type = getattr(ans, "type", None)
+                            if ans_type == 1 and hasattr(ans, "rdata") and len(ans.rdata) == 4:
+                                ans_ip = socket.inet_ntoa(ans.rdata)
+                                domain_cache.remember(ans_ip, ans_domain)
+                            elif ans_type == 28 and hasattr(ans, "rdata") and len(ans.rdata) == 16:
+                                ans_ip = socket.inet_ntop(socket.AF_INET6, ans.rdata)
+                                domain_cache.remember(ans_ip, ans_domain)
+                except Exception:
+                    pass
 
         elif proto == "UDP":
             port = dst_port if dst_port in UDP_SIGNATURE_PORTS else src_port
@@ -333,6 +359,47 @@ class PacketObservation:
                 app_proto, service_name = UDP_SIGNATURE_PORTS[port]
                 confidence = 0.90
                 signals.append(f"port_{port}")
+
+            if port == 53 and payload:
+                try:
+                    dns = dpkt.dns.DNS(payload)
+                    if dns.qd:
+                        domain = _normalize_domain(dns.qd[0].name)
+                        signals.append("dns_query")
+                    if domain_cache and dns.an:
+                        for ans in dns.an:
+                            ans_name = getattr(ans, "name", None)
+                            ans_domain = _normalize_domain(ans_name) if ans_name else domain
+                            ans_type = getattr(ans, "type", None)
+                            if ans_type == 1 and hasattr(ans, "rdata") and len(ans.rdata) == 4:
+                                ans_ip = socket.inet_ntoa(ans.rdata)
+                                domain_cache.remember(ans_ip, ans_domain)
+                            elif ans_type == 28 and hasattr(ans, "rdata") and len(ans.rdata) == 16:
+                                ans_ip = socket.inet_ntop(socket.AF_INET6, ans.rdata)
+                                domain_cache.remember(ans_ip, ans_domain)
+                except Exception:
+                    pass
+
+        if domain_cache:
+            remote_ip = None
+            if src_ip and dst_ip:
+                src_p = _is_trackable_private_ip(src_ip)
+                dst_p = _is_trackable_private_ip(dst_ip)
+                if src_p and not dst_p:
+                    remote_ip = dst_ip
+                elif dst_p and not src_p:
+                    remote_ip = src_ip
+                else:
+                    remote_ip = dst_ip
+
+            if remote_ip:
+                if sni:
+                    domain_cache.remember(remote_ip, sni)
+                elif domain is None:
+                    cached_domain = domain_cache.lookup(remote_ip)
+                    if cached_domain:
+                        domain = cached_domain
+                        signals.append("domain_hint")
 
         return cls(
             observed_at=observed_at if observed_at is not None else time.time(),

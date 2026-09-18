@@ -31,7 +31,16 @@ const DataTable = ({
           <thead>
             <tr>
               {columns.map((column) => (
-                <th key={column.key || column.label} className={column.headerClassName || ''}>
+                <th
+                  key={column.key || column.label}
+                  className={column.headerClassName || ''}
+                  style={{
+                    ...(column.width ? { width: column.width } : {}),
+                    ...(column.minWidth ? { minWidth: column.minWidth } : {}),
+                    ...(column.align ? { textAlign: column.align } : {}),
+                    ...(column.headerStyle || {}),
+                  }}
+                >
                   {column.label}
                 </th>
               ))}
@@ -40,7 +49,7 @@ const DataTable = ({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length}>
+                <td colSpan={columns.length || 1}>
                   <div className="nv-empty" style={{ background: 'transparent', boxShadow: 'none', border: '0', padding: '2rem' }}>
                     <div className="nv-empty__icon">
                       <i className="ri-inbox-archive-line"></i>
@@ -60,9 +69,19 @@ const DataTable = ({
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
                   onKeyDown={(event) => handleRowKeyDown(event, row)}
                   tabIndex={onRowClick ? 0 : undefined}
+                  role={onRowClick ? 'button' : undefined}
                 >
                   {columns.map((column) => (
-                    <td key={column.key || column.label} className={column.className || ''}>
+                    <td
+                      key={column.key || column.label}
+                      className={column.className || ''}
+                      style={{
+                        ...(column.width ? { width: column.width } : {}),
+                        ...(column.minWidth ? { minWidth: column.minWidth } : {}),
+                        ...(column.align ? { textAlign: column.align } : {}),
+                        ...(column.style || {}),
+                      }}
+                    >
                       {column.render ? column.render(row, index) : row?.[column.key]}
                     </td>
                   ))}

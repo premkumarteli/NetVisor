@@ -109,11 +109,14 @@
   z-index: 1;
 }
 
-.nv-section:hover,
 .nv-metric:hover {
-  transform: translateY(-4px) scale(1.005);
-  box-shadow: var(--nv-shadow-lg), 0 0 20px color-mix(in srgb, var(--nv-accent), transparent 90%);
+  transform: translateY(-2px);
+  box-shadow: var(--nv-shadow-lg), 0 0 16px color-mix(in srgb, var(--nv-accent), transparent 85%);
   border-color: color-mix(in srgb, var(--nv-accent), transparent 70%);
+}
+
+.nv-section:hover {
+  border-color: color-mix(in srgb, var(--nv-accent), transparent 75%);
 }
 
 .nv-section {
@@ -435,7 +438,10 @@
 }
 
 .nv-table {
+  width: 100%;
   min-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
   font-size: 0.82rem;
 }
 
@@ -443,7 +449,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 0.7rem 0.85rem;
+  padding: 0.75rem 0.85rem;
   border-bottom: 1px solid var(--nv-border);
   background: var(--nv-surface-strong);
   color: var(--nv-text-muted);
@@ -452,12 +458,13 @@
   letter-spacing: 0.08em;
   text-align: left;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .nv-table tbody td {
-  padding: 0.65rem 0.85rem;
+  padding: 0.7rem 0.85rem;
   border-bottom: 1px solid rgba(143, 172, 196, 0.08);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .nv-table tbody tr:last-child td {

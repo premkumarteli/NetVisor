@@ -66,38 +66,17 @@ def _validate_runtime_config() -> None:
     normalized_worker_mode = str(settings.FLOW_WORKER_MODE or "embedded").lower()
     if normalized_worker_mode not in {"embedded", "disabled", "external"}:
         raise RuntimeError("NETVISOR_FLOW_WORKER_MODE must be one of: embedded, disabled, external.")
-    if len(settings.SECRET_KEY or "") < 16:
-        raise RuntimeError("NETVISOR_SECRET_KEY must be set to a strong value before startup.")
-    if len(settings.AGENT_MASTER_KEY or "") < 16:
-        raise RuntimeError("NETVISOR_AGENT_MASTER_KEY must be set to a strong value before startup.")
-    if len(settings.GATEWAY_MASTER_KEY or "") < 16:
-        raise RuntimeError("NETVISOR_GATEWAY_MASTER_KEY must be set to a strong value before startup.")
-    if len(settings.AGENT_API_KEY or "") < 16:
-        raise RuntimeError("AGENT_API_KEY must be set to a strong value before startup.")
-    if len(settings.GATEWAY_API_KEY or "") < 16:
-        raise RuntimeError("GATEWAY_API_KEY must be set to a strong value before startup.")
-    if settings.AGENT_API_KEY == settings.GATEWAY_API_KEY:
-        logger.warning("AGENT_API_KEY and GATEWAY_API_KEY are identical. Use distinct secrets for collection roles.")
-    if settings.AGENT_MASTER_KEY == settings.GATEWAY_MASTER_KEY:
-        logger.warning(
-            "NETVISOR_AGENT_MASTER_KEY and NETVISOR_GATEWAY_MASTER_KEY are identical. Use distinct signing roots."
-        )
     if settings.ALLOW_LAN_HTTP:
         logger.warning(
             "NETVISOR_ALLOW_LAN_HTTP=true weakens transport security and should only be used in an isolated lab environment."
         )
 
-    # Call config.py validate_config (Issue #11: Configuration Validation Gaps)
+    # Unified configuration validation (includes secret strength, entropy, and structural checks)
     validation_errors = settings.validate_config()
     if validation_errors:
         for err in validation_errors:
             logger.error("Configuration validation error: %s", err)
-        raise RuntimeError("Configuration validation failed. See logs for details.")
-    
-    # Issue #11: Validate additional configuration settings
-    config_errors = settings.validate_config()
-    if config_errors:
-        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {err}" for err in config_errors)
+        error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {err}" for err in validation_errors)
         raise RuntimeError(error_msg)
     
 # Socket.IO setup
@@ -105,6 +84,7 @@ p_sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins=_allowed_or
 configure_socket_server(p_sio)
 
 from .services.flow_service import flow_service
+from .services.worker_supervisor import worker_supervisor
 import asyncio
 
 @asynccontextmanager
@@ -142,15 +122,15 @@ async def lifespan(app: FastAPI):
     flow_writer_task = None
     correlation_task = None
     if str(settings.FLOW_WORKER_MODE or "embedded").lower() == "embedded":
-        flow_writer_task = asyncio.create_task(flow_service.flow_writer_worker())
-        logger.info("Embedded flow worker started.")
-        
+        # Register workers with supervisor for automatic restart
+        worker_supervisor.register("flow_writer", flow_service.flow_writer_worker)
         try:
             from .services.correlation_worker import correlation_worker
-            correlation_task = asyncio.create_task(correlation_worker.start())
-            logger.info("Correlation worker started.")
+            worker_supervisor.register("correlation", correlation_worker.start)
         except Exception as e:
-            logger.error("Failed to start correlation worker: %s", e)
+            logger.error("Failed to register correlation worker: %s", e)
+        await worker_supervisor.start_all()
+        logger.info("Workers started under supervisor.")
     else:
         logger.info("Embedded flow worker disabled (mode=%s).", settings.FLOW_WORKER_MODE)
     yield
@@ -160,23 +140,18 @@ async def lifespan(app: FastAPI):
     # 1. Stop schedulers and background tasks first
     broadcast_scheduler.stop()
     event_dispatcher.stop()
+
+    # Stop supervised workers first (sets stop_event and cancels worker tasks cleanly)
+    try:
+        await worker_supervisor.stop_all()
+    except Exception as e:
+        logger.warning("Error stopping supervised workers: %s", e)
+
     try:
         from .services.correlation_worker import correlation_worker
         correlation_worker.stop()
     except Exception:
         pass
-
-    for task in (flow_writer_task, correlation_task):
-        if task:
-            task.cancel()
-
-    # Allow brief window for task cancellation
-    tasks_to_wait = [t for t in (flow_writer_task, correlation_task) if t is not None]
-    if tasks_to_wait:
-        try:
-            await asyncio.wait(tasks_to_wait, timeout=1.0)
-        except Exception:
-            pass
 
     # 2. Shut down thread executors and background threads
     try:

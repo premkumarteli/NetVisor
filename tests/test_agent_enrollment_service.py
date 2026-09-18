@@ -46,23 +46,35 @@ class _EnrollmentCursor:
             self.rowcount = expired
             return
 
-        if normalized.startswith("SELECT * FROM agent_enrollment_requests WHERE agent_id = %s LIMIT 1"):
-            row = self.conn.rows_by_agent.get(params[0])
-            self._result = dict(row) if row else None
-            return
-
-        if normalized.startswith("SELECT * FROM agent_enrollment_requests WHERE request_id = %s LIMIT 1"):
-            row = self.conn.rows_by_request.get(params[0])
-            self._result = dict(row) if row else None
-            return
-
         if normalized.startswith("SELECT * FROM agent_enrollment_requests"):
+            if normalized.startswith("SELECT * FROM agent_enrollment_requests WHERE agent_id = %s"):
+                agent_id = params[0]
+                row = self.conn.rows_by_agent.get(agent_id)
+                org_id = params[1] if "organization_id = %s" in normalized else None
+                if row is not None:
+                    if org_id is None or row["organization_id"] not in {org_id, None}:
+                        row = None
+                self._result = dict(row) if row else None
+                return
+            if normalized.startswith("SELECT * FROM agent_enrollment_requests WHERE request_id = %s"):
+                request_id = params[0]
+                row = self.conn.rows_by_request.get(request_id)
+                org_id = params[1] if "organization_id = %s" in normalized else None
+                if row is not None:
+                    if org_id is None or row["organization_id"] not in {org_id, None}:
+                        row = None
+                self._result = dict(row) if row else None
+                return
             rows = list(self.conn.rows_by_request.values())
             index = 0
             if "organization_id = %s OR organization_id IS NULL" in normalized:
                 org_id = params[index]
                 index += 1
                 rows = [row for row in rows if row["organization_id"] in {org_id, None}]
+            elif "organization_id = %s" in normalized:
+                org_id = params[index]
+                index += 1
+                rows = [] if org_id is None else [row for row in rows if row["organization_id"] in {org_id, None}]
             if "status = %s" in normalized:
                 status = params[index]
                 rows = [row for row in rows if row["status"] == status]
@@ -162,8 +174,9 @@ class _EnrollmentCursor:
 
         if normalized.startswith("UPDATE agent_enrollment_requests SET status = 'approved'"):
             request_id = params[2]
+            org_id = params[3]
             row = self.conn.rows_by_request.get(request_id)
-            if not row:
+            if not row or org_id is None or row["organization_id"] not in {org_id, None}:
                 return
             row["status"] = "approved"
             row["reviewed_by"] = params[0]
@@ -175,8 +188,9 @@ class _EnrollmentCursor:
 
         if normalized.startswith("UPDATE agent_enrollment_requests SET status = 'rejected'"):
             request_id = params[2]
+            org_id = params[3]
             row = self.conn.rows_by_request.get(request_id)
-            if not row:
+            if not row or org_id is None or row["organization_id"] not in {org_id, None}:
                 return
             row["status"] = "rejected"
             row["reviewed_by"] = params[0]
@@ -188,8 +202,9 @@ class _EnrollmentCursor:
 
         if normalized.startswith("UPDATE agent_enrollment_requests SET status = 'revoked'"):
             agent_id = params[2]
+            org_id = params[3]
             row = self.conn.rows_by_agent.get(agent_id)
-            if not row:
+            if not row or org_id is None or row["organization_id"] not in {org_id, None}:
                 return
             row["status"] = "revoked"
             row["reviewed_by"] = params[0]
@@ -299,6 +314,7 @@ def test_record_request_keeps_approved_status_after_review(monkeypatch):
         request_id=created["request"]["request_id"],
         reviewed_by="admin",
         review_reason="Approved after review",
+        organization_id="org-1",
     )
     replay = _create_request(service, conn, agent_id="AGENT-2", hostname="desk-2-new")
 
@@ -324,12 +340,14 @@ def test_reject_and_revoke_requests_update_status(monkeypatch):
         request_id=rejected_created["request"]["request_id"],
         reviewed_by="admin",
         review_reason="Unknown asset",
+        organization_id="org-1",
     )
     revoked = service.revoke_request(
         conn,
         agent_id="AGENT-4",
         reviewed_by="admin",
         review_reason="Asset removed",
+        organization_id="org-1",
     )
 
     assert rejected["status"] == "rejected"

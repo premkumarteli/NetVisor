@@ -133,15 +133,35 @@ def _require_signed_agent_auth(auth_context: dict) -> None:
 
 
 def _resolve_org_id(cursor, requested_org_id: str | None) -> str | None:
+    preferred_default = settings.DEFAULT_ORGANIZATION_ID or "default-org-id"
     if requested_org_id and not settings.SINGLE_ORG_MODE:
-        return requested_org_id
+        cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (requested_org_id,))
+        org_row = cursor.fetchone()
+        if org_row:
+            return org_row["id"]
+
+    cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (preferred_default,))
+    org_row = cursor.fetchone()
+    if org_row:
+        return org_row["id"]
+
+    if requested_org_id:
+        cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (requested_org_id,))
+        org_row = cursor.fetchone()
+        if org_row:
+            return org_row["id"]
+
+    cursor.execute("SELECT id FROM organizations ORDER BY created_at ASC LIMIT 1")
+    org_row = cursor.fetchone()
+    if org_row:
+        return org_row["id"]
 
     cursor.execute("SELECT id FROM organizations LIMIT 1")
     org_row = cursor.fetchone()
     if org_row:
         return org_row["id"]
 
-    return requested_org_id or settings.DEFAULT_ORGANIZATION_ID
+    return requested_org_id or preferred_default
 
 
 def _resolve_source_ip(request: Request) -> str | None:
@@ -269,12 +289,17 @@ async def register_agent(
             ram_usage=float(reg.get("ram_usage") or 0.0),
         )
 
+        reg_device_uuid = reg.get("device_uuid")
+        reg_primary_mac = reg.get("primary_mac")
+        reg_all_macs = reg.get("all_macs")
+        reg_mac = reg_primary_mac or reg.get("device_mac")
+
         managed_device_service.upsert_device(
             conn,
             agent_id=agent_id,
             organization_id=org_id,
             device_ip=reg.get("device_ip"),
-            device_mac=reg.get("device_mac"),
+            device_mac=reg_mac,
             hostname=reg.get("hostname"),
             os_family=reg.get("os"),
         )
@@ -285,11 +310,14 @@ async def register_agent(
             seen_at=reg.get("time"),
             agent_id=agent_id,
             hostname=reg.get("hostname"),
-            mac=reg.get("device_mac"),
+            mac=reg_mac,
             vendor="Managed Agent",
             device_type="Managed Device",
             os_family=reg.get("os"),
             create_if_missing=True,
+            device_uuid=reg_device_uuid,
+            primary_mac=reg_primary_mac,
+            all_macs=reg_all_macs,
         )
 
         audit_service.log_agent_registration(
@@ -358,12 +386,17 @@ async def agent_heartbeat(
                 manifest_hash=hb.get("manifest_hash"),
             )
 
+            hb_device_uuid = hb.get("device_uuid")
+            hb_primary_mac = hb.get("primary_mac")
+            hb_all_macs = hb.get("all_macs")
+            hb_mac = hb_primary_mac or hb.get("device_mac")
+
             managed_device_service.upsert_device(
                 conn,
                 agent_id=agent_id,
                 organization_id=org_id,
                 device_ip=hb.get("device_ip"),
-                device_mac=hb.get("device_mac"),
+                device_mac=hb_mac,
                 hostname=hb.get("hostname"),
                 os_family=hb.get("os"),
             )
@@ -374,11 +407,14 @@ async def agent_heartbeat(
                 seen_at=hb.get("time"),
                 agent_id=agent_id,
                 hostname=hb.get("hostname"),
-                mac=hb.get("device_mac"),
+                mac=hb_mac,
                 vendor="Managed Agent",
                 device_type="Managed Device",
                 os_family=hb.get("os"),
                 create_if_missing=True,
+                device_uuid=hb_device_uuid,
+                primary_mac=hb_primary_mac,
+                all_macs=hb_all_macs,
             )
             conn.commit()
             return _collect_response(

@@ -7,6 +7,7 @@ import socket
 import subprocess
 import time
 import urllib.request
+import uuid
 import xml.etree.ElementTree as ET
 
 import psutil
@@ -76,7 +77,152 @@ HOSTNAME_TYPE_HINTS = {
 }
 
 
+def normalize_mac(val):
+    """
+    Validate and normalize a MAC address string to canonical lowercase 'xx:xx:xx:xx:xx:xx'.
+    Returns None if invalid, loopback, broadcast, or multicast.
+    """
+    if not val or not isinstance(val, str):
+        return None
+    clean = val.strip().lower().replace("-", ":")
+    octets = clean.split(":")
+    if len(octets) != 6:
+        return None
+    for octet in octets:
+        if len(octet) != 2 or not all(c in "0123456789abcdef" for c in octet):
+            return None
+    if clean == "00:00:00:00:00:00" or clean == "ff:ff:ff:ff:ff:ff":
+        return None
+    try:
+        first_byte = int(octets[0], 16)
+        if first_byte & 1 != 0:
+            # IEEE 802 multicast bit
+            return None
+    except ValueError:
+        return None
+    return clean
+
+
+def is_loopback_interface(nic_name):
+    """Determine if a network interface is a loopback adapter."""
+    name = str(nic_name or "").lower()
+    if name in ("lo", "lo0"):
+        return True
+    if re.match(r"^lo\d+$", name):
+        return True
+    if "loopback" in name:
+        return True
+    return False
+
+
+def enumerate_local_interfaces(outbound_ip=None):
+    """
+    Enumerate all valid, active, non-loopback unicast MAC addresses.
+    Correlates against outbound_ip to designate primary_mac (placed first in all_macs).
+    Falls back cleanly when disconnected (e.g. 127.0.0.1) using the first valid MAC in all_macs.
+    Returns: (primary_mac, all_macs)
+    """
+    try:
+        raw_addrs = psutil.net_if_addrs()
+    except Exception as exc:
+        logger.debug("Failed to read net_if_addrs: %s", exc)
+        raw_addrs = {}
+
+    try:
+        raw_stats = psutil.net_if_stats()
+    except Exception as exc:
+        logger.debug("Failed to read net_if_stats: %s", exc)
+        raw_stats = {}
+
+    active_interfaces = {}
+    inactive_interfaces = {}
+
+    for nic_name, addrs in raw_addrs.items():
+        if is_loopback_interface(nic_name):
+            continue
+
+        is_up = True
+        if raw_stats and nic_name in raw_stats:
+            is_up = bool(getattr(raw_stats[nic_name], "isup", True))
+
+        ipv4_list = []
+        mac_list = []
+
+        for addr in addrs:
+            family = getattr(addr, "family", None)
+            address_str = getattr(addr, "address", None)
+            if family == socket.AF_INET:
+                if address_str:
+                    ipv4_list.append(address_str)
+            elif family != getattr(socket, "AF_INET6", 23):
+                norm = normalize_mac(address_str)
+                if norm and norm not in mac_list:
+                    mac_list.append(norm)
+
+        if not mac_list:
+            continue
+
+        is_outbound = bool(outbound_ip and outbound_ip != "127.0.0.1" and outbound_ip in ipv4_list)
+
+        entry = {
+            "nic": nic_name,
+            "is_up": is_up,
+            "is_outbound": is_outbound,
+            "macs": mac_list,
+            "ips": ipv4_list,
+        }
+
+        if is_up or is_outbound:
+            active_interfaces[nic_name] = entry
+        else:
+            inactive_interfaces[nic_name] = entry
+
+    chosen_interfaces = active_interfaces if active_interfaces else inactive_interfaces
+
+    # Find primary MAC correlated with outbound_ip
+    primary_mac = None
+    if outbound_ip and outbound_ip != "127.0.0.1":
+        for nic_name, entry in chosen_interfaces.items():
+            if entry["is_outbound"] and entry["macs"]:
+                primary_mac = entry["macs"][0]
+                break
+
+    # Build all_macs with primary_mac first
+    all_macs = []
+    if primary_mac:
+        all_macs.append(primary_mac)
+
+    for nic_name, entry in chosen_interfaces.items():
+        for mac in entry["macs"]:
+            if mac not in all_macs:
+                all_macs.append(mac)
+
+    if not primary_mac:
+        if all_macs:
+            primary_mac = all_macs[0]
+        else:
+            # Fallback when no MACs discovered
+            try:
+                node = uuid.getnode()
+                legacy = ":".join(f"{(node >> shift) & 0xff:02x}" for shift in range(40, -1, -8))
+                norm_legacy = normalize_mac(legacy)
+                if norm_legacy:
+                    primary_mac = norm_legacy
+                    all_macs = [primary_mac]
+                else:
+                    primary_mac = legacy if legacy else "-"
+                    if primary_mac != "-":
+                        all_macs = [primary_mac]
+            except Exception:
+                primary_mac = "-"
+                all_macs = []
+
+    return primary_mac, all_macs
+
+
 class DeviceDetector:
+    enumerate_local_interfaces = staticmethod(enumerate_local_interfaces)
+    normalize_mac = staticmethod(normalize_mac)
     def __init__(self, network=None, local_ip=None):
         self.network = network
         self.local_ip = local_ip

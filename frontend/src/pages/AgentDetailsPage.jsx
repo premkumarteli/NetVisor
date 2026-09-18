@@ -11,7 +11,12 @@ import { getStatusTone } from '../utils/presentation';
 
 const AgentDetailsPage = () => {
   const { agentId } = useParams();
-  const decodedAgentId = decodeURIComponent(agentId || '');
+  let decodedAgentId = '';
+  try {
+    decodedAgentId = decodeURIComponent(agentId || '');
+  } catch {
+    decodedAgentId = agentId || '';
+  }
   const [agent, setAgent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

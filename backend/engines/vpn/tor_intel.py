@@ -78,7 +78,11 @@ class TorIntelligence:
             else:
                 logger.warning("TorIntelligence: parsed 0 nodes; retaining previous set")
         except Exception as exc:
-            logger.warning("TorIntelligence: fetch failed (%s); using seed list", exc)
+            err_msg = str(exc)
+            if "Failed to resolve" in err_msg or "getaddrinfo failed" in err_msg or "NameResolutionError" in err_msg:
+                logger.info("TorIntelligence: offline or DNS unresolvable; using built-in seed list")
+            else:
+                logger.warning("TorIntelligence: fetch failed (%s); using seed list", exc)
 
     @staticmethod
     def _parse_exit_addresses(text: str) -> list[str]:

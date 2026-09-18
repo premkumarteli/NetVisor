@@ -1,47 +1,47 @@
+import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import StatusBadge from '../V2/StatusBadge';
 import { playHoverSound } from '../../utils/sound';
 import { useImmersion } from '../../immersion/engine/useImmersion';
 
-const adminGroups = [
-  {
-    title: 'Overview',
-    links: [
-      { to: '/dashboard', icon: 'ri-dashboard-3-line', label: 'Dashboard', hint: 'Signal and posture' },
-    ],
-  },
-  {
-    title: 'Inventory',
-    links: [
-      { to: '/devices', icon: 'ri-macbook-line', label: 'Devices', hint: 'Managed and observed assets' },
-      { to: '/apps', icon: 'ri-apps-2-line', label: 'Applications', hint: 'Session coverage by app' },
-      { to: '/agents', icon: 'ri-radar-line', label: 'Fleet', hint: 'Agent heartbeat and health' },
-    ],
-  },
-  {
-    title: 'Investigation',
-    links: [
-      { to: '/dpi', icon: 'ri-navigation-line', label: 'Web Inspection', hint: 'Browser activity and evidence' },
-      { to: '/threats', icon: 'ri-shield-flash-line', label: 'Threats', hint: 'High-risk detections' },
-      { to: '/activity', icon: 'ri-pulse-line', label: 'Traffic', hint: 'Live session activity' },
-    ],
-  },
-  {
-    title: 'Operations',
-    links: [
-      { to: '/logs', icon: 'ri-file-list-3-line', label: 'Logs', hint: 'Flow records and exports' },
-      { to: '/vpn', icon: 'ri-shield-keyhole-line', label: 'VPN', hint: 'Tunnel risk detections' },
-      { to: '/settings/appearance', icon: 'ri-palette-line', label: 'Appearance', hint: 'Workspace modes and fidelity' },
-      { to: '/settings', icon: 'ri-settings-4-line', label: 'Settings', hint: 'System controls' },
-    ],
-  },
-];
-
 const Sidebar = ({ isCollapsed, isMobileOpen, onCloseMobile }) => {
   const { isAdmin } = useAuth();
   const { activeTheme } = useImmersion();
-  const groups = isAdmin ? adminGroups : [];
+
+  const groups = useMemo(() => [
+    {
+      title: 'Overview',
+      links: [
+        { to: '/dashboard', icon: 'ri-dashboard-3-line', label: 'Dashboard', hint: 'Signal and posture' },
+      ],
+    },
+    {
+      title: 'Inventory',
+      links: [
+        { to: '/devices', icon: 'ri-macbook-line', label: 'Devices', hint: 'Managed and observed assets' },
+        { to: '/apps', icon: 'ri-apps-2-line', label: 'Applications', hint: 'Session coverage by app' },
+        { to: '/agents', icon: 'ri-radar-line', label: 'Fleet', hint: 'Agent heartbeat and health' },
+      ],
+    },
+    {
+      title: 'Investigation',
+      links: [
+        { to: '/dpi', icon: 'ri-navigation-line', label: 'Web Inspection', hint: 'Browser activity and evidence' },
+        { to: '/threats', icon: 'ri-shield-flash-line', label: 'Threats', hint: 'High-risk detections' },
+        { to: '/activity', icon: 'ri-pulse-line', label: 'Traffic', hint: 'Live session activity' },
+      ],
+    },
+    {
+      title: 'Operations',
+      links: [
+        { to: '/logs', icon: 'ri-file-list-3-line', label: 'Logs', hint: 'Flow records and exports' },
+        { to: '/vpn', icon: 'ri-shield-keyhole-line', label: 'VPN', hint: 'Tunnel risk detections' },
+        { to: '/settings/appearance', icon: 'ri-palette-line', label: 'Appearance', hint: 'Workspace modes and fidelity' },
+        ...(isAdmin ? [{ to: '/settings', icon: 'ri-settings-4-line', label: 'Settings', hint: 'System controls' }] : []),
+      ],
+    },
+  ], [isAdmin]);
 
   return (
     <nav className={`nv-rail ${isMobileOpen ? 'is-open' : ''}`.trim()} id="sidebar">

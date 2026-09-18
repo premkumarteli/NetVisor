@@ -26,3 +26,13 @@ There is an existing project logbook at `C:\Users\prem\Network\docs\project-logb
 3. **Real Evidence:** "Evidence" must be real: actual test output counts, actual command output, actual file names touched — never "should pass" or "should work" without having actually run it.
 4. **Honest Reporting:** If something was found broken or incomplete during work but not fully fixed in that session, log it honestly under "Problem found" and note the open status — don't mark things done that aren't.
 5. **Automatic Execution:** Do this automatically as part of finishing each task, without being asked. At the end of your response, always mention: `"Logged to project-logbook.md."`
+
+## Git Commit & Push Rule
+
+Whenever you complete a major change, fix bugs, or implement new features:
+1. Ensure all relevant automated tests pass.
+2. Stage modified and newly created project files (strictly excluding sensitive files like `.env`).
+3. Commit with a clear, descriptive conventional commit message summarizing the changes.
+4. Push the branch to GitHub (`origin master` or the current active branch).
+5. Report the commit hash and push confirmation in your final response.
+

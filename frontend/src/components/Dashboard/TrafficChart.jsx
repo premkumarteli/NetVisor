@@ -128,7 +128,7 @@ const TrafficChart = ({ data, resolution = 'hour', height = 260 }) => {
     const tipEl = tooltipRef.current;
     const tipX = e.clientX - rect.left;
     tipEl.style.left = `${tipX > rect.width * 0.7 ? tipX - 140 : tipX + 14}px`;
-    tipEl.style.top = `${e.clientY - rect.top - 52}px`;
+    tipEl.style.top = `${Math.max(8, e.clientY - rect.top - 52)}px`;
     tipEl.style.display = 'block';
     
     const timeLabel = formattedLabels[clamped] || 'Active Point';
@@ -313,7 +313,7 @@ const TrafficChart = ({ data, resolution = 'hour', height = 260 }) => {
         </svg>
 
         {/* X-axis labels */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: `0 ${PAD.right}px` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: `0 ${(PAD.right / VIEWBOX_W * 100).toFixed(2)}% 0 ${(PAD.left / VIEWBOX_W * 100).toFixed(2)}%` }}>
           {xAxisIdxs.map((idx) => (
             <span key={idx} style={{ fontSize: 10, color: textMuted, fontFamily: 'monospace' }}>
               {formattedLabels[idx]}

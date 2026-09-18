@@ -138,15 +138,35 @@ def _require_signed_gateway_auth(auth_context: dict) -> None:
 
 
 def _resolve_org_id(cursor, requested_org_id: str | None) -> str | None:
+    preferred_default = settings.DEFAULT_ORGANIZATION_ID or "default-org-id"
     if requested_org_id and not settings.SINGLE_ORG_MODE:
-        return requested_org_id
+        cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (requested_org_id,))
+        org_row = cursor.fetchone()
+        if org_row:
+            return org_row["id"]
+
+    cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (preferred_default,))
+    org_row = cursor.fetchone()
+    if org_row:
+        return org_row["id"]
+
+    if requested_org_id:
+        cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", (requested_org_id,))
+        org_row = cursor.fetchone()
+        if org_row:
+            return org_row["id"]
+
+    cursor.execute("SELECT id FROM organizations ORDER BY created_at ASC LIMIT 1")
+    org_row = cursor.fetchone()
+    if org_row:
+        return org_row["id"]
 
     cursor.execute("SELECT id FROM organizations LIMIT 1")
     org_row = cursor.fetchone()
     if org_row:
         return org_row["id"]
 
-    return requested_org_id or settings.DEFAULT_ORGANIZATION_ID
+    return requested_org_id or preferred_default
 
 
 def _lookup_gateway_organization_id(cursor, gateway_id: str) -> str | None:

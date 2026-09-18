@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { agentService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
@@ -408,6 +408,34 @@ const AgentMonitoringPage = () => {
           <div className="nv-table__meta">
             {row.enrollment_attempt_count > 0 ? `${row.enrollment_attempt_count} request${row.enrollment_attempt_count === 1 ? '' : 's'}` : 'Fleet controlled'}
           </div>
+          {['pending_review', 'pending'].includes(String(row.enrollment_status).toLowerCase()) ? (
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+              <button
+                type="button"
+                className="nv-button nv-button--primary"
+                style={{ width: 'fit-content', padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleEnrollmentAction(row.enrollment_request_id || row.agent_id, 'approve');
+                }}
+                disabled={actionLoading === `approve:${row.enrollment_request_id || row.agent_id}` || actionLoading === `reject:${row.enrollment_request_id || row.agent_id}`}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className="nv-button nv-button--danger"
+                style={{ width: 'fit-content', padding: '0.35rem 0.65rem', fontSize: '0.75rem' }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleEnrollmentAction(row.enrollment_request_id || row.agent_id, 'reject');
+                }}
+                disabled={actionLoading === `approve:${row.enrollment_request_id || row.agent_id}` || actionLoading === `reject:${row.enrollment_request_id || row.agent_id}`}
+              >
+                Reject
+              </button>
+            </div>
+          ) : null}
           {row.enrollment_status === 'approved' ? (
             <button
               type="button"

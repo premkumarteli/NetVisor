@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { systemService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useWebSocket } from '../hooks/useWebSocket';
 import PageHeader from '../components/V2/PageHeader';
 import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
 import DataTable from '../components/V2/DataTable';
 import StatusBadge from '../components/V2/StatusBadge';
 import ThreatDrawer from '../components/V2/ThreatDrawer';
+import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatUtcTimestampToLocal } from '../utils/time';
 import { getRiskTone } from '../utils/presentation';
 
@@ -40,6 +42,26 @@ const VPNPage = () => {
   }, [fetchAlerts]);
 
   useVisibilityPolling(() => fetchAlerts({ background: true }), 15000);
+
+  const handleAlertEvent = useCallback((alert) => {
+    if (!alert) return;
+    const isVpn = Boolean(
+      alert.breakdown?.vpn_provider
+      || alert.breakdown?.vpn_reason
+      || alert.detection_type === 'vpn'
+      || (alert.message && alert.message.toLowerCase().includes('vpn'))
+      || (alert.rule_name && alert.rule_name.toLowerCase().includes('vpn'))
+    );
+    if (!isVpn) return;
+    setAlerts((prev) => {
+      const alertId = alert.id || alert.alert_id || alert.flow_id;
+      const exists = prev.some((a) => (a.id || a.alert_id || a.flow_id) === alertId);
+      if (exists) return prev;
+      return [alert, ...prev.slice(0, 99)];
+    });
+  }, []);
+
+  useWebSocket('alert_event', handleAlertEvent);
 
   const highRiskCount = useMemo(
     () => alerts.filter((entry) => Number(entry.risk_score) >= 70).length,
@@ -109,14 +131,18 @@ const VPNPage = () => {
 
       <SectionCard title="VPN & Proxy Alerts" caption="Operational Queue" className="nv-section--balanced">
         <div className="nv-scroll-region nv-scroll-region--xl">
-          <DataTable
-            columns={columns}
-            rows={loading ? [] : alerts}
-            rowKey={(row, index) => row.id || `${row.timestamp}-${index}`}
-            onRowClick={(row) => setSelectedAlert(row)}
-            emptyTitle={loading ? 'Loading alerts' : 'No active VPN threats detected'}
-            emptyDescription={loading ? 'Collecting unresolved VPN and proxy detections.' : 'The anomaly engine is monitoring, but there are no unresolved VPN alerts in the current window.'}
-          />
+          {loading ? (
+            <TableSkeleton rows={6} />
+          ) : (
+            <DataTable
+              columns={columns}
+              rows={alerts}
+              rowKey={(row, index) => row.id || `${row.timestamp}-${index}`}
+              onRowClick={(row) => setSelectedAlert(row)}
+              emptyTitle="No active VPN threats detected"
+              emptyDescription="The anomaly engine is monitoring, but there are no unresolved VPN alerts in the current window."
+            />
+          )}
         </div>
       </SectionCard>
 

@@ -16,7 +16,7 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    if (error.response && error.response.status === 401) {
       window.dispatchEvent(new CustomEvent("netvisor:auth-expired", { detail: error.response }));
     }
     return Promise.reject(error);

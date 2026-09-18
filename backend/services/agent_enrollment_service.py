@@ -131,8 +131,8 @@ class AgentEnrollmentService:
                 WHERE agent_id = %s
             """
             params = [agent_id]
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                query += " AND organization_id = %s"
+            if organization_id:
+                query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
             query += " LIMIT 1"
             cursor.execute(query, tuple(params))
@@ -149,8 +149,8 @@ class AgentEnrollmentService:
                 WHERE request_id = %s
             """
             params = [request_id]
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                query += " AND organization_id = %s"
+            if organization_id:
+                query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
             query += " LIMIT 1"
             cursor.execute(query, tuple(params))
@@ -223,15 +223,16 @@ class AgentEnrollmentService:
 
         cursor = db_conn.cursor(dictionary=True)
         try:
-            cursor.execute(
-                """
+            fetch_query = """
                 SELECT *
                 FROM agent_enrollment_requests
                 WHERE agent_id = %s
-                LIMIT 1
-                """,
-                (normalized_agent_id,),
-            )
+            """
+            fetch_params: list = [normalized_agent_id]
+            fetch_query += " AND organization_id = %s"
+            fetch_params.append(organization_id)
+            fetch_query += " LIMIT 1"
+            cursor.execute(fetch_query, tuple(fetch_params))
             existing = cursor.fetchone()
             previous_status = str(existing.get("status") or "") if existing else None
             status_changed = False
@@ -338,7 +339,7 @@ class AgentEnrollmentService:
                 )
 
             db_conn.commit()
-            current = self._fetch_request_by_agent(db_conn, agent_id=normalized_agent_id)
+            current = self._fetch_request_by_agent(db_conn, agent_id=normalized_agent_id, organization_id=organization_id)
             return {
                 "request": self._row_to_request(current),
                 "status_changed": status_changed,
@@ -364,9 +365,12 @@ class AgentEnrollmentService:
                 FROM agent_enrollment_requests
             """
             where_clauses: list[str] = []
-            if organization_id and not settings.SINGLE_ORG_MODE:
+            if organization_id:
                 where_clauses.append("(organization_id = %s OR organization_id IS NULL)")
                 params.append(organization_id)
+            else:
+                where_clauses.append("organization_id = %s")
+                params.append(None)
             if status:
                 where_clauses.append("status = %s")
                 params.append(status)
@@ -397,11 +401,11 @@ class AgentEnrollmentService:
                     reviewed_at = UTC_TIMESTAMP(),
                     review_reason = %s,
                     expires_at = NULL
-                WHERE request_id = %s
+                WHERE (request_id = %s OR agent_id = %s)
             """
-            params = [reviewed_by or "system", review_reason, request_id]
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                query += " AND organization_id = %s"
+            params = [reviewed_by or "system", review_reason, request_id, request_id]
+            if organization_id:
+                query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
             cursor.execute(query, tuple(params))
             if not cursor.rowcount:
@@ -430,11 +434,11 @@ class AgentEnrollmentService:
                     reviewed_at = UTC_TIMESTAMP(),
                     review_reason = %s,
                     expires_at = NULL
-                WHERE request_id = %s
+                WHERE (request_id = %s OR agent_id = %s)
             """
-            params = [reviewed_by or "system", review_reason, request_id]
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                query += " AND organization_id = %s"
+            params = [reviewed_by or "system", review_reason, request_id, request_id]
+            if organization_id:
+                query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
             cursor.execute(query, tuple(params))
             if not cursor.rowcount:
@@ -466,9 +470,8 @@ class AgentEnrollmentService:
                 WHERE agent_id = %s
             """
             params = [reviewed_by or "system", review_reason, agent_id]
-            if organization_id and not settings.SINGLE_ORG_MODE:
-                query += " AND organization_id = %s"
-                params.append(organization_id)
+            query += " AND organization_id = %s"
+            params.append(organization_id)
             cursor.execute(query, tuple(params))
             if not cursor.rowcount:
                 raise LookupError("Enrollment request not found or not authorized")
@@ -507,7 +510,10 @@ class AgentEnrollmentService:
 
     def get_request_by_id(self, db_conn, *, request_id: str, organization_id: str | None = None) -> dict | None:
         self.ensure_schema(db_conn)
-        return self._row_to_request(self._fetch_request_by_id(db_conn, request_id=request_id, organization_id=organization_id))
+        row = self._fetch_request_by_id(db_conn, request_id=request_id, organization_id=organization_id)
+        if not row:
+            row = self._fetch_request_by_agent(db_conn, agent_id=request_id, organization_id=organization_id)
+        return self._row_to_request(row)
 
     def get_request_by_agent_id(self, db_conn, *, agent_id: str, organization_id: str | None = None) -> dict | None:
         self.ensure_schema(db_conn)

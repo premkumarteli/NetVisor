@@ -257,13 +257,44 @@ CREATE TABLE IF NOT EXISTS devices (
     is_online BOOLEAN DEFAULT TRUE,
     organization_id CHAR(36),
     agent_id VARCHAR(100),
+    device_uuid CHAR(36) NULL,
     first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_mac_org (mac, organization_id),
+    UNIQUE KEY uq_device_uuid_org (device_uuid, organization_id),
     INDEX idx_devices_ip (ip),
     INDEX idx_devices_org_last_seen (organization_id, last_seen),
     INDEX idx_devices_agent_org_last_seen (agent_id, organization_id, last_seen),
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS device_mac_addresses (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    device_uuid CHAR(36) NOT NULL,
+    mac VARCHAR(20) NOT NULL,
+    organization_id CHAR(36) NULL,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    consecutive_misses INT NOT NULL DEFAULT 0,
+    UNIQUE KEY uq_device_mac_org (mac, organization_id),
+    INDEX idx_dma_lookup (organization_id, mac, last_seen),
+    INDEX idx_dma_uuid (device_uuid, organization_id),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS device_identity_conflicts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    organization_id CHAR(36) NULL,
+    existing_device_uuid CHAR(36) NOT NULL,
+    incoming_device_uuid CHAR(36) NOT NULL,
+    conflict_mac VARCHAR(20) NOT NULL,
+    consecutive_heartbeats INT NOT NULL DEFAULT 1,
+    first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    UNIQUE KEY uq_conflict_pair (organization_id, existing_device_uuid, incoming_device_uuid, conflict_mac),
+    INDEX idx_conflict_lookup (organization_id, incoming_device_uuid, status),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS device_ip_history (

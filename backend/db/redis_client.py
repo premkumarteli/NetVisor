@@ -16,14 +16,19 @@ def get_redis_pool() -> redis.ConnectionPool:
         with _redis_lock:
             if _redis_pool is None:
                 logger.info("Initializing Redis connection pool: %s:%s", settings.REDIS_HOST, settings.REDIS_PORT)
-                _redis_pool = redis.ConnectionPool(
-                    host=settings.REDIS_HOST,
-                    port=settings.REDIS_PORT,
-                    decode_responses=True,  # Decode bytes to strings automatically
-                    max_connections=50,
-                    socket_connect_timeout=0.5,
-                    socket_timeout=5.0,
-                )
+                pool_kwargs = {
+                    "host": settings.REDIS_HOST,
+                    "port": settings.REDIS_PORT,
+                    "decode_responses": True,
+                    "max_connections": 50,
+                    "socket_connect_timeout": 0.5,
+                    "socket_timeout": 5.0,
+                }
+                if settings.REDIS_PASSWORD:
+                    pool_kwargs["password"] = settings.REDIS_PASSWORD
+                if settings.REDIS_DB:
+                    pool_kwargs["db"] = settings.REDIS_DB
+                _redis_pool = redis.ConnectionPool(**pool_kwargs)
     return _redis_pool
 
 def get_redis_connection() -> redis.Redis:

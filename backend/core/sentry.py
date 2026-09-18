@@ -17,6 +17,9 @@ except ImportError:
 logger = logging.getLogger("netvisor.sentry")
 
 
+import socket
+from urllib.parse import urlparse
+
 DEFAULT_SENTRY_DSN = "https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224"
 
 
@@ -24,6 +27,11 @@ def init_sentry(dsn: str | None = None, environment: str = "production") -> bool
     """Initialize Sentry Error Monitoring and Tracing SDK for NetVisor."""
     if not HAS_SENTRY:
         logger.info("sentry_sdk package not installed. Sentry monitoring disabled.")
+        return False
+
+    enabled = os.getenv("NETVISOR_ENABLE_SENTRY", "true").strip().lower()
+    if enabled in ("false", "0", "disabled", "no"):
+        logger.info("Sentry monitoring explicitly disabled via NETVISOR_ENABLE_SENTRY.")
         return False
 
     target_dsn = (
@@ -36,6 +44,22 @@ def init_sentry(dsn: str | None = None, environment: str = "production") -> bool
     if not target_dsn or str(target_dsn).strip().lower() in ("false", "0", "disabled", "none", ""):
         logger.info("Sentry DSN not configured or disabled.")
         return False
+
+    # Pre-flight DNS resolution to ensure offline/local environments fail fast
+    # without repetitive urllib3 connection pool retry warnings.
+    try:
+        parsed = urlparse(target_dsn)
+        if parsed.hostname:
+            socket.getaddrinfo(parsed.hostname, 443, proto=socket.IPPROTO_TCP)
+    except Exception:
+        logger.info(
+            "[*] Sentry endpoint '%s' unreachable (DNS resolution failed); Sentry monitoring disabled.",
+            parsed.hostname if "parsed" in locals() and parsed.hostname else target_dsn,
+        )
+        return False
+
+    # Suppress verbose urllib3 retry warnings for external telemetry
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 
     try:
         env_name = os.getenv("NETVISOR_SENTRY_ENVIRONMENT") or os.getenv("NETVISOR_ENVIRONMENT") or environment

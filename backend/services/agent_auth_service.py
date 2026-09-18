@@ -118,13 +118,16 @@ class AgentAuthService:
         return self._row_to_credential(row) if row else None
 
     def _next_key_version(self, db_conn, *, agent_id: str) -> int:
+        """Get next key version atomically to prevent race conditions."""
         cursor = db_conn.cursor(dictionary=True)
         try:
+            # Use SELECT ... FOR UPDATE to lock the agent's credential rows
             cursor.execute(
                 """
                 SELECT COALESCE(MAX(key_version), 0) AS max_version
                 FROM agent_credentials
                 WHERE agent_id = %s
+                FOR UPDATE
                 """,
                 (agent_id,),
             )

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { systemService } from '../services/api';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
+import { useWebSocket } from '../hooks/useWebSocket';
 import PageHeader from '../components/V2/PageHeader';
 import SectionCard from '../components/V2/SectionCard';
 import MetricCard from '../components/V2/MetricCard';
@@ -53,6 +54,21 @@ const ThreatsPage = () => {
   }, [fetchThreats]);
 
   useVisibilityPolling(() => fetchThreats({ background: true }), 15000);
+
+  const handleAlertEvent = useCallback((alert) => {
+    if (!alert) return;
+    const sev = String(alert.severity || '').toUpperCase();
+    if (sev !== 'HIGH' && sev !== 'CRITICAL') return;
+    setThreats((prev) => {
+      const alertId = alert.id || alert.alert_id || alert.flow_id;
+      const exists = prev.some((t) => (t.id || t.alert_id || t.flow_id) === alertId);
+      if (exists) return prev;
+      return [alert, ...prev.slice(0, 99)];
+    });
+    setThreatCount((prev) => prev + 1);
+  }, []);
+
+  useWebSocket('alert_event', handleAlertEvent);
 
   const criticalCount = useMemo(
     () => threats.filter((entry) => entry.severity === 'CRITICAL').length,

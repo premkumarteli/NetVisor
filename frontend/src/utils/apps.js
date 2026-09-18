@@ -68,6 +68,18 @@ const APP_VISUALS = {
     background: 'rgba(129, 140, 248, 0.16)',
     label: 'GM',
   },
+  Antigravity: {
+    icon: 'ri-terminal-box-fill',
+    accent: '#a855f7',
+    background: 'rgba(168, 85, 247, 0.16)',
+    label: 'AG',
+  },
+  Docker: {
+    icon: 'ri-server-fill',
+    accent: '#2496ed',
+    background: 'rgba(36, 150, 237, 0.16)',
+    label: 'DK',
+  },
   Sentry: {
     icon: 'ri-shield-check-line',
     accent: '#6366f1',

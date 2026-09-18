@@ -11,7 +11,9 @@ import ErrorState from '../components/V2/ErrorState';
 import { TableSkeleton } from '../components/UI/Skeletons';
 import { formatByteCount, getRiskTone, parseByteValue } from '../utils/presentation';
 import EvidenceDrawer from '../components/V2/EvidenceDrawer';
-import { formatCompact, resolveSeverityCount, SceneMetricCard, SeverityCard } from '../components/Dashboard/DashboardMetrics';
+import { SceneMetricCard, SeverityCard } from '../components/Dashboard/DashboardMetrics';
+import { formatCompact, resolveSeverityCount } from '../utils/dashboard';
+
 import { ThreatFeedItem, SystemStatusRow } from '../components/Dashboard/DashboardThreatFeed';
 import { exportToCsv } from '../utils/exportUtils';
 import { translateDestination } from '../utils/intelTranslator';
@@ -136,6 +138,9 @@ const DashboardPage = () => {
             cleanTs = cleanTs.replace(' ', 'T') + 'Z';
           }
           const d = new Date(cleanTs);
+          if (Number.isNaN(d.getTime())) {
+            return currentHistory;
+          }
           d.setMilliseconds(0);
           const alignedIso = d.toISOString();
 
@@ -162,8 +167,24 @@ const DashboardPage = () => {
     setAlerts((prev) => [alert, ...prev.slice(0, 11)]);
   }, []);
 
+  const handleDashboardUpdate = useCallback((payload) => {
+    if (!payload) return;
+    if (payload.stats && typeof payload.stats === 'object') {
+      setStats((prev) => ({ ...prev, ...payload.stats }));
+    }
+    if (Array.isArray(payload.recent_alerts) && payload.recent_alerts.length > 0) {
+      setAlerts((prev) => {
+        const incoming = payload.recent_alerts;
+        const incomingIds = new Set(incoming.map((a) => a.id || a.alert_id));
+        const kept = prev.filter((a) => !incomingIds.has(a.id || a.alert_id));
+        return [...incoming, ...kept].slice(0, 12);
+      });
+    }
+  }, []);
+
   const { status: wsStatus } = useWebSocket('packet_event', handlePacketEvent);
   useWebSocket('alert_event', handleAlertEvent);
+  useWebSocket('dashboard_update', handleDashboardUpdate);
 
   const trafficChartData = useMemo(() => {
     const defaultLabels = [];

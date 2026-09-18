@@ -17,6 +17,9 @@ class KerberoastingDetector:
     2. High volume of TGS-REQ ticket requests targeting multiple Service Principal Names (SPNs) from a single host.
     """
 
+    _MAX_REQUESTS_PER_SRC = 200
+    _MAX_SRCS = 1000
+
     def __init__(self, config: EngineConfig | None = None) -> None:
         self.config = config if config is not None else EngineConfig()
         # State: src_ip -> list of (timestamp, spn, etype)
@@ -29,7 +32,10 @@ class KerberoastingDetector:
 
     def analyze(self, flow: Any, observed_at: datetime) -> Optional[Finding]:
         src_ip = get_flow_field(flow, "src_ip")
-        dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        try:
+            dst_port = int(get_flow_field(flow, "dst_port", 0) or 0)
+        except (ValueError, TypeError):
+            dst_port = 0
         app_proto = str(get_flow_field(flow, "application_protocol", "") or "").upper()
         svc_name = str(get_flow_field(flow, "service_name", "") or "").upper()
         signals = get_flow_field(flow, "analysis_signals") or ()
@@ -54,11 +60,25 @@ class KerberoastingDetector:
             cutoff = ts_sec - 600.0
             self._tgs_requests[src_ip] = [r for r in self._tgs_requests[src_ip] if r["ts"] >= cutoff]
 
+            # Cap total tracked sources to prevent unbounded key growth
+            if len(self._tgs_requests) >= self._MAX_SRCS and src_ip not in self._tgs_requests:
+                oldest_src = min(
+                    (k for k in self._tgs_requests if self._tgs_requests[k]),
+                    key=lambda k: self._tgs_requests[k][0]["ts"],
+                    default=None,
+                )
+                if oldest_src is not None:
+                    self._tgs_requests.pop(oldest_src, None)
+
             self._tgs_requests[src_ip].append({
                 "ts": ts_sec,
                 "spn": spn,
                 "weak_etype": is_weak_etype,
             })
+
+            # Cap per-source entries to prevent unbounded list growth
+            if len(self._tgs_requests[src_ip]) > self._MAX_REQUESTS_PER_SRC:
+                self._tgs_requests[src_ip] = self._tgs_requests[src_ip][-self._MAX_REQUESTS_PER_SRC:]
 
             requests = self._tgs_requests[src_ip]
             unique_spns = {r["spn"] for r in requests if r["spn"] != "krbtgt"}

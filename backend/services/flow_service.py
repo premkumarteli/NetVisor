@@ -24,6 +24,15 @@ from .managed_device_service import managed_device_service
 from .metrics_service import metrics_service
 from .session_service import session_service
 from .system_service import system_service
+from ..middleware.prometheus_middleware import (
+    FLOWS_DROPPED,
+    QUEUE_OVERFLOW_TOTAL,
+    DATABASE_OP_LATENCY,
+    INGESTION_QUEUE_LAG,
+    QUEUE_DEPTH,
+    DETECTION_LATENCY,
+    ALERT_WRITE_LATENCY,
+)
 
 logger = logging.getLogger("netvisor.services.flow")
 
@@ -216,6 +225,8 @@ class FlowService:
         metrics_service.set_gauge("flow_deadletter_batches", counts["deadletter_batches"])
         metrics_service.set_gauge("flow_oldest_pending_age_seconds", counts["oldest_pending_age_seconds"])
         metrics_service.set_gauge("flow_active_workers", counts["active_workers"])
+        INGESTION_QUEUE_LAG.set(counts["pending_flows"])
+        QUEUE_DEPTH.set(counts["pending_flows"])
 
     def metrics_snapshot(self) -> dict:
         self._refresh_queue_depth()
@@ -595,6 +606,8 @@ class FlowService:
             self._set_metric("last_error", "enqueue_backpressure")
             metrics_service.increment("flow_backpressure_rejections_total")
             metrics_service.increment("flow_dropped_flows_total", amount=len(payloads), reason="backpressure")
+            FLOWS_DROPPED.inc(len(payloads))
+            QUEUE_OVERFLOW_TOTAL.inc()
             self._refresh_queue_depth(conn)
             raise
         except mysql.connector.Error as exc:
@@ -614,6 +627,7 @@ class FlowService:
             self._set_metric("last_error", "enqueue_failure")
             metrics_service.increment("flow_dropped_flows_total", amount=len(payloads), reason="enqueue_failure")
             metrics_service.increment("flow_enqueue_failures_total")
+            FLOWS_DROPPED.inc(len(payloads))
             self._refresh_queue_depth(conn)
             return False
         except Exception:
@@ -624,6 +638,7 @@ class FlowService:
             self._set_metric("last_error", "enqueue_failure")
             metrics_service.increment("flow_dropped_flows_total", amount=len(payloads), reason="enqueue_failure")
             metrics_service.increment("flow_enqueue_failures_total")
+            FLOWS_DROPPED.inc(len(payloads))
             self._refresh_queue_depth(conn)
             return False
         finally:
@@ -1318,7 +1333,9 @@ class FlowService:
             context = dataclasses.asdict(sanitized)
             
             # Execute modular engine registry selective analysis
+            det_start = time.perf_counter()
             result = self.registry.analyze_selective(context, ["threat", "vpn", "application", "risk", "ai"])
+            DETECTION_LATENCY.observe(time.perf_counter() - det_start)
             
             # Extract the overall risk score and severity from the risk_summary finding
             risk_summary = next(
@@ -1521,6 +1538,7 @@ class FlowService:
                     should_emit_alert = not self._recent_alert_exists(cursor, org_id, sanitized, report)
 
             if should_emit_alert:
+                alert_write_start = time.perf_counter()
                 cursor.execute(
                     """
                     INSERT INTO alerts (organization_id, device_ip, severity, risk_score, breakdown_json)
@@ -1534,6 +1552,8 @@ class FlowService:
                         json.dumps(breakdown),
                     ),
                 )
+                alert_write_end = time.perf_counter()
+                ALERT_WRITE_LATENCY.observe(alert_write_end - alert_write_start)
                 alert_id = getattr(cursor, "lastrowid", None)
                 
                 # Update in-memory live telemetry store
@@ -1768,30 +1788,55 @@ class FlowService:
 
         # Bulk insert to ClickHouse (Milestone 2 Dual-Write)
         if ch_rows:
-            try:
-                from backend.db.clickhouse_client import get_clickhouse_client
-                ch_client = get_clickhouse_client()
-                ch_columns = [
-                    "organization_id", "src_ip", "dst_ip", "src_port", "dst_port",
-                    "protocol", "start_time", "last_seen", "packet_count", "byte_count",
-                    "duration", "average_packet_size", "domain", "sni", "src_mac", "dst_mac",
-                    "network_scope", "flow_direction", "internal_device_ip", "external_endpoint_ip",
-                    "session_id", "application", "agent_id", "analysis_source", "analysis_confidence",
-                    "analysis_signals_json", "ingest_hash"
-                ]
-                start_ch = time.perf_counter()
-                ch_client.insert("flow_logs", ch_rows, column_names=ch_columns)
-                ch_duration = time.perf_counter() - start_ch
-                
-                # Expose metrics
+            ch_max_retries = 3
+            ch_retry_delay = 0.1  # seconds, doubles each retry
+            for ch_attempt in range(ch_max_retries):
                 try:
-                    from backend.middleware.prometheus_middleware import CLICKHOUSE_INSERT_LATENCY, CLICKHOUSE_INSERT_ROWS
-                    CLICKHOUSE_INSERT_LATENCY.observe(ch_duration)
-                    CLICKHOUSE_INSERT_ROWS.inc(len(ch_rows))
+                    from backend.db.clickhouse_client import get_clickhouse_client
+                    ch_client = get_clickhouse_client()
+                    ch_columns = [
+                        "organization_id", "src_ip", "dst_ip", "src_port", "dst_port",
+                        "protocol", "start_time", "last_seen", "packet_count", "byte_count",
+                        "duration", "average_packet_size", "domain", "sni", "src_mac", "dst_mac",
+                        "network_scope", "flow_direction", "internal_device_ip", "external_endpoint_ip",
+                        "session_id", "application", "agent_id", "analysis_source", "analysis_confidence",
+                        "analysis_signals_json", "ingest_hash"
+                    ]
+                    start_ch = time.perf_counter()
+                    ch_client.insert("flow_logs", ch_rows, column_names=ch_columns)
+                    ch_duration = time.perf_counter() - start_ch
+
+                    # Expose metrics
+                    try:
+                        from backend.middleware.prometheus_middleware import CLICKHOUSE_INSERT_LATENCY, CLICKHOUSE_INSERT_ROWS
+                        CLICKHOUSE_INSERT_LATENCY.observe(ch_duration)
+                        CLICKHOUSE_INSERT_ROWS.inc(len(ch_rows))
+                    except Exception:
+                        pass
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    if ch_attempt < ch_max_retries - 1:
+                        delay = ch_retry_delay * (2 ** ch_attempt)
+                        logger.warning(
+                            "ClickHouse bulk insert failed (attempt %d/%d), retrying in %.1fs: %s",
+                            ch_attempt + 1, ch_max_retries, delay, e,
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.warning(
+                            "ClickHouse bulk insert failed after %d attempts: %s",
+                            ch_max_retries, e,
+                        )
+                        try:
+                            from backend.middleware.prometheus_middleware import CLICKHOUSE_FAILED_WRITES
+                            CLICKHOUSE_FAILED_WRITES.inc()
+                        except Exception:
+                            pass
+                try:
+                    from backend.middleware.prometheus_middleware import CLICKHOUSE_FAILED_WRITES
+                    CLICKHOUSE_FAILED_WRITES.inc()
                 except Exception:
                     pass
-            except Exception as e:
-                logger.warning("ClickHouse bulk insert failed: %s", e)
 
         return events_to_emit
 
@@ -1817,8 +1862,10 @@ class FlowService:
                     return []
 
                 cursor = conn.cursor(dictionary=True)
+                db_start = time.perf_counter()
                 events_to_emit = self._persist_batch_on_connection(conn, cursor, batch)
                 conn.commit()
+                DATABASE_OP_LATENCY.observe(time.perf_counter() - db_start)
                 return events_to_emit
             except mysql.connector.Error as err:
                 if conn:

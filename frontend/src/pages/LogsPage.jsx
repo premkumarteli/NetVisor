@@ -36,8 +36,8 @@ const LogsPage = () => {
         ...Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '')),
       };
       const response = await systemService.getFlowLogs(params);
-      setLogs(response.data.results || []);
-      setTotal(response.data.total || 0);
+      setLogs(response.data?.results || (Array.isArray(response.data) ? response.data : []));
+      setTotal(response.data?.total || (Array.isArray(response.data) ? response.data.length : 0));
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
