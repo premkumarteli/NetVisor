@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -44,6 +46,9 @@ def _connect_with_retry():
 
 def main() -> None:
     project_root = Path(__file__).resolve().parents[1]
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+
     sql_path = project_root / "infra" / "database" / "init.sql"
     if not sql_path.exists():
         sql_path = project_root / "database" / "init.sql"
@@ -58,6 +63,35 @@ def main() -> None:
     finally:
         cursor.close()
         conn.close()
+
+    # Apply all migration scripts
+    migrations_dir = project_root / "infra" / "database" / "migrations"
+    if migrations_dir.exists():
+        migration_files = sorted(migrations_dir.glob("apply_*.py"))
+        for mig_file in migration_files:
+            spec = importlib.util.spec_from_file_location(mig_file.stem, mig_file)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                if hasattr(mod, "main"):
+                    print(f"Running migration {mig_file.name}...")
+                    mod.main()
+
+    from backend.db.session import (
+        ensure_bootstrap_state,
+        ensure_security_schema,
+        get_db_connection,
+        require_runtime_schema,
+    )
+
+    verify_conn = get_db_connection()
+    try:
+        ensure_security_schema(verify_conn)
+        ensure_bootstrap_state()
+        status = require_runtime_schema(verify_conn, force=True)
+        print("Database initialized and runtime schema verified successfully:", status)
+    finally:
+        verify_conn.close()
 
 
 if __name__ == "__main__":

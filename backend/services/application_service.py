@@ -470,14 +470,14 @@ class ApplicationService:
         8. ASN Fallback
         9. Transport hint / Unknown
         """
-        # 1. Malicious JA4
+        # 1. Malicious or Suspicious JA4
         fingerprint = (
             self._row_value(row, "ja4")
             or self._row_value(row, "ja4_fingerprint")
             or self._row_value(row, "tls_fingerprint")
         )
         fp_info = self.classify_by_tls_fingerprint(fingerprint)
-        if fp_info and fp_info.get("is_malicious"):
+        if fp_info and (fp_info.get("is_malicious") or fp_info.get("is_suspicious")):
             return fp_info["application_name"]
 
         # 2. Local Process Name (Layer 3)

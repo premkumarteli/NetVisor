@@ -214,18 +214,72 @@ def extract_site_details(url: str, page_title: str | None) -> tuple[str, str | N
 
     if "github.com" in base_domain:
         parts = [p for p in split.path.strip("/").split("/") if p]
-        repo_id = "/".join(parts[:2]) if len(parts) >= 2 else None
-        return "developer_tools", repo_id, None, "GitHub"
+        if len(parts) >= 4 and parts[2] in ("issues", "pull"):
+            content_id = f"{parts[0]}/{parts[1]}#{parts[3]}"
+        elif len(parts) >= 2:
+            content_id = f"{parts[0]}/{parts[1]}"
+        else:
+            content_id = None
+        return "dev", content_id, None, "GitHub"
 
     return category, None, None, service_name
 
 
-def sanitize_snippet(snippet: str) -> str:
-    """Redacts obvious tokens/passwords in snippets before streaming."""
-    if not snippet:
+def extract_site_metadata(url: str, page_title: str | None) -> tuple[str, str | None]:
+    """Returns (category, content_id) for backward compatibility."""
+    category, content_id, _, _ = extract_site_details(url, page_title)
+    if category == "streaming_media":
+        category = "video"
+    return category, content_id
+
+
+def sanitize_string_value(val: str) -> str:
+    if not val:
         return ""
-    token_pattern = r"(bearer\s+[\w\-\.]+)|(password\s*[:=]\s*[\w\-\.@!#]+)|(api[_\-]?key\s*[:=]\s*[\w\-]+)"
-    return re.sub(token_pattern, "[REDACTED_SECRET]", snippet, flags=re.IGNORECASE)[:SNIPPET_MAX_BYTES]
+    fernet_pattern = r"\bgAAAAA[A-Za-z0-9_-]{30,}\b"
+    jwt_pattern = r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b"
+    val = re.sub(fernet_pattern, "[REDACTED_FERNET_TOKEN]", val)
+    val = re.sub(jwt_pattern, "[REDACTED_JWT_TOKEN]", val)
+    sensitive_kv_pattern = r"(?i)\b(token|auth|key|password|secret|access_token|api_key|sid|ticket)\s*[:=]\s*\"?[A-Za-z0-9_-]{6,}\b"
+    val = re.sub(sensitive_kv_pattern, r"\1=[REDACTED]", val)
+    return val
+
+
+def sanitize_snippet(text: str) -> str:
+    """Redacts tokens/passwords in text and json snippets before streaming."""
+    if not text:
+        return ""
+
+    sensitive_keys = {
+        "token", "auth", "key", "signature", "code", "state", "session",
+        "password", "secret", "access_token", "api_key", "sid", "ticket",
+        "id_token", "client_secret", "jwt", "authorization", "cookie"
+    }
+
+    try:
+        data = json.loads(text)
+
+        def sanitize_node(node):
+            if isinstance(node, dict):
+                sanitized = {}
+                for k, v in node.items():
+                    k_lower = k.lower()
+                    if any(s in k_lower for s in sensitive_keys):
+                        sanitized[k] = "[REDACTED]"
+                    else:
+                        sanitized[k] = sanitize_node(v)
+                return sanitized
+            elif isinstance(node, list):
+                return [sanitize_node(item) for item in node]
+            elif isinstance(node, str):
+                return sanitize_string_value(node)
+            else:
+                return node
+
+        sanitized_data = sanitize_node(data)
+        return json.dumps(sanitized_data, ensure_ascii=False)
+    except Exception:
+        return sanitize_string_value(text)
 
 
 def redact_url_secrets(url: str) -> str:
@@ -239,6 +293,76 @@ def split_url_label(url: str) -> str:
     if split.path and split.path != "/":
         return split.path.strip("/").replace("-", " ")[:255] or split.netloc
     return split.netloc or "Untitled"
+
+
+def build_event(flow) -> dict | None:
+    request = getattr(flow, "request", None)
+    response = getattr(flow, "response", None)
+    if not request or not response:
+        return None
+
+    host = normalize_host(getattr(request, "pretty_host", None) or getattr(request, "host", None))
+    base_domain = _preferred_domain_label(host)
+    if not base_domain:
+        return None
+    if is_sensitive_destination(base_domain):
+        return None
+    if ALLOWED_DOMAINS and "*" not in ALLOWED_DOMAINS and not any(
+        base_domain == allowed or host == allowed or host.endswith(f".{allowed}")
+        for allowed in ALLOWED_DOMAINS
+    ):
+        return None
+
+    content_type = ""
+    headers = getattr(response, "headers", {}) or {}
+    for key, value in headers.items():
+        if str(key).lower() == "content-type":
+            content_type = str(value)
+            break
+
+    raw_content = getattr(response, "content", None) or getattr(response, "raw_content", None) or b""
+    is_textual = content_type.startswith("text/") or "json" in content_type or "javascript" in content_type
+    snippet = None
+    page_title = None
+    if is_textual:
+        body = raw_content[:SNIPPET_MAX_BYTES]
+        decoded = body.decode("utf-8", errors="replace")
+        snippet = sanitize_snippet(decoded)
+        page_title = extract_page_title(raw_content[:32768])
+
+    raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
+    url = redact_url_secrets(raw_url)
+    content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
+
+    if not page_title:
+        if content_id:
+            page_title = f"{service_name}: {content_id}"
+        elif search_query:
+            page_title = f"Search: {search_query}"
+        else:
+            page_title = service_name if service_name != base_domain else split_url_label(url)
+
+    request_headers = getattr(request, "headers", {}) or {}
+    browser_name, process_name = infer_browser_identity(request_headers)
+
+    return DpiObservation(
+        browser_name=browser_name,
+        process_name=process_name,
+        page_url=url,
+        base_domain=base_domain,
+        page_title=page_title or "Untitled",
+        content_category=content_category,
+        content_id=content_id,
+        search_query=search_query,
+        http_method=getattr(request, "method", "GET"),
+        status_code=getattr(response, "status_code", None),
+        content_type=content_type or None,
+        request_bytes=len(getattr(request, "raw_content", None) or b""),
+        response_bytes=len(raw_content),
+        snippet_redacted=snippet,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        app=browser_name,
+    ).to_payload()
 
 
 class NetVisorDpiAddon:
@@ -456,76 +580,9 @@ class NetVisorDpiAddon:
             logger.warning("[AIA Chase Worker] Background AIA chase error for %s: %s", domain, exc)
 
     def response(self, flow):
-        request = getattr(flow, "request", None)
-        response = getattr(flow, "response", None)
-        if not request or not response:
-            return
-
-        host = normalize_host(getattr(request, "pretty_host", None) or getattr(request, "host", None))
-        base_domain = _preferred_domain_label(host)
-        if not base_domain:
-            return
-        if is_sensitive_destination(base_domain):
-            return
-        if ALLOWED_DOMAINS and "*" not in ALLOWED_DOMAINS and not any(
-            base_domain == allowed or host == allowed or host.endswith(f".{allowed}")
-            for allowed in ALLOWED_DOMAINS
-        ):
-            return
-
-
-        content_type = ""
-        headers = getattr(response, "headers", {}) or {}
-        for key, value in headers.items():
-            if str(key).lower() == "content-type":
-                content_type = str(value)
-                break
-
-        raw_content = getattr(response, "content", None) or getattr(response, "raw_content", None) or b""
-        is_textual = content_type.startswith("text/") or "json" in content_type or "javascript" in content_type
-        snippet = None
-        page_title = None
-        if is_textual:
-            body = raw_content[:SNIPPET_MAX_BYTES]
-            decoded = body.decode("utf-8", errors="replace")
-            snippet = sanitize_snippet(decoded)
-            page_title = extract_page_title(raw_content[:32768])
-
-        raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
-        url = redact_url_secrets(raw_url)
-        content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
-
-        if not page_title:
-            if content_id:
-                page_title = f"{service_name}: {content_id}"
-            elif search_query:
-                page_title = f"Search: {search_query}"
-            else:
-                page_title = service_name if service_name != base_domain else split_url_label(url)
-
-        request_headers = getattr(request, "headers", {}) or {}
-        browser_name, process_name = infer_browser_identity(request_headers)
-
-        event = DpiObservation(
-            browser_name=browser_name,
-            process_name=process_name,
-            page_url=url,
-            base_domain=base_domain,
-            page_title=page_title or "Untitled",
-            content_category=content_category,
-            content_id=content_id,
-            search_query=search_query,
-            http_method=getattr(request, "method", "GET"),
-            status_code=getattr(response, "status_code", None),
-            content_type=content_type or None,
-            request_bytes=len(getattr(request, "raw_content", None) or b""),
-            response_bytes=len(raw_content),
-            snippet_redacted=snippet,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            app=browser_name,
-        ).to_payload()
-
-        print(f"{EVENT_PREFIX}{json.dumps(event, ensure_ascii=False)}", flush=True)
+        event = build_event(flow)
+        if event:
+            print(f"{EVENT_PREFIX}{json.dumps(event, ensure_ascii=False)}", flush=True)
 
 
 addons = [NetVisorDpiAddon()]

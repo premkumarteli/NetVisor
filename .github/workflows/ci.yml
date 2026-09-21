@@ -34,6 +34,7 @@ jobs:
       NETVISOR_BOOTSTRAP_ADMIN_PASSWORD: ci-admin-password-1234567890
       NETVISOR_BACKUP_AND_RESET_ON_SHUTDOWN: "false"
       NETVISOR_FLOW_WORKER_MODE: disabled
+      NETVISOR_JWT_ALGORITHM: HS256
 
     steps:
       - name: Checkout

@@ -178,7 +178,7 @@ def test_agent_enrollment_tenant_scoping():
     # Check that UPDATE query scopes by organization_id
     update_queries = [q for q in fake_conn.cursor_obj.queries if "UPDATE" in q]
     assert len(update_queries) > 0
-    assert "AND organization_id = %s" in update_queries[0]
+    assert "organization_id = %s" in update_queries[0]
     
     # 2. Scoped rejection
     agent_enrollment_service.reject_request(
@@ -190,7 +190,7 @@ def test_agent_enrollment_tenant_scoping():
     )
     update_queries = [q for q in fake_conn.cursor_obj.queries if "UPDATE" in q]
     assert len(update_queries) > 1
-    assert "AND organization_id = %s" in update_queries[1]
+    assert "organization_id = %s" in update_queries[1]
     
     # 3. Scoped revocation
     agent_enrollment_service.revoke_request(

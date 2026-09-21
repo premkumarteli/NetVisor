@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from ..core.config import settings
 from ..core.dependencies import require_org_admin, require_super_admin, request_rate_limit, admin_required
-from ..db.session import get_db
+from ..db.session import get_db, get_db_connection
 from ..services.alert_service import alert_service
 from ..services.release_service import release_service
 from ..services.system_service import system_service
@@ -37,19 +37,27 @@ def get_admin_stats(
 
 
 @router.get("/status")
-def get_system_status(
+async def get_system_status(
     current_user: dict = Depends(require_org_admin),
     conn = Depends(get_db),
 ):
-    runtime = system_service.get_runtime_status(conn)
-    return {
-        "active": runtime["active"],
-        "maintenance_mode": runtime["maintenance_mode"],
-        "runtime": runtime,
-        "release": release_service.snapshot(),
-        "backup": system_service.latest_backup_status(),
-        "backup_retention": system_service.backup_retention_status(),
-    }
+    owned_conn = False
+    if not hasattr(conn, "cursor"):
+        conn = get_db_connection()
+        owned_conn = True
+    try:
+        runtime = system_service.get_runtime_status(conn)
+        return {
+            "active": runtime["active"],
+            "maintenance_mode": runtime["maintenance_mode"],
+            "runtime": runtime,
+            "release": release_service.snapshot(),
+            "backup": system_service.latest_backup_status(),
+            "backup_retention": system_service.backup_retention_status(),
+        }
+    finally:
+        if owned_conn:
+            conn.close()
 
 
 @router.get("/release")
@@ -189,17 +197,25 @@ def reset_platform_data(
 
 
 @router.post("/reset-data")
-def reset_data(
+async def reset_data(
     request: Request,
     _rate_limited: bool = Depends(admin_mutation_rate_limit),
     current_user: dict = Depends(admin_required),
     conn = Depends(get_db),
 ):
-    org_id = current_user.get("organization_id") if current_user.get("role") == "org_admin" else None
-    ip = _resolve_source_ip(request)
-    return system_service.reset_operational_data(
-        conn,
-        username=current_user.get("username", "admin"),
-        organization_id=org_id,
-        ip_address=ip,
-    )
+    owned_conn = False
+    if not hasattr(conn, "cursor"):
+        conn = get_db_connection()
+        owned_conn = True
+    try:
+        org_id = current_user.get("organization_id") if current_user.get("role") == "org_admin" else None
+        ip = _resolve_source_ip(request)
+        return system_service.reset_operational_data(
+            conn,
+            username=current_user.get("username", "admin"),
+            organization_id=org_id,
+            ip_address=ip,
+        )
+    finally:
+        if owned_conn:
+            conn.close()

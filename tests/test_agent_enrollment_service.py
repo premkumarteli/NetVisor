@@ -174,7 +174,7 @@ class _EnrollmentCursor:
 
         if normalized.startswith("UPDATE agent_enrollment_requests SET status = 'approved'"):
             request_id = params[2]
-            org_id = params[3]
+            org_id = params[4] if len(params) > 4 else params[3]
             row = self.conn.rows_by_request.get(request_id)
             if not row or org_id is None or row["organization_id"] not in {org_id, None}:
                 return
@@ -188,7 +188,7 @@ class _EnrollmentCursor:
 
         if normalized.startswith("UPDATE agent_enrollment_requests SET status = 'rejected'"):
             request_id = params[2]
-            org_id = params[3]
+            org_id = params[4] if len(params) > 4 else params[3]
             row = self.conn.rows_by_request.get(request_id)
             if not row or org_id is None or row["organization_id"] not in {org_id, None}:
                 return

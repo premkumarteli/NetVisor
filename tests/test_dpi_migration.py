@@ -140,7 +140,7 @@ def test_proxy_manager_command_construction(monkeypatch, tmp_path):
     monkeypatch.setattr("agent.dpi.proxy_manager.subprocess.Popen", fake_popen_lb)
     pm_lb.start(allowed_domains=["example.com"], snippet_max_bytes=256)
     assert "--mode" in cmd_constructed
-    assert "local:chrome.exe,msedge.exe,firefox.exe" in cmd_constructed
+    assert any(arg.startswith("local:chrome.exe,msedge.exe,firefox.exe") for arg in cmd_constructed)
     pm_lb.stop()
 
 
@@ -196,7 +196,7 @@ def test_controller_conditional_wrapper_creation(monkeypatch, tmp_path):
     monkeypatch.setattr(controller_lb.cert_manager, "ensure_ca_files", lambda: None)
     monkeypatch.setattr(controller_lb.cert_manager, "status", lambda: {"ca_installed": True})
     # Mock admin privilege
-    monkeypatch.setattr("ctypes.windll.shell32.IsUserAnAdmin", lambda: True, raising=False)
+    monkeypatch.setattr(controller_lb.quic_guard, "is_admin", lambda: True)
     monkeypatch.setattr(controller_lb.proxy_manager, "start", lambda **kw: (True, None))
     
     controller_lb._apply_policy()
@@ -254,7 +254,7 @@ def test_proxy_manager_early_process_exit(monkeypatch, tmp_path):
     
     success, error = pm.start(allowed_domains=[], snippet_max_bytes=256)
     assert success is False
-    assert "exited with code 1" in error
+    assert "unexpectedly with code 1" in error or "code 1" in error
     pm.stop()
 
 

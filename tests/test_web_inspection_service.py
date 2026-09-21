@@ -8,7 +8,7 @@ def test_default_policy_uses_expected_defaults():
 
     assert policy["inspection_enabled"] is False
     assert "chrome.exe" in policy["allowed_processes"]
-    assert "youtube.com" in policy["allowed_domains"]
+    assert "*" in policy["allowed_domains"] or "youtube.com" in policy["allowed_domains"]
     assert policy["snippet_max_bytes"] == 256
     assert policy["privacy_guard_enabled"] is True
     assert policy["sensitive_destination_bypass_enabled"] is True

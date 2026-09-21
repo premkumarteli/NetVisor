@@ -7,8 +7,13 @@ USE network_security;
 CREATE TABLE IF NOT EXISTS organizations (
     id CHAR(36) PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
+    slug VARCHAR(100) NULL,
     status VARCHAR(20) DEFAULT 'active',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    max_devices INT UNSIGNED NOT NULL DEFAULT 500,
+    data_retention_days INT UNSIGNED NOT NULL DEFAULT 90,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_organizations_status (status)
 );
 
 CREATE TABLE IF NOT EXISTS users (
@@ -235,6 +240,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     organization_id CHAR(36),
     device_ip VARCHAR(50),
     severity VARCHAR(20),
+    alert_type VARCHAR(64) NOT NULL DEFAULT 'ANOMALY',
     risk_score FLOAT,
     breakdown_json TEXT,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -243,6 +249,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     INDEX idx_alerts_device (device_ip),
     INDEX idx_alerts_timestamp (timestamp),
     INDEX idx_alerts_org_device_severity_time (organization_id, device_ip, severity, timestamp),
+    INDEX idx_alerts_org_resolved_time_sev (organization_id, resolved, timestamp, severity),
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
 
@@ -389,6 +396,7 @@ CREATE TABLE IF NOT EXISTS web_events (
     INDEX idx_web_events_agent_last_seen (agent_id, last_seen),
     INDEX idx_web_events_org_last_seen (organization_id, last_seen),
     INDEX idx_web_events_base_domain_last_seen (base_domain, last_seen),
+    INDEX idx_web_events_org_last_seen_id (organization_id, last_seen, id),
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
 
@@ -402,11 +410,15 @@ CREATE TABLE IF NOT EXISTS device_aliases (
 );
 
 CREATE TABLE IF NOT EXISTS device_risks (
-    device_id VARCHAR(50) PRIMARY KEY,
+    device_id VARCHAR(50) NOT NULL,
+    organization_id CHAR(36) NOT NULL DEFAULT 'default-org-id',
     current_score FLOAT DEFAULT 0,
     risk_level VARCHAR(20) DEFAULT 'LOW',
     reasons TEXT,
-    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, device_id),
+    INDEX idx_org_risk_severity (organization_id, risk_level),
+    FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS device_baselines (
@@ -434,12 +446,129 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     action VARCHAR(100) NOT NULL,
     ip_address VARCHAR(45) NULL,
     resource VARCHAR(100) NULL,
+    entry_hash CHAR(64) NULL,
+    chain_hash CHAR(64) NULL,
+    prev_id INT NULL,
     details TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_audit_logs_org (organization_id),
     INDEX idx_audit_logs_created_at (created_at),
     FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE SET NULL
 );
+
+CREATE TABLE IF NOT EXISTS gateway_credentials (
+    gateway_id VARCHAR(100) NOT NULL,
+    key_version INT NOT NULL,
+    secret_salt VARCHAR(64) NOT NULL,
+    secret_hash CHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    issued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    rotated_at DATETIME NULL,
+    last_used_at DATETIME NULL,
+    PRIMARY KEY (gateway_id, key_version),
+    INDEX idx_gateway_credentials_status (status)
+);
+
+CREATE TABLE IF NOT EXISTS gateway_request_nonces (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    gateway_id VARCHAR(100) NOT NULL,
+    key_version INT NOT NULL,
+    nonce VARCHAR(64) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    UNIQUE KEY uq_gateway_nonce (gateway_id, key_version, nonce),
+    INDEX idx_gateway_nonce_expires_at (expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id VARCHAR(100) NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    family_id VARCHAR(255) NOT NULL,
+    expires_at DATETIME NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_used_at DATETIME NULL,
+    revoked TINYINT NOT NULL DEFAULT 0,
+    revoked_reason VARCHAR(50) NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL,
+    UNIQUE KEY uq_token_hash (token_hash),
+    INDEX idx_user_refresh_tokens_family (family_id),
+    INDEX idx_user_refresh_tokens_user (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS risk_events (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    organization_id VARCHAR(64) NOT NULL,
+    device_id VARCHAR(64) NOT NULL,
+    risk_type VARCHAR(64) NOT NULL,
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    score INT NOT NULL,
+    evidence_json JSON NULL,
+    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_risk_events_org_device_time (organization_id, device_id, timestamp),
+    INDEX idx_risk_events_type_time (risk_type, timestamp)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS discovered_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+    domain VARCHAR(255) NOT NULL,
+    application_name VARCHAR(128) NOT NULL,
+    source_layer VARCHAR(32) NOT NULL DEFAULT 'sld_heuristics',
+    confidence FLOAT NOT NULL DEFAULT 1.0,
+    category VARCHAR(64) NOT NULL DEFAULT 'web',
+    is_override TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_disc_app_org_domain (organization_id, domain),
+    INDEX idx_disc_app_org_app (organization_id, application_name),
+    INDEX idx_disc_app_override (is_override)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS device_summary (
+    device_id VARCHAR(64) NOT NULL,
+    organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+    hostname VARCHAR(255) NULL,
+    mac VARCHAR(64) NULL,
+    ip VARCHAR(45) NOT NULL,
+    vendor VARCHAR(128) NULL,
+    device_type VARCHAR(64) NULL,
+    os_family VARCHAR(64) NULL,
+    management_mode VARCHAR(20) NOT NULL DEFAULT 'byod',
+    top_application VARCHAR(128) NULL,
+    top_domain VARCHAR(255) NULL,
+    total_flows BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    total_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    first_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, device_id),
+    INDEX idx_dev_sum_last_seen (organization_id, last_seen),
+    INDEX idx_dev_sum_ip (organization_id, ip)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS application_summary (
+    application_name VARCHAR(128) NOT NULL,
+    organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+    category VARCHAR(64) NOT NULL DEFAULT 'web',
+    device_count INT UNSIGNED NOT NULL DEFAULT 0,
+    flow_count BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    total_bytes BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, application_name),
+    INDEX idx_app_sum_flow_count (organization_id, flow_count),
+    INDEX idx_app_sum_last_seen (organization_id, last_seen)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dashboard_cache (
+    organization_id VARCHAR(64) NOT NULL DEFAULT 'default-org-id',
+    cache_key VARCHAR(128) NOT NULL,
+    payload LONGTEXT NOT NULL,
+    generated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (organization_id, cache_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO organizations (id, name, status)
 VALUES ('default-org-id', 'Default Organization', 'active')
