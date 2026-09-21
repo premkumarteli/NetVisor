@@ -142,7 +142,7 @@ class FlowManager:
 
         # 16 Sharded Dictionaries & Locks
         self._shards: list[Dict[FlowKey, FlowState]] = [{} for _ in range(self.NUM_SHARDS)]
-        self._locks: list[threading.Lock] = [threading.Lock() for _ in range(self.NUM_SHARDS)]
+        self._locks: list[threading.RLock] = [threading.RLock() for _ in range(self.NUM_SHARDS)]
         self._stop_event = threading.Event()
 
         self._worker_started = False
@@ -157,6 +157,21 @@ class FlowManager:
     def stop(self) -> None:
         self._stop_event.set()
 
+    def clear(self) -> None:
+        """Clears all active flows across all 16 shards."""
+        for shard_idx in range(self.NUM_SHARDS):
+            with self._locks[shard_idx]:
+                self._shards[shard_idx].clear()
+
+    class _FlowsProxy(dict):
+        def __init__(self, manager: FlowManager, flows: dict):
+            super().__init__(flows)
+            self._manager = manager
+
+        def clear(self) -> None:
+            super().clear()
+            self._manager.clear()
+
     @property
     def _flows(self) -> dict[FlowKey, FlowState]:
         """Backward-compatibility property exposing aggregated flow dictionary across all 16 shards."""
@@ -164,10 +179,10 @@ class FlowManager:
         for shard_idx in range(self.NUM_SHARDS):
             with self._locks[shard_idx]:
                 flows.update(self._shards[shard_idx])
-        return flows
+        return self._FlowsProxy(self, flows)
 
     class _MultiLockContext:
-        def __init__(self, locks: list[threading.Lock]):
+        def __init__(self, locks: list[threading.RLock]):
             self.locks = locks
 
         def __enter__(self):

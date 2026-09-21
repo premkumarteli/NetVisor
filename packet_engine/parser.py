@@ -353,12 +353,29 @@ class PacketObservation:
                 except Exception:
                     pass
 
+            if payload and len(payload) >= 3:
+                first_byte = payload[2]
+                opcode = (first_byte >> 3) & 0x1F
+                if 1 <= opcode <= 10:
+                    signals.append(f"openvpn_tcp_opcode_{opcode}")
+
         elif proto == "UDP":
             port = dst_port if dst_port in UDP_SIGNATURE_PORTS else src_port
             if port in UDP_SIGNATURE_PORTS:
                 app_proto, service_name = UDP_SIGNATURE_PORTS[port]
                 confidence = 0.90
                 signals.append(f"port_{port}")
+
+            if payload:
+                payload_len = len(payload)
+                first_byte = payload[0]
+                is_wg = payload_len in (148, 92, 32) and first_byte in (1, 2, 3, 4)
+                if is_wg:
+                    signals.append(f"wg_size_{payload_len}")
+                is_quic_header = (src_port in (443, 8443) or dst_port in (443, 8443)) and (0x40 <= first_byte <= 0x7F)
+                opcode = (first_byte >> 3) & 0x1F
+                if 1 <= opcode <= 10 and not is_wg and not is_quic_header:
+                    signals.append(f"openvpn_udp_opcode_{opcode}")
 
             if port == 53 and payload:
                 try:

@@ -20,6 +20,10 @@ class MockCursor:
     def execute(self, query, params=None):
         self.execute_calls.append((query, params))
 
+    def executemany(self, query, seq_of_params):
+        for params in (seq_of_params or []):
+            self.execute_calls.append((query, params))
+
     def fetchone(self):
         return None
 
