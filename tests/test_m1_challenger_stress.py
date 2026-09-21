@@ -21,7 +21,10 @@ import json
 import os
 import socket
 import uuid
-import winreg
+try:
+    import winreg
+except ImportError:
+    winreg = None
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -262,12 +265,13 @@ def test_backward_compatibility_and_snapshot_schema(isolated_agent_dir, monkeypa
 def test_forensic_audit_zero_machine_id_or_machineguid_leakage(isolated_agent_dir, monkeypatch):
     """Edge 9: Ensure OS MachineGuid or Linux machine-id is never accessed, stored, or transmitted."""
     real_machine_guid = None
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0, winreg.KEY_READ) as key:
-            val, _ = winreg.QueryValueEx(key, "MachineGuid")
-            real_machine_guid = str(val).strip().lower()
-    except Exception:
-        pass
+    if winreg is not None:
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0, winreg.KEY_READ) as key:
+                val, _ = winreg.QueryValueEx(key, "MachineGuid")
+                real_machine_guid = str(val).strip().lower()
+        except Exception:
+            pass
 
     agent = NetworkAgent(start_background_workers=False)
     agent.heartbeat_interval = 0
