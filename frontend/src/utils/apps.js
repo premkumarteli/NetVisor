@@ -236,12 +236,6 @@ const APP_VISUALS = {
     background: 'rgba(0, 245, 255, 0.14)',
     label: 'CU',
   },
-  Antigravity: {
-    icon: 'ri-shield-flash-line',
-    accent: '#10b981',
-    background: 'rgba(16, 185, 129, 0.14)',
-    label: 'AG',
-  },
   Edge: {
     icon: 'ri-edge-fill',
     accent: '#0078d4',
