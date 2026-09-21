@@ -42,8 +42,15 @@ from backend.services import (
     gateway_service as gateway_service_mod,
 )
 
+import os
+
 TEST_DB = "network_security_test"
-DB_ARGS = dict(host="localhost", user="root", password="Prem@333")
+DB_ARGS = dict(
+    host=os.environ.get("NETVISOR_DB_HOST") or getattr(settings, "DB_HOST", "127.0.0.1"),
+    user=os.environ.get("NETVISOR_DB_USER") or getattr(settings, "DB_USER", "root"),
+    password=os.environ.get("NETVISOR_DB_PASSWORD") or getattr(settings, "DB_PASSWORD", "Prem@333"),
+    port=int(os.environ.get("NETVISOR_DB_PORT") or getattr(settings, "DB_PORT", 3306)),
+)
 
 _FF = True
 _NO = False
@@ -190,7 +197,12 @@ def _connect(database: str | None = None):
 
 @pytest.fixture(scope="module", autouse=True)
 def scratch_db():
-    admin = _connect()
+    try:
+        admin = _connect()
+    except Exception as exc:
+        pytest.skip(f"Scratch database unavailable: {exc}")
+        return
+
     cur = admin.cursor()
     cur.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
     cur.execute(f"CREATE DATABASE {TEST_DB}")
@@ -208,11 +220,14 @@ def scratch_db():
     conn.commit()
     conn.close()
     yield
-    admin = _connect()
-    cur = admin.cursor()
-    cur.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
-    admin.commit()
-    admin.close()
+    try:
+        admin = _connect()
+        cur = admin.cursor()
+        cur.execute(f"DROP DATABASE IF EXISTS {TEST_DB}")
+        admin.commit()
+        admin.close()
+    except Exception:
+        pass
 
 
 @pytest.fixture()

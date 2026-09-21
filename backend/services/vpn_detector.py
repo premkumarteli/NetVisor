@@ -171,6 +171,7 @@ class ASNLookupService:
     """
 
     def __init__(self, mmdb_path: Optional[str] = None, workers: int = 8) -> None:
+        self._workers = workers
         self._cache: dict[str, ASNRecord] = {}
         self._cache_lock = threading.Lock()
         self._pending: dict[str, Future] = {}
@@ -187,6 +188,12 @@ class ASNLookupService:
             except Exception as exc:
                 logger.warning("ASNLookupService: could not open MMDB (%s); "
                                "falling back to remote API", exc)
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        if getattr(self._executor, "_shutdown", False):
+            self._executor = ThreadPoolExecutor(max_workers=self._workers,
+                                                thread_name_prefix="asn-lookup")
+        return self._executor
 
     # ── public API ────────────────────────────────────────────────────────────
 
@@ -232,7 +239,12 @@ class ASNLookupService:
 
             if ip in self._pending and not self._pending[ip].done():
                 return None, True          # already in flight
-            future = self._executor.submit(self._fetch_remote, ip)
+            try:
+                future = self._get_executor().submit(self._fetch_remote, ip)
+            except RuntimeError:
+                self._executor = ThreadPoolExecutor(max_workers=self._workers,
+                                                    thread_name_prefix="asn-lookup")
+                future = self._executor.submit(self._fetch_remote, ip)
             self._pending[ip] = future
 
         return None, True

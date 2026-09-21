@@ -134,6 +134,9 @@ class AgentEnrollmentService:
             if organization_id:
                 query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
+            else:
+                query += " AND organization_id = %s"
+                params.append(None)
             query += " LIMIT 1"
             cursor.execute(query, tuple(params))
             return cursor.fetchone()
@@ -152,6 +155,9 @@ class AgentEnrollmentService:
             if organization_id:
                 query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
+            else:
+                query += " AND organization_id = %s"
+                params.append(None)
             query += " LIMIT 1"
             cursor.execute(query, tuple(params))
             return cursor.fetchone()
@@ -407,6 +413,9 @@ class AgentEnrollmentService:
             if organization_id:
                 query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
+            else:
+                query += " AND organization_id = %s"
+                params.append(None)
             cursor.execute(query, tuple(params))
             if not cursor.rowcount:
                 raise LookupError("Enrollment request not found or not authorized")
@@ -440,6 +449,9 @@ class AgentEnrollmentService:
             if organization_id:
                 query += " AND (organization_id = %s OR organization_id IS NULL)"
                 params.append(organization_id)
+            else:
+                query += " AND organization_id = %s"
+                params.append(None)
             cursor.execute(query, tuple(params))
             if not cursor.rowcount:
                 raise LookupError("Enrollment request not found or not authorized")
