@@ -47,9 +47,13 @@ gateway_id.txt
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+frontend-v2/node_modules/
+frontend-v2/dist/
+frontend-v2/.vite/
 netvisor_frontend_3.0/node_modules/
 netvisor_frontend_3.0/dist/
 netvisor_frontend_3.0/.vite/
+
 
 
 # Build

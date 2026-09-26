@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  /* Base */
+  --base-bg: #05060B;
+
+  /* Nebula intensity multiplier */
+  --nebula-intensity: 0.5;
+
+  /* Glass tokens */
+  --glass: rgba(17, 20, 34, 0.58);
+  --glass-hi: rgba(24, 28, 46, 0.72);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-focus: rgba(96, 165, 250, 0.5);
+
+  /* Color tokens */
+  --ink: #F1F3F9;
+  --ink-2: #9AA3B8;
+  --ink-3: #5E6579;
+  --blue: #60A5FA;
+  --rose: #FB7185;
+  --amber: #F59E0B;
+  --teal: #54C8E8;
+  --green: #34D399;
+  --violet: #A78BFA;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--base-bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Technical Monospace Elements */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Glass Card Shell */
+.glass-card {
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Floating Chrome (Tab bar, topbar) */
+.glass-chrome {
+  background: var(--glass-hi);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid var(--border);
+}
+
+/* Flat Dark Table Rows (CRITICAL RULE: No per-row glass) */
+.data-table-row {
+  background-color: transparent;
+  transition: background-color 0.15s ease;
+}
+.data-table-row:hover {
+  background-color: rgba(255, 255, 255, 0.025);
+}
+
+/* React Flow custom styles to match dark glass aesthetic */
+.react-flow__attribution {
+  display: none !important;
+}
+.react-flow__pane {
+  cursor: grab;
+}
+.react-flow__pane:active {
+  cursor: grabbing;
+}
+.react-flow__edge-path {
+  stroke-width: 1.5;
+  transition: stroke 0.2s ease;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
