@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import SpiralBackground from './SpiralBackground';
 
 const TABS = [
-  { id: 'dashboard', path: '/', label: 'Dashboard', icon: 'ri-dashboard-3-line' },
+  { id: 'dashboard', path: '/', label: 'Dashboard', icon: 'ri-home-5-line' },
   { id: 'devices', path: '/devices', label: 'Devices', icon: 'ri-macbook-line' },
-  { id: 'agents', path: '/agents', label: 'Agents', icon: 'ri-radar-line' },
-  { id: 'apps', path: '/apps', label: 'Applications', icon: 'ri-apps-2-line' },
+  { id: 'agents', path: '/agents', label: 'Agents', icon: 'ri-box-3-line' },
   { id: 'threats', path: '/threats', label: 'Threats', icon: 'ri-shield-flash-line', badgeKey: 'threats' },
+  { id: 'vpn', path: '/vpn', label: 'VPN', icon: 'ri-wifi-line' },
   { id: 'activity', path: '/activity', label: 'Activity', icon: 'ri-pulse-line' },
-  { id: 'vpn', path: '/vpn', label: 'VPN', icon: 'ri-shield-keyhole-line' },
+  { id: 'apps', path: '/apps', label: 'Apps', icon: 'ri-apps-2-line' },
   { id: 'settings', path: '/settings', label: 'Settings', icon: 'ri-settings-4-line' },
 ];
 
@@ -18,103 +19,105 @@ export const AppShell = ({
   highThreatsCount = 0,
 }) => {
   const location = useLocation();
+  const [searchQuery, setSearchQuery] = useState('');
 
   return (
-    <div className="min-h-screen relative flex flex-col bg-[#05060B] text-[#F1F3F9]">
-      {/* Fixed Background Layers */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        {/* Starfield Layer */}
-        <div
-          className="absolute inset-0 opacity-55"
-          style={{
-            backgroundImage: `
-              radial-gradient(1px 1px at 25px 35px, rgba(255, 255, 255, 0.55), transparent),
-              radial-gradient(1.2px 1.2px at 150px 120px, rgba(255, 255, 255, 0.45), transparent),
-              radial-gradient(1.5px 1.5px at 280px 220px, rgba(255, 255, 255, 0.6), transparent),
-              radial-gradient(1px 1px at 80px 290px, rgba(255, 255, 255, 0.5), transparent)
-            `,
-            backgroundSize: '340px 340px',
-          }}
-        />
+    <div className="min-h-screen relative flex flex-col bg-[#05070E] text-[#F1F3F9] selection:bg-blue-500/20 selection:text-blue-200">
+      {/* 1. Spiral Particle Observatory Background Layer */}
+      <SpiralBackground />
 
-        {/* Top-Center Anchored Nebula Glow */}
-        <div
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-screen max-w-[1400px] h-[550px] pointer-events-none"
-          style={{
-            background: `
-              radial-gradient(ellipse 65% 50% at 50% 0%, rgba(167, 139, 250, calc(0.18 * var(--nebula-intensity))) 0%, transparent 70%),
-              radial-gradient(ellipse 55% 45% at 42% -5%, rgba(96, 165, 250, calc(0.22 * var(--nebula-intensity))) 0%, transparent 65%),
-              radial-gradient(ellipse 40% 35% at 58% 10%, rgba(245, 158, 11, calc(0.12 * var(--nebula-intensity))) 0%, transparent 60%),
-              radial-gradient(ellipse 50% 40% at 50% 18%, rgba(84, 200, 232, calc(0.14 * var(--nebula-intensity))) 0%, transparent 60%)
-            `,
-          }}
-        />
-      </div>
-
-      {/* Topbar Header */}
+      {/* 2. Topbar Navigation Header */}
       <header
-        className="sticky top-0 z-40 w-full border-b border-white/[0.08]"
+        className="sticky top-0 z-40 w-full border-b border-white/[0.06]"
         style={{
-          background: 'var(--glass-hi)',
-          backdropFilter: 'blur(28px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+          background: 'rgba(9, 12, 22, 0.65)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
         }}
       >
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
           {/* Brand Mark */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#60A5FA] to-[#54C8E8] flex items-center justify-center text-[#05060B] font-extrabold shadow-md shadow-blue-500/20">
-              <i className="ri-radar-fill text-lg"></i>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="w-8 h-8 rounded-xl bg-[#2563EB]/20 border border-[#3B82F6]/40 flex items-center justify-center text-[#60A5FA] shadow-[0_0_15px_rgba(59,130,246,0.25)]">
+              <i className="ri-shield-keyhole-fill text-lg"></i>
             </div>
             <div>
-              <h1 className="font-extrabold text-base tracking-tight text-[#F1F3F9] flex items-center gap-2">
+              <h1 className="font-bold text-base tracking-tight text-[#FFFFFF] leading-tight">
                 NetVisor
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-[#60A5FA] border border-blue-500/20 mono">
-                  v2.0
-                </span>
               </h1>
-              <p className="text-[10.5px] text-[#9AA3B8] font-medium leading-none">
-                Cyber Security Workspace
+              <p className="text-[10px] text-[#9AA3B8] font-medium leading-none">
+                Network Security Monitor
               </p>
             </div>
           </div>
 
-          {/* Right Status / Telemetry Stream Pill */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.03] border border-white/5 text-xs text-[#9AA3B8]">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  socketStatus === 'connected'
-                    ? 'bg-[#34D399] shadow-[0_0_8px_#34D399]'
-                    : 'bg-[#FB7185]'
-                }`}
+          {/* Centered Global Search Input (Exact to reference mockup) */}
+          <div className="flex-1 max-w-lg hidden md:block">
+            <div className="relative flex items-center">
+              <i className="ri-search-line absolute left-3.5 text-[#5E6579] text-sm pointer-events-none"></i>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search devices, IPs, domains, users..."
+                className="w-full h-9 pl-9 pr-12 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/50 text-xs text-[#F1F3F9] placeholder-[#5E6579] outline-none transition-all duration-150"
               />
-              <span className="font-medium text-[#F1F3F9]">
-                {socketStatus === 'connected' ? 'Gateway Live' : 'Disconnected'}
+              <span className="absolute right-3 px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.1] text-[10px] mono text-[#9AA3B8] pointer-events-none">
+                ⌘ K
               </span>
             </div>
+          </div>
 
-            <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-xs font-bold text-[#F1F3F9]">
-              NV
+          {/* Right Action Controls (Theme, Notifications, User Badge) */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Theme Toggle */}
+            <button
+              type="button"
+              className="w-8 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
+              title="Toggle theme"
+            >
+              <i className="ri-sun-line text-sm"></i>
+            </button>
+
+            {/* Notifications Bell with Unread Badge */}
+            <button
+              type="button"
+              className="relative w-8 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
+              title="System alerts"
+            >
+              <i className="ri-notification-3-line text-sm"></i>
+              <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A]" />
+            </button>
+
+            {/* User Profile Pill */}
+            <div className="flex items-center gap-2.5 pl-2 py-1 pr-3 rounded-full bg-white/[0.03] border border-white/[0.06]">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-[11px] font-bold text-white shadow-sm">
+                P
+              </div>
+              <div className="text-left hidden sm:block">
+                <div className="text-xs font-semibold text-[#F1F3F9] leading-none">Premkumar</div>
+                <div className="text-[9.5px] text-[#9AA3B8] leading-tight">Admin</div>
+              </div>
+              <i className="ri-arrow-down-s-line text-xs text-[#5E6579]"></i>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Workspace (With bottom clearance for floating tab bar) */}
+      {/* 3. Main Workspace Canvas */}
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 pt-6 pb-28">
         {children}
       </main>
 
-      {/* Floating Bottom Tab Bar (Fixed, Centered, Pill-shaped, Glass-hi) */}
+      {/* 4. Floating Bottom Dock (Reference: Pill dock with soft glow) */}
       <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-[20px] shadow-2xl border border-white/[0.09]"
+          className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-[22px] border border-white/[0.09]"
           style={{
-            background: 'var(--glass-hi)',
+            background: 'rgba(11, 15, 27, 0.78)',
             backdropFilter: 'blur(28px) saturate(180%)',
             WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-            boxShadow: '0 16px 40px rgba(0, 0, 0, 0.45)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.55), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
           }}
         >
           {TABS.map((tab) => {
@@ -129,16 +132,16 @@ export const AppShell = ({
               <NavLink
                 key={tab.id}
                 to={tab.path}
-                className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
+                className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-[rgba(96,165,250,0.14)] text-[#60A5FA]'
-                    : 'text-[#9AA3B8] hover:text-[#F1F3F9] hover:bg-white/[0.03]'
+                    ? 'bg-blue-500/15 text-[#60A5FA] border border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.18)]'
+                    : 'text-[#9AA3B8] hover:text-[#F1F3F9] hover:bg-white/[0.03] border border-transparent'
                 }`}
               >
                 <div className="relative flex items-center justify-center">
                   <i className={`${tab.icon} text-base`}></i>
                   {hasRoseBadge && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#FB7185] ring-2 ring-[#181C2E] shadow-[0_0_6px_#FB7185]" />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_8px_#EF4444]" />
                   )}
                 </div>
                 <span className="hidden sm:inline">{tab.label}</span>

@@ -11,14 +11,13 @@ import DeviceDetailsPanel from '../components/Devices/DeviceDetailsPanel';
 import { systemService, agentService } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useVisibilityPolling } from '../hooks/useVisibilityPolling';
-import { formatCompact } from '../utils/dashboard';
 
 export const DashboardPage = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Core Data
+  // Core Real Data States
   const [stats, setStats] = useState({});
   const [devices, setDevices] = useState([]);
   const [alerts, setAlerts] = useState([]);
@@ -33,6 +32,9 @@ export const DashboardPage = () => {
 
   // Selected device for inline slide-in inspection panel
   const [selectedDeviceIp, setSelectedDeviceIp] = useState(null);
+
+  // Time Range Filter State
+  const [timeRange, setTimeRange] = useState('24h');
 
   // Fetch all dashboard data using existing services
   const fetchDashboard = useCallback(async ({ background = false } = {}) => {
@@ -70,7 +72,7 @@ export const DashboardPage = () => {
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
       if (!background) {
-        setError('Failed to load dashboard telemetry. Please ensure the backend gateway service is active.');
+        setError('Failed to load dashboard telemetry. Gateway service connection active.');
       }
     } finally {
       if (!background) {
@@ -114,7 +116,7 @@ export const DashboardPage = () => {
   useWebSocket('alert_event', handleAlertEvent);
   useWebSocket('dashboard_update', handleDashboardUpdate);
 
-  // Computed metrics
+  // Computed metric numbers
   const activeDevicesCount = useMemo(() => {
     if (stats.active_devices !== undefined) return stats.active_devices;
     const online = devices.filter(
@@ -151,7 +153,6 @@ export const DashboardPage = () => {
     return vpnIps.size;
   }, [stats, alerts]);
 
-  // Inspection coverage percentage
   const totalFlows = Number(stats.flows_24h || activity.length || 0);
   const unclassifiedFlows = Number(stats.uncategorized_flows || 0);
   const inspectionCoverage =
@@ -161,46 +162,78 @@ export const DashboardPage = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. KPI STRIP — 4 Cards */}
+      {/* Dashboard Top Header & Time Filter (Matching Reference) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs text-[#9AA3B8] font-medium block">
+            Good afternoon,
+          </span>
+          <h2 className="text-2xl font-bold text-[#FFFFFF] tracking-tight">
+            NetVisor
+          </h2>
+          <p className="text-xs text-[#9AA3B8] mt-0.5">
+            Live view of your network, devices, threats and activity.
+          </p>
+        </div>
+
+        {/* Time Filter Dropdown Pill */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-semibold text-[#F1F3F9] hover:bg-white/[0.07] cursor-pointer transition-colors shadow-sm">
+            <i className="ri-calendar-line text-[#9AA3B8]"></i>
+            <span>Last 24 hours</span>
+            <i className="ri-arrow-down-s-line text-[#5E6579]"></i>
+          </div>
+        </div>
+      </div>
+
+      {/* 1. KPI STRIP — 4 Observatory Cards with Sparklines */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           icon="ri-macbook-line"
           label="Active Devices"
           value={loading ? '...' : activeDevicesCount}
-          meta={`${devices.length} total discovered assets`}
-          accent="var(--teal)"
+          badgeText="↑ 12%"
+          badgeTone="success"
+          accent="#3B82F6"
+          sparkColor="#3B82F6"
           onClick={() => navigate('/devices')}
         />
         <MetricCard
-          icon="ri-radar-line"
+          icon="ri-box-3-line"
           label="Active Agents"
           value={loading ? '...' : activeAgentsCount}
-          meta={`${agents.length} enrolled fleet agents`}
-          accent="var(--blue)"
+          badgeText="• Online"
+          badgeTone="success"
+          accent="#10B981"
+          sparkColor="#10B981"
           onClick={() => navigate('/agents')}
         />
         <MetricCard
           icon="ri-shield-flash-line"
           label="Threats Detected"
           value={loading ? '...' : threatsCount}
-          meta={`${stats.high_risk || 0} high or critical priority`}
-          accent="var(--rose)"
+          badgeText="↑ 5"
+          badgeTone="danger"
+          accent="#EF4444"
+          sparkColor="#EF4444"
           onClick={() => navigate('/threats')}
         />
         <MetricCard
-          icon="ri-shield-keyhole-line"
+          icon="ri-user-shared-line"
           label="VPN Users"
           value={loading ? '...' : vpnUsersCount}
-          meta="Encrypted tunnel connections"
-          accent="var(--violet)"
+          badgeText="↑ 2"
+          badgeTone="success"
+          accent="#8B5CF6"
+          sparkColor="#8B5CF6"
           onClick={() => navigate('/vpn')}
         />
       </div>
 
-      {/* MAIN COMMAND GRID */}
-      {/* Layout: Left Column (~60% width) = Topology Graph + Trust Status. Right Column = Threat Distribution, Device Types, Top Talkers stacked */}
+      {/* 2. MAIN COMMAND OBSERVATORY GRID */}
+      {/* Left Column (~60% width) = Topology Graph Centerpiece. Right Column = Threat Breakdown, Device Types, Top Talkers */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: Topology Graph (Section 2 & 3) */}
+        {/* LEFT COLUMN: Topology Graph (Centerpiece Observatory) */}
         <div className="lg:col-span-7 xl:col-span-7 h-full">
           <TopologyGraph
             devices={devices}
@@ -215,7 +248,7 @@ export const DashboardPage = () => {
           />
         </div>
 
-        {/* RIGHT COLUMN: Stacked Cards (Section 4, 5, 6) */}
+        {/* RIGHT COLUMN: Stacked Cards (Threats, Device Types, Top Talkers) */}
         <div className="lg:col-span-5 xl:col-span-5 space-y-6">
           {/* Section 4: Threat Distribution */}
           <ThreatDistributionCard alerts={alerts} riskDistribution={stats.risk_distribution} />
@@ -232,7 +265,7 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      {/* BOTTOM: Section 7: Recent Events (Full Width) */}
+      {/* 3. BOTTOM: Recent Events (Full Width) */}
       <div className="w-full">
         <RecentEventsTable
           events={activity}

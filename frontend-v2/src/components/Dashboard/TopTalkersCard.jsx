@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { formatByteCount } from '../../utils/presentation';
 
 export const TopTalkersCard = ({ topDevices = [], devices = [], onSelectDevice }) => {
-  // Aggregate or normalize top talkers list
   const talkers = useMemo(() => {
     let list = [];
 
@@ -12,7 +12,7 @@ export const TopTalkersCard = ({ topDevices = [], devices = [], onSelectDevice }
         const matched = (devices || []).find((dev) => dev.ip === ip);
         return {
           ip,
-          hostname: matched?.hostname || d.hostname || `Dev ${ip}`,
+          hostname: matched?.hostname || d.hostname || `Device ${ip}`,
           bytes: Number(d.bandwidth_bytes || d.bytes || d.total_bytes || 0),
           connections: Number(d.connection_count || d.flow_count || d.session_count || 1),
         };
@@ -21,7 +21,7 @@ export const TopTalkersCard = ({ topDevices = [], devices = [], onSelectDevice }
       list = devices
         .map((dev) => ({
           ip: dev.ip,
-          hostname: dev.hostname || `Dev ${dev.ip}`,
+          hostname: dev.hostname || `Device ${dev.ip}`,
           bytes: Number(dev.bandwidth_bytes || dev.bytes_transferred || 0),
           connections: Number(dev.active_connections || 1),
         }))
@@ -33,73 +33,87 @@ export const TopTalkersCard = ({ topDevices = [], devices = [], onSelectDevice }
 
   const maxBytes = talkers.length > 0 ? Math.max(...talkers.map((t) => t.bytes), 1) : 1;
 
+  const getDeviceIcon = (hostname) => {
+    const name = String(hostname).toLowerCase();
+    if (name.includes('phone') || name.includes('android') || name.includes('iphone')) return 'ri-smartphone-line';
+    if (name.includes('server') || name.includes('linux')) return 'ri-server-line';
+    if (name.includes('laptop') || name.includes('macbook')) return 'ri-macbook-line';
+    return 'ri-computer-line';
+  };
+
   return (
-    <div className="glass-card p-5 flex flex-col justify-between">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#9AA3B8]">
-            Bandwidth Consumption
-          </span>
-          <h3 className="text-base font-bold text-[#F1F3F9] tracking-tight">
+    <div
+      className="glass-card p-5 flex flex-col justify-between"
+      style={{
+        background: 'rgba(10, 14, 26, 0.72)',
+        backdropFilter: 'blur(20px) saturate(150%)',
+        border: '1px solid rgba(255, 255, 255, 0.07)',
+        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+      }}
+    >
+      {/* Header matching reference */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          <i className="ri-share-forward-2-line text-[#9AA3B8] text-base"></i>
+          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
             Top Talkers
           </h3>
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-[#5E6579]">
-          Top 5 By Volume
-        </span>
+        <Link
+          to="/activity?view=search"
+          className="text-xs text-[#60A5FA] hover:text-blue-300 flex items-center gap-1"
+        >
+          <span>View All</span>
+          <i className="ri-arrow-right-line text-xs"></i>
+        </Link>
+      </div>
+
+      {/* Table Subheaders */}
+      <div className="flex items-center justify-between text-[10.5px] uppercase font-bold text-[#5E6579] tracking-wider mb-2 px-1">
+        <span className="w-24">Device</span>
+        <span className="flex-1 px-4 text-left">Data Usage</span>
+        <span className="w-16 text-right">Connections</span>
       </div>
 
       {talkers.length === 0 ? (
-        <div className="py-8 flex flex-col items-center justify-center text-center">
-          <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[#9AA3B8] mb-2">
-            <i className="ri-pulse-line text-lg"></i>
-          </div>
-          <p className="text-xs font-bold text-[#F1F3F9]">No Traffic Recorded</p>
-          <p className="text-[11px] text-[#5E6579] mt-0.5">
-            Top network consumers will be listed once packets traverse the interface.
-          </p>
+        <div className="py-6 text-center text-xs text-[#9AA3B8]">
+          No active traffic consumers recorded yet.
         </div>
       ) : (
-        <div className="space-y-3">
-          {talkers.map((talker, index) => {
-            const barWidth = Math.max(Math.round((talker.bytes / maxBytes) * 100), 4);
-
+        <div className="space-y-2">
+          {talkers.map((talker, idx) => {
+            const barWidth = Math.max(Math.round((talker.bytes / maxBytes) * 100), 6);
             return (
               <div
-                key={talker.ip || index}
+                key={talker.ip || idx}
                 onClick={() => onSelectDevice?.(talker.ip)}
-                className="group cursor-pointer p-2.5 rounded-xl hover:bg-white/[0.03] transition-colors duration-150"
+                className="group cursor-pointer flex items-center justify-between gap-3 text-xs py-1.5 px-1 rounded-lg hover:bg-white/[0.03] transition-colors"
               >
-                <div className="flex items-center justify-between gap-2 mb-1.5 text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="w-5 h-5 rounded-md bg-white/[0.04] text-[10.5px] font-bold mono text-[#9AA3B8] flex items-center justify-center shrink-0">
-                      {index + 1}
-                    </span>
-                    <span className="font-semibold text-[#F1F3F9] truncate group-hover:text-[#60A5FA] transition-colors">
-                      {talker.hostname}
-                    </span>
-                    <span className="mono text-[11px] text-[#5E6579] hidden sm:inline">
-                      ({talker.ip})
-                    </span>
-                  </div>
+                {/* Device */}
+                <div className="flex items-center gap-2 w-24 shrink-0 truncate">
+                  <i className={`${getDeviceIcon(talker.hostname)} text-sm text-[#5E6579]`}></i>
+                  <span className="text-[#F1F3F9] font-medium truncate group-hover:text-blue-400 transition-colors">
+                    {talker.hostname}
+                  </span>
+                </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px] text-[#5E6579]">
-                      {talker.connections} {talker.connections === 1 ? 'conn' : 'conns'}
-                    </span>
-                    <span className="mono font-bold text-[#54C8E8]">
-                      {formatByteCount(talker.bytes)}
-                    </span>
+                {/* Data Usage with Bar */}
+                <div className="flex-1 flex items-center gap-2 px-3 min-w-0">
+                  <span className="mono text-[#F1F3F9] font-medium text-[11.5px] shrink-0 w-14">
+                    {formatByteCount(talker.bytes)}
+                  </span>
+                  <div className="flex-1 h-2 bg-white/[0.04] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400"
+                      style={{ width: `${barWidth}%` }}
+                    />
                   </div>
                 </div>
 
-                {/* Proportional Usage Bar */}
-                <div className="h-1.5 w-full bg-white/[0.04] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-[#60A5FA] to-[#54C8E8] transition-all duration-300"
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </div>
+                {/* Connections */}
+                <span className="mono text-[#9AA3B8] text-[11.5px] w-16 text-right shrink-0">
+                  {talker.connections.toLocaleString()}
+                </span>
               </div>
             );
           })}

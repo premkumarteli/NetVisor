@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -7,137 +7,120 @@ import {
   Position,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import StatusBadge from '../Common/StatusBadge';
-import { formatByteCount } from '../../utils/presentation';
 
-// Custom Central Gateway Node
-const GatewayNode = ({ data }) => {
+// Center Gateway Hub Node (Matching Reference)
+const GatewayHubNode = () => {
   return (
-    <div className="relative px-4 py-3 rounded-2xl bg-[#111422]/90 border border-blue-500/40 shadow-xl shadow-blue-500/10 flex items-center gap-3 min-w-[170px]">
-      <Handle type="source" position={Position.Top} className="!bg-blue-400 !w-2 !h-2" />
-      <Handle type="source" position={Position.Bottom} className="!bg-blue-400 !w-2 !h-2" />
-      <Handle type="source" position={Position.Left} className="!bg-blue-400 !w-2 !h-2" />
-      <Handle type="source" position={Position.Right} className="!bg-blue-400 !w-2 !h-2" />
-      <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-[#60A5FA] flex items-center justify-center font-bold">
-        <i className="ri-radar-line text-lg"></i>
-      </div>
-      <div>
-        <div className="text-xs font-bold text-[#F1F3F9] tracking-tight">{data.label || 'Gateway Core'}</div>
-        <div className="text-[10px] text-[#9AA3B8] mono">Active Sensor Hub</div>
+    <div className="relative flex flex-col items-center justify-center">
+      {/* Radiating Pulse Wave Rings */}
+      <div className="absolute w-28 h-28 rounded-full bg-blue-500/10 animate-ping pointer-events-none" style={{ animationDuration: '3.5s' }} />
+      <div className="absolute w-20 h-20 rounded-full bg-blue-500/15 border border-blue-500/30 pointer-events-none" />
+
+      {/* Center Icon */}
+      <div className="relative w-14 h-14 rounded-full bg-[#10182E] border-2 border-[#3B82F6] shadow-[0_0_25px_rgba(59,130,246,0.45)] flex items-center justify-center text-blue-400 z-10">
+        <Handle type="source" position={Position.Top} className="!opacity-0" />
+        <Handle type="source" position={Position.Bottom} className="!opacity-0" />
+        <Handle type="source" position={Position.Left} className="!opacity-0" />
+        <Handle type="source" position={Position.Right} className="!opacity-0" />
+        <i className="ri-router-line text-2xl"></i>
       </div>
     </div>
   );
 };
 
-// Custom Device Endpoint Node
-const DeviceNode = ({ data }) => {
+// Device Endpoint Node (Matching Reference Circular Nodes)
+const CircularDeviceNode = ({ data }) => {
   const { device, onSelect } = data;
   const isHighRisk = (Number(device.risk_score) || 0) >= 60 || ['CRITICAL', 'HIGH'].includes(String(device.risk_level).toUpperCase());
   const isVpn = Boolean(device.is_vpn || device.vpn_provider || device.detection_type === 'vpn');
   const isNew = Boolean(device.is_new);
 
-  let toneColor = '#34D399'; // Normal green
-  let badgeLabel = 'NORMAL';
-  let badgeTone = 'green';
-
+  let toneColor = '#60A5FA'; // Normal (slate/blue)
   if (isHighRisk) {
-    toneColor = '#FB7185';
-    badgeLabel = 'HIGH RISK';
-    badgeTone = 'rose';
+    toneColor = '#EF4444'; // Red
   } else if (isVpn) {
-    toneColor = '#A78BFA';
-    badgeLabel = 'VPN';
-    badgeTone = 'violet';
+    toneColor = '#8B5CF6'; // Purple / Violet
   } else if (isNew) {
-    toneColor = '#54C8E8';
-    badgeLabel = 'NEW';
-    badgeTone = 'teal';
+    toneColor = '#10B981'; // Emerald / Teal
+  }
+
+  // Device icon inference
+  const os = `${device.os_family || ''} ${device.device_type || ''} ${device.hostname || ''}`.toLowerCase();
+  let icon = 'ri-macbook-line';
+  if (os.includes('phone') || os.includes('android') || os.includes('ios') || os.includes('iphone')) {
+    icon = 'ri-smartphone-line';
+  } else if (os.includes('server') || os.includes('linux')) {
+    icon = 'ri-server-line';
+  } else if (os.includes('tv')) {
+    icon = 'ri-tv-line';
+  } else if (os.includes('print')) {
+    icon = 'ri-printer-line';
+  } else if (os.includes('cam')) {
+    icon = 'ri-camera-line';
+  } else if (os.includes('pc') || os.includes('desktop')) {
+    icon = 'ri-computer-line';
   }
 
   return (
     <div
       onClick={() => onSelect?.(device.ip)}
-      className="cursor-pointer group relative px-3 py-2.5 rounded-xl bg-[#0D101D]/90 border transition-all duration-200 hover:scale-105 shadow-lg min-w-[150px]"
-      style={{
-        borderColor: `${toneColor}40`,
-        boxShadow: `0 4px 20px ${toneColor}15`,
-      }}
+      className="cursor-pointer group flex flex-col items-center justify-center transition-all duration-200 hover:scale-115"
     >
-      <Handle type="target" position={Position.Top} className="!bg-slate-400 !w-1.5 !h-1.5" />
-      <Handle type="target" position={Position.Bottom} className="!bg-slate-400 !w-1.5 !h-1.5" />
-      <Handle type="target" position={Position.Left} className="!bg-slate-400 !w-1.5 !h-1.5" />
-      <Handle type="target" position={Position.Right} className="!bg-slate-400 !w-1.5 !h-1.5" />
+      <Handle type="target" position={Position.Top} className="!opacity-0" />
+      <Handle type="target" position={Position.Bottom} className="!opacity-0" />
+      <Handle type="target" position={Position.Left} className="!opacity-0" />
+      <Handle type="target" position={Position.Right} className="!opacity-0" />
 
-      <div className="flex items-center justify-between gap-2 mb-1.5">
-        <span className="text-[11px] font-bold text-[#F1F3F9] truncate max-w-[90px]">
-          {device.hostname && !['Unknown', 'Unknown-Device', ''].includes(device.hostname)
-            ? device.hostname
-            : `Dev ${device.ip}`}
-        </span>
-        <StatusBadge tone={badgeTone}>{badgeLabel}</StatusBadge>
+      {/* Circular Node Icon Container */}
+      <div
+        className="w-10 h-10 rounded-full bg-[#0D1222]/90 flex items-center justify-center text-sm shadow-lg transition-all duration-200"
+        style={{
+          border: `1.8px solid ${toneColor}`,
+          color: toneColor,
+          boxShadow: `0 0 16px ${toneColor}33`,
+        }}
+      >
+        <i className={icon}></i>
       </div>
 
-      <div className="flex items-center justify-between text-[10px] text-[#9AA3B8]">
-        <span className="mono truncate">{device.ip}</span>
-        {device.bandwidth_bytes > 0 && (
-          <span className="mono font-semibold text-[#54C8E8]">
-            {formatByteCount(device.bandwidth_bytes)}
-          </span>
-        )}
-      </div>
+      {/* Label Tooltip below on hover */}
+      <span className="text-[10px] font-medium text-[#9AA3B8] mt-1 group-hover:text-white truncate max-w-[80px] bg-black/60 px-1.5 py-0.5 rounded-full border border-white/5 mono">
+        {device.hostname && !['Unknown', 'Unknown-Device', ''].includes(device.hostname)
+          ? device.hostname
+          : device.ip}
+      </span>
     </div>
   );
 };
 
 const nodeTypes = {
-  gatewayNode: GatewayNode,
-  deviceNode: DeviceNode,
+  gatewayHub: GatewayHubNode,
+  circularDevice: CircularDeviceNode,
 };
 
-// Embedded Trust Status Row (Section 3)
-export const TrustStatusHeader = ({ wsStatus, agentsSummary, bandwidthStr, inspectionCoverage }) => {
-  const isOnline = wsStatus === 'connected';
-
+// Observatory-Inspired Topology Empty State
+const ObservatoryEmptyState = () => {
   return (
-    <div className="flex items-center flex-wrap gap-4 py-2 px-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-[#9AA3B8]">
-      {/* Sensor streaming */}
-      <div className="flex items-center gap-2">
-        <span
-          className={`w-2 h-2 rounded-full ${
-            isOnline ? 'bg-[#34D399] shadow-[0_0_8px_#34D399]' : 'bg-[#FB7185]'
-          }`}
-        />
-        <span>Sensor:</span>
-        <strong className="text-[#F1F3F9]">{isOnline ? 'Streaming' : 'Connecting'}</strong>
+    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 pointer-events-none">
+      {/* Concentric Geometric Rings */}
+      <div className="relative flex items-center justify-center">
+        <div className="w-80 h-80 rounded-full border border-white/[0.04] absolute" />
+        <div className="w-56 h-56 rounded-full border border-dashed border-white/[0.06] absolute animate-spin" style={{ animationDuration: '60s' }} />
+        <div className="w-36 h-36 rounded-full border border-blue-500/10 absolute" />
+
+        {/* Faint Center Gateway Marker */}
+        <div className="w-14 h-14 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
+          <i className="ri-radar-line text-2xl"></i>
+        </div>
       </div>
 
-      <div className="h-3 w-px bg-white/10" />
-
-      {/* Agent Health */}
-      <div className="flex items-center gap-2">
-        <i className="ri-cpu-line text-[#60A5FA]"></i>
-        <span>Agents:</span>
-        <strong className="text-[#F1F3F9] tabular-nums">
-          {agentsSummary?.online ?? 0}/{agentsSummary?.total ?? 0} online
-        </strong>
-      </div>
-
-      <div className="h-3 w-px bg-white/10" />
-
-      {/* Ingestion Volume */}
-      <div className="flex items-center gap-2">
-        <i className="ri-pulse-line text-[#54C8E8]"></i>
-        <span>Volume:</span>
-        <strong className="text-[#F1F3F9] mono">{bandwidthStr || '0 B/s'}</strong>
-      </div>
-
-      <div className="h-3 w-px bg-white/10" />
-
-      {/* Inspection Coverage */}
-      <div className="flex items-center gap-2">
-        <i className="ri-shield-check-line text-[#34D399]"></i>
-        <span>Coverage:</span>
-        <strong className="text-[#F1F3F9] tabular-nums">{inspectionCoverage ?? 100}%</strong>
+      <div className="mt-8 text-center max-w-xs z-10">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-[#F1F3F9]">
+          Observatory Sensor Active
+        </h4>
+        <p className="text-[11px] text-[#5E6579] mt-1 leading-relaxed">
+          Gateway is monitoring network interfaces. Connection constellation will map in real time as packets flow.
+        </p>
       </div>
     </div>
   );
@@ -149,7 +132,6 @@ export const TopologyGraph = ({
   onSelectDevice,
   trustStatusProps = {},
 }) => {
-  // Cap at top 14 devices by risk score or activity
   const topDevices = useMemo(() => {
     if (!Array.isArray(devices) || devices.length === 0) return [];
     return [...devices]
@@ -157,22 +139,21 @@ export const TopologyGraph = ({
       .slice(0, 14);
   }, [devices]);
 
-  // Initial one-time layout computation (Static physics after initial render)
   const { nodes, edges } = useMemo(() => {
     if (topDevices.length === 0) {
       return { nodes: [], edges: [] };
     }
 
-    const centerX = 380;
-    const centerY = 260;
-    const radius = 210;
+    const centerX = 360;
+    const centerY = 230;
+    const radius = 175;
 
     const initialNodes = [
       {
-        id: 'gateway-core',
-        type: 'gatewayNode',
-        position: { x: centerX - 85, y: centerY - 25 },
-        data: { label: 'NetVisor Gateway' },
+        id: 'gateway-hub',
+        type: 'gatewayHub',
+        position: { x: centerX - 28, y: centerY - 28 },
+        data: {},
         draggable: false,
       },
     ];
@@ -181,17 +162,19 @@ export const TopologyGraph = ({
     const angleStep = (2 * Math.PI) / topDevices.length;
 
     topDevices.forEach((device, index) => {
-      // Position evenly in a circle around gateway
+      // Natural orbit distribution
+      const r = radius + ((index % 3) - 1) * 28;
       const angle = index * angleStep - Math.PI / 2;
-      const x = Math.round(centerX + radius * Math.cos(angle) - 75);
-      const y = Math.round(centerY + radius * Math.sin(angle) - 25);
+      const x = Math.round(centerX + r * Math.cos(angle) - 20);
+      const y = Math.round(centerY + r * 0.72 * Math.sin(angle) - 20);
 
       const isHighRisk = (Number(device.risk_score) || 0) >= 60;
-      const edgeColor = isHighRisk ? 'rgba(251, 113, 133, 0.4)' : 'rgba(96, 165, 250, 0.25)';
+      const isVpn = Boolean(device.is_vpn || device.vpn_provider || device.detection_type === 'vpn');
+      const strokeColor = isHighRisk ? 'rgba(239, 68, 68, 0.45)' : isVpn ? 'rgba(139, 92, 246, 0.4)' : 'rgba(59, 130, 246, 0.3)';
 
       initialNodes.push({
         id: `node-${device.ip || index}`,
-        type: 'deviceNode',
+        type: 'circularDevice',
         position: { x, y },
         data: {
           device,
@@ -200,102 +183,76 @@ export const TopologyGraph = ({
         draggable: false,
       });
 
-      // Edge from gateway to device
       initialEdges.push({
         id: `edge-gw-${device.ip || index}`,
-        source: 'gateway-core',
+        source: 'gateway-hub',
         target: `node-${device.ip || index}`,
-        animated: isHighRisk,
-        style: { stroke: edgeColor, strokeWidth: isHighRisk ? 2 : 1 },
+        animated: isHighRisk || isVpn,
+        style: { stroke: strokeColor, strokeWidth: 1.2 },
       });
     });
 
-    // Add inter-device edges based on recent activity, capped at 30 edges total
-    const deviceIps = new Set(topDevices.map((d) => d.ip));
-    let extraEdgeCount = 0;
-
-    if (Array.isArray(activity)) {
-      activity.forEach((act, actIdx) => {
-        if (initialEdges.length >= 30) return;
-        if (
-          act.src_ip &&
-          act.dst_ip &&
-          act.src_ip !== act.dst_ip &&
-          deviceIps.has(act.src_ip) &&
-          deviceIps.has(act.dst_ip)
-        ) {
-          const edgeId = `edge-flow-${act.src_ip}-${act.dst_ip}-${actIdx}`;
-          if (!initialEdges.some((e) => e.id === edgeId)) {
-            initialEdges.push({
-              id: edgeId,
-              source: `node-${act.src_ip}`,
-              target: `node-${act.dst_ip}`,
-              animated: true,
-              style: { stroke: 'rgba(84, 200, 232, 0.3)', strokeWidth: 1.2 },
-            });
-            extraEdgeCount++;
-          }
-        }
-      });
-    }
-
     return { nodes: initialNodes, edges: initialEdges.slice(0, 30) };
-  }, [topDevices, activity, onSelectDevice]);
+  }, [topDevices, onSelectDevice]);
 
   return (
-    <div className="glass-card flex flex-col h-full min-h-[580px] relative overflow-hidden">
-      {/* Topology Header with Embedded Trust Status */}
-      <div className="p-5 border-b border-white/10 flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[#9AA3B8]">
-              Live Network Fabric
-            </span>
-            <h2 className="text-lg font-bold text-[#F1F3F9] tracking-tight">
-              Topology & Connection Mesh
-            </h2>
+    <div
+      className="glass-card flex flex-col h-full min-h-[520px] relative overflow-hidden"
+      style={{
+        background: 'rgba(10, 14, 26, 0.78)',
+        backdropFilter: 'blur(24px) saturate(160%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(160%)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.45)',
+      }}
+    >
+      {/* Topology Header matching reference */}
+      <div className="p-5 border-b border-white/[0.06] flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[#60A5FA]">
+            <i className="ri-global-line text-base"></i>
           </div>
-
-          {/* Legend */}
-          <div className="hidden sm:flex items-center gap-3 text-[11px] font-semibold text-[#9AA3B8]">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#34D399]" /> Normal
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#A78BFA]" /> VPN
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#FB7185]" /> High Risk
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#54C8E8]" /> New
-            </span>
+          <div>
+            <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
+              Network Activity
+            </h3>
+            <p className="text-[11px] text-[#9AA3B8]">
+              Live device connections and traffic flow
+            </p>
           </div>
         </div>
 
-        {/* Embedded Trust Status (Section 3) */}
-        <TrustStatusHeader {...trustStatusProps} />
+        {/* Legend matching reference */}
+        <div className="flex items-center gap-4 text-xs text-[#9AA3B8]">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#60A5FA]" /> Normal
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" /> VPN
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#EF4444]" /> High Risk
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-[#10B981]" /> New Device
+          </span>
+          <button type="button" className="text-[#5E6579] hover:text-white ml-1">
+            <i className="ri-fullscreen-line text-sm"></i>
+          </button>
+        </div>
       </div>
 
       {/* Canvas Area */}
-      <div className="flex-1 w-full h-[460px] relative">
+      <div className="flex-1 w-full h-[430px] relative">
         {nodes.length === 0 ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl text-[#9AA3B8] mb-3">
-              <i className="ri-radar-line"></i>
-            </div>
-            <h3 className="text-base font-bold text-[#F1F3F9] mb-1">No Active Connections</h3>
-            <p className="text-xs text-[#5E6579] max-w-sm">
-              The topology graph will materialize once endpoint traffic or sensor heartbeats register on the gateway.
-            </p>
-          </div>
+          <ObservatoryEmptyState />
         ) : (
           <ReactFlow
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.25 }}
+            fitViewOptions={{ padding: 0.2 }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={true}
@@ -305,10 +262,10 @@ export const TopologyGraph = ({
             proOptions={{ hideAttribution: true }}
             className="w-full h-full"
           >
-            <Background color="rgba(255, 255, 255, 0.05)" gap={24} size={1} />
+            <Background color="rgba(255, 255, 255, 0.03)" gap={28} size={1} />
             <Controls
               showInteractive={false}
-              className="!bg-[#111422] !border !border-white/10 !rounded-xl !overflow-hidden"
+              className="!bg-[#0D1222] !border !border-white/10 !rounded-xl !overflow-hidden"
             />
           </ReactFlow>
         )}
