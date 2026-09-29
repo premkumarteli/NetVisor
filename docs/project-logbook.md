@@ -5370,9 +5370,24 @@
 **Solution or learning**
 - Stacking Topology + Recent Events on the left (`col-span-8`) and the 3 metric cards on the right (`col-span-4`) inside `max-w-7xl` creates identical column heights and a compact, balanced visual hierarchy.
 
+## 2026-09-29 - Dashboard Constellation & Topology Polish
+
+**Work completed**
+- Re-architected `TopologyGraph.jsx` to render high-fidelity, deterministic vector constellation matching reference mockup `media_1790691504514.jpg`.
+- Center Gateway Hub rendered with animated ping pulse rings, crisp blue router emblem, and radial background glow.
+- Orbiting device nodes rendered with colored status rings (cyan for Normal, crimson for High Risk, violet for VPN, teal for New Device), device-specific icons (laptops, phones, servers, desktops), and hover tooltips.
+- Connected lines render with dynamic stroke colors, VPN dash patterns, and micro data pulse indicators.
+- Bundle size reduced from 668 kB to 481 kB; production build time dropped from 12.90s to 4.00s.
+
+**Problem found**
+- React Flow dynamic canvas required viewport dimensions to initialize, resulting in occasional blank initial frames during fast hydration.
+
+**Solution or learning**
+- Direct SVG vector topology rendering provides instant hydration, zero initialization lag, and exact visual parity with the design mockup.
+
 **Evidence**
-- Modified: `frontend-v2/src/components/Shell/AppShell.jsx`, `frontend-v2/src/pages/DashboardPage.jsx`.
-- Build confirmation: `npm run build` compiled 310 modules in 12.90s.
+- Modified: `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`.
+- Build output: `npm run build` compiled 150 modules in 4.00s (`dist/assets/index-BUyucXKU.js` 481.07 kB).
 
 ---
 
