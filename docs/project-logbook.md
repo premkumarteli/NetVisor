@@ -5321,6 +5321,27 @@
 - Build output: `npm run build` compiled 310 modules in 17.37s.
 - Test suite: `938 passed, 2 skipped in 44.15s` (`C:\Python313\python.exe -m pytest tests/ -q`).
 
+## 2026-09-29 - Comprehensive Runtime Architecture Model
+
+**Work completed**
+- Launched 6 parallel Pro-model research subagents to simultaneously analyze: agent layer, backend API, engine architecture, database schema, gateway/security, and frontend/realtime subsystems.
+- Produced a complete runtime architecture model (`NetVisor_Runtime_Architecture.md`) covering all 11 objectives from the Principal Security Architect brief.
+- Documented all 50+ API endpoints with auth requirements, complete MySQL schema (30 tables), all 6 engine classes with verified thresholds, agent startup sequence (11 steps), packet processing pipeline (Scapy → FlowManager → upload queue → FastAPI → flow_writer → Engine Registry → MySQL → Socket.IO → React), correlation worker lateral movement detection algorithm, VPN detection scoring formula, HMAC-SHA256 agent auth flow, mTLS provisioning lifecycle, real-time Socket.IO pipeline, performance bottleneck analysis, and dead code inventory.
+- Corrected initial analysis errors: ClickHouse IS present (docker-compose + clickhouse_client.py), Redis IS used for Streams on hot path (not just correlation), BruteForce threshold is ≥15 (not 5), BeaconingDetector uses CoV ≤0.1 over 1800s window.
+
+**Problem found**
+- Initial file-size-based file enumeration missed ClickHouse and Redis Stream usage because the relevant client files (`backend/db/clickhouse_client.py`, `backend/db/redis_client.py`) were not in the top-80 by size.
+- AI Engine is partially implemented — MITRE mappings exist but playbook generation returns template stubs not operationally complete responses.
+- `proto/` protobuf files are generated but no clear import usage was found in production paths — marked [Unverified].
+
+**Solution or learning**
+- Parallel subagent strategy allowed full codebase coverage without sequential bottleneck — all 6 agents completed within ~8 minutes.
+- Cross-validation across agents caught the ClickHouse discrepancy that a single pass would have missed.
+
+**Evidence**
+- Architecture document: `C:\Users\prem\.gemini\antigravity\brain\0a4bb184-e868-4703-97af-5b37ae201637\NetVisor_Runtime_Architecture.md`
+- Sources verified: `agent/main.py`, `backend/main.py`, `gateway/main.py`, `backend/services/flow_service.py`, `backend/services/correlation_worker.py`, `backend/services/vpn_detector.py`, `backend/engines/`, `infra/database/init.sql`, `backend/db/session.py`, `packet_engine/flow_aggregator.py`, `agent/dpi/`, `backend/middleware/`, `frontend/src/`.
+
 ---
 
 ## Template for Future Daily Entries
