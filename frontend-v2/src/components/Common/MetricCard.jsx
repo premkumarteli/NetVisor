@@ -3,7 +3,7 @@ import React from 'react';
 // Generates smooth SVG sparkline path
 const Sparkline = ({ color = '#3B82F6', id = 'spark' }) => {
   return (
-    <svg className="w-full h-9 overflow-visible" viewBox="0 0 100 24" fill="none" preserveAspectRatio="none">
+    <svg className="w-full h-5 overflow-visible" viewBox="0 0 100 20" fill="none" preserveAspectRatio="none">
       <defs>
         <linearGradient id={`grad-${id}`} x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor={color} stopOpacity="0.25" />
@@ -11,14 +11,14 @@ const Sparkline = ({ color = '#3B82F6', id = 'spark' }) => {
         </linearGradient>
       </defs>
       <path
-        d="M 0,16 Q 18,22 35,12 T 70,14 T 100,6"
+        d="M 0,14 Q 18,18 35,9 T 70,11 T 100,4"
         fill="none"
         stroke={color}
-        strokeWidth="1.8"
+        strokeWidth="1.5"
         strokeLinecap="round"
       />
       <path
-        d="M 0,16 Q 18,22 35,12 T 70,14 T 100,6 L 100,24 L 0,24 Z"
+        d="M 0,14 Q 18,18 35,9 T 70,11 T 100,4 L 100,20 L 0,20 Z"
         fill={`url(#grad-${id})`}
       />
     </svg>
@@ -40,7 +40,7 @@ export const MetricCard = ({
   return (
     <div
       onClick={onClick}
-      className={`glass-card p-5 transition-all duration-200 relative overflow-hidden flex flex-col justify-between ${
+      className={`glass-card p-3.5 transition-all duration-200 relative overflow-hidden flex flex-col justify-between ${
         onClick ? 'cursor-pointer hover:border-white/15 hover:translate-y-[-1px]' : ''
       } ${className}`}
       style={{
@@ -48,13 +48,13 @@ export const MetricCard = ({
         backdropFilter: 'blur(20px) saturate(150%)',
         WebkitBackdropFilter: 'blur(20px) saturate(150%)',
         border: '1px solid rgba(255, 255, 255, 0.07)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
       }}
     >
-      <div className="flex items-start gap-3.5 mb-2">
+      <div className="flex items-start gap-2.5 mb-1">
         {/* Left Square Icon Container */}
         <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border"
           style={{
             backgroundColor: `${accent}1A`,
             borderColor: `${accent}33`,
@@ -62,7 +62,7 @@ export const MetricCard = ({
           }}
         >
           {typeof icon === 'string' ? (
-            <i className={`${icon} text-lg`}></i>
+            <i className={`${icon} text-base`}></i>
           ) : (
             icon
           )}
@@ -70,13 +70,13 @@ export const MetricCard = ({
 
         {/* Metric Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-[#9AA3B8] truncate">
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[11px] font-medium text-[#9AA3B8] truncate">
               {label}
             </span>
             {badgeText && (
               <span
-                className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full flex items-center gap-1 ${
+                className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-0.5 ${
                   badgeTone === 'danger'
                     ? 'bg-rose-500/15 text-[#FB7185] border border-rose-500/20'
                     : badgeTone === 'warning'
@@ -89,19 +89,19 @@ export const MetricCard = ({
             )}
           </div>
 
-          <div className="text-2xl font-extrabold tabular-nums tracking-[-0.02em] text-[#FFFFFF] mt-0.5">
+          <div className="text-xl font-extrabold tabular-nums tracking-tight text-[#FFFFFF] mt-0.5">
             {value}
           </div>
         </div>
       </div>
 
       {/* Sparkline Wave at bottom */}
-      <div className="mt-1 pt-1 opacity-80">
+      <div className="mt-0.5 opacity-80">
         <Sparkline color={sparkColor} id={label.replace(/\s+/g, '-')} />
       </div>
 
       {meta && (
-        <div className="text-[11px] text-[#5E6579] font-medium truncate mt-1">
+        <div className="text-[10px] text-[#5E6579] font-medium truncate mt-0.5">
           {meta}
         </div>
       )}

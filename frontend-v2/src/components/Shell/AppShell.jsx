@@ -35,89 +35,88 @@ export const AppShell = ({
           WebkitBackdropFilter: 'blur(24px) saturate(180%)',
         }}
       >
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-6">
+        <div className="max-w-[1600px] w-full mx-auto px-4 sm:px-6 h-12 flex items-center justify-between gap-4">
           {/* Brand Mark */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-[#2563EB]/20 border border-[#3B82F6]/40 flex items-center justify-center text-[#60A5FA] shadow-[0_0_15px_rgba(59,130,246,0.25)]">
-              <i className="ri-shield-keyhole-fill text-lg"></i>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-[#2563EB]/20 border border-[#3B82F6]/40 flex items-center justify-center text-[#60A5FA] shadow-[0_0_12px_rgba(59,130,246,0.25)]">
+              <i className="ri-shield-keyhole-fill text-base"></i>
             </div>
-            <div>
-              <h1 className="font-bold text-base tracking-tight text-[#FFFFFF] leading-tight">
+            <div className="flex items-baseline gap-2">
+              <h1 className="font-bold text-sm tracking-tight text-[#FFFFFF] leading-tight">
                 NetVisor
               </h1>
-              <p className="text-[10px] text-[#9AA3B8] font-medium leading-none">
-                Network Security Monitor
-              </p>
+              <span className="hidden md:inline text-[9.5px] text-[#9AA3B8] font-medium">
+                Observatory V4
+              </span>
             </div>
           </div>
 
           {/* Centered Global Search Input (Exact to reference mockup) */}
-          <div className="flex-1 max-w-lg hidden md:block">
+          <div className="flex-1 max-w-md hidden md:block">
             <div className="relative flex items-center">
-              <i className="ri-search-line absolute left-3.5 text-[#5E6579] text-sm pointer-events-none"></i>
+              <i className="ri-search-line absolute left-3 text-[#5E6579] text-xs pointer-events-none"></i>
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search devices, IPs, domains, users..."
-                className="w-full h-9 pl-9 pr-12 rounded-xl bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/50 text-xs text-[#F1F3F9] placeholder-[#5E6579] outline-none transition-all duration-150"
+                className="w-full h-7.5 pl-8 pr-10 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/50 text-[11px] text-[#F1F3F9] placeholder-[#5E6579] outline-none transition-all duration-150"
               />
-              <span className="absolute right-3 px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.1] text-[10px] mono text-[#9AA3B8] pointer-events-none">
+              <span className="absolute right-2.5 px-1 py-0.2 rounded bg-white/[0.06] border border-white/[0.1] text-[9px] mono text-[#9AA3B8] pointer-events-none">
                 ⌘ K
               </span>
             </div>
           </div>
 
           {/* Right Action Controls (Theme, Notifications, User Badge) */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             {/* Theme Toggle */}
             <button
               type="button"
-              className="w-8 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
+              className="w-7 h-7 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
               title="Toggle theme"
             >
-              <i className="ri-sun-line text-sm"></i>
+              <i className="ri-sun-line text-xs"></i>
             </button>
 
             {/* Notifications Bell with Unread Badge */}
             <button
               type="button"
-              className="relative w-8 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
+              className="relative w-7 h-7 rounded-lg bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] flex items-center justify-center text-[#9AA3B8] hover:text-white transition-colors"
               title="System alerts"
             >
-              <i className="ri-notification-3-line text-sm"></i>
-              <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A]" />
+              <i className="ri-notification-3-line text-xs"></i>
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A]" />
             </button>
 
             {/* User Profile Pill */}
-            <div className="flex items-center gap-2.5 pl-2 py-1 pr-3 rounded-full bg-white/[0.03] border border-white/[0.06]">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-[11px] font-bold text-white shadow-sm">
+            <div className="flex items-center gap-2 pl-1.5 py-0.5 pr-2 rounded-full bg-white/[0.03] border border-white/[0.06]">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
                 P
               </div>
               <div className="text-left hidden sm:block">
-                <div className="text-xs font-semibold text-[#F1F3F9] leading-none">Premkumar</div>
-                <div className="text-[9.5px] text-[#9AA3B8] leading-tight">Admin</div>
+                <div className="text-[11px] font-semibold text-[#F1F3F9] leading-none">Premkumar</div>
               </div>
-              <i className="ri-arrow-down-s-line text-xs text-[#5E6579]"></i>
+              <i className="ri-arrow-down-s-line text-[10px] text-[#5E6579]"></i>
             </div>
           </div>
         </div>
       </header>
 
       {/* 3. Main Workspace Canvas */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 pt-6 pb-28">
+      <main className="relative z-10 flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 pt-3 pb-16">
         {children}
       </main>
 
       {/* 4. Floating Bottom Dock (Reference: Pill dock with soft glow) */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+      <div className="fixed bottom-3.5 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-[22px] border border-white/[0.09]"
+          className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl border border-white/[0.09]"
           style={{
-            background: 'rgba(11, 15, 27, 0.78)',
+            background: 'rgba(11, 15, 27, 0.82)',
             backdropFilter: 'blur(28px) saturate(180%)',
             WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.55), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 15px 40px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
           }}
         >
           {TABS.map((tab) => {
@@ -132,16 +131,16 @@ export const AppShell = ({
               <NavLink
                 key={tab.id}
                 to={tab.path}
-                className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-500/15 text-[#60A5FA] border border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.18)]'
+                    ? 'bg-blue-500/15 text-[#60A5FA] border border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.18)]'
                     : 'text-[#9AA3B8] hover:text-[#F1F3F9] hover:bg-white/[0.03] border border-transparent'
                 }`}
               >
                 <div className="relative flex items-center justify-center">
-                  <i className={`${tab.icon} text-base`}></i>
+                  <i className={`${tab.icon} text-sm`}></i>
                   {hasRoseBadge && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_8px_#EF4444]" />
+                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_6px_#EF4444]" />
                   )}
                 </div>
                 <span className="hidden sm:inline">{tab.label}</span>

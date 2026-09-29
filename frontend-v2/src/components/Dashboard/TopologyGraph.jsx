@@ -13,16 +13,16 @@ const GatewayHubNode = () => {
   return (
     <div className="relative flex flex-col items-center justify-center">
       {/* Radiating Pulse Wave Rings */}
-      <div className="absolute w-28 h-28 rounded-full bg-blue-500/10 animate-ping pointer-events-none" style={{ animationDuration: '3.5s' }} />
-      <div className="absolute w-20 h-20 rounded-full bg-blue-500/15 border border-blue-500/30 pointer-events-none" />
+      <div className="absolute w-20 h-20 rounded-full bg-blue-500/10 animate-ping pointer-events-none" style={{ animationDuration: '3.5s' }} />
+      <div className="absolute w-14 h-14 rounded-full bg-blue-500/15 border border-blue-500/30 pointer-events-none" />
 
       {/* Center Icon */}
-      <div className="relative w-14 h-14 rounded-full bg-[#10182E] border-2 border-[#3B82F6] shadow-[0_0_25px_rgba(59,130,246,0.45)] flex items-center justify-center text-blue-400 z-10">
+      <div className="relative w-10 h-10 rounded-full bg-[#10182E] border-2 border-[#3B82F6] shadow-[0_0_20px_rgba(59,130,246,0.45)] flex items-center justify-center text-blue-400 z-10">
         <Handle type="source" position={Position.Top} className="!opacity-0" />
         <Handle type="source" position={Position.Bottom} className="!opacity-0" />
         <Handle type="source" position={Position.Left} className="!opacity-0" />
         <Handle type="source" position={Position.Right} className="!opacity-0" />
-        <i className="ri-router-line text-2xl"></i>
+        <i className="ri-router-line text-lg"></i>
       </div>
     </div>
   );
@@ -73,18 +73,18 @@ const CircularDeviceNode = ({ data }) => {
 
       {/* Circular Node Icon Container */}
       <div
-        className="w-10 h-10 rounded-full bg-[#0D1222]/90 flex items-center justify-center text-sm shadow-lg transition-all duration-200"
+        className="w-8 h-8 rounded-full bg-[#0D1222]/90 flex items-center justify-center text-xs shadow-md transition-all duration-200"
         style={{
-          border: `1.8px solid ${toneColor}`,
+          border: `1.5px solid ${toneColor}`,
           color: toneColor,
-          boxShadow: `0 0 16px ${toneColor}33`,
+          boxShadow: `0 0 12px ${toneColor}33`,
         }}
       >
         <i className={icon}></i>
       </div>
 
       {/* Label Tooltip below on hover */}
-      <span className="text-[10px] font-medium text-[#9AA3B8] mt-1 group-hover:text-white truncate max-w-[80px] bg-black/60 px-1.5 py-0.5 rounded-full border border-white/5 mono">
+      <span className="text-[9px] font-medium text-[#9AA3B8] mt-0.5 group-hover:text-white truncate max-w-[70px] bg-black/70 px-1 py-0.2 rounded-full border border-white/5 mono">
         {device.hostname && !['Unknown', 'Unknown-Device', ''].includes(device.hostname)
           ? device.hostname
           : device.ip}
@@ -101,25 +101,25 @@ const nodeTypes = {
 // Observatory-Inspired Topology Empty State
 const ObservatoryEmptyState = () => {
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 pointer-events-none">
+    <div className="absolute inset-0 flex flex-col items-center justify-center p-4 pointer-events-none">
       {/* Concentric Geometric Rings */}
       <div className="relative flex items-center justify-center">
-        <div className="w-80 h-80 rounded-full border border-white/[0.04] absolute" />
-        <div className="w-56 h-56 rounded-full border border-dashed border-white/[0.06] absolute animate-spin" style={{ animationDuration: '60s' }} />
-        <div className="w-36 h-36 rounded-full border border-blue-500/10 absolute" />
+        <div className="w-56 h-56 rounded-full border border-white/[0.04] absolute" />
+        <div className="w-40 h-40 rounded-full border border-dashed border-white/[0.06] absolute animate-spin" style={{ animationDuration: '60s' }} />
+        <div className="w-24 h-24 rounded-full border border-blue-500/10 absolute" />
 
         {/* Faint Center Gateway Marker */}
-        <div className="w-14 h-14 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-          <i className="ri-radar-line text-2xl"></i>
+        <div className="w-10 h-10 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+          <i className="ri-radar-line text-lg"></i>
         </div>
       </div>
 
-      <div className="mt-8 text-center max-w-xs z-10">
-        <h4 className="text-xs font-bold uppercase tracking-wider text-[#F1F3F9]">
+      <div className="mt-4 text-center max-w-xs z-10">
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#F1F3F9]">
           Observatory Sensor Active
         </h4>
-        <p className="text-[11px] text-[#5E6579] mt-1 leading-relaxed">
-          Gateway is monitoring network interfaces. Connection constellation will map in real time as packets flow.
+        <p className="text-[10px] text-[#5E6579] mt-0.5 leading-relaxed">
+          Monitoring network interfaces. Constellation maps live as traffic flows.
         </p>
       </div>
     </div>
@@ -136,7 +136,7 @@ export const TopologyGraph = ({
     if (!Array.isArray(devices) || devices.length === 0) return [];
     return [...devices]
       .sort((a, b) => (Number(b.risk_score) || 0) - (Number(a.risk_score) || 0))
-      .slice(0, 14);
+      .slice(0, 12);
   }, [devices]);
 
   const { nodes, edges } = useMemo(() => {
@@ -144,15 +144,15 @@ export const TopologyGraph = ({
       return { nodes: [], edges: [] };
     }
 
-    const centerX = 360;
-    const centerY = 230;
-    const radius = 175;
+    const centerX = 260;
+    const centerY = 145;
+    const radius = 115;
 
     const initialNodes = [
       {
         id: 'gateway-hub',
         type: 'gatewayHub',
-        position: { x: centerX - 28, y: centerY - 28 },
+        position: { x: centerX - 20, y: centerY - 20 },
         data: {},
         draggable: false,
       },
@@ -163,10 +163,10 @@ export const TopologyGraph = ({
 
     topDevices.forEach((device, index) => {
       // Natural orbit distribution
-      const r = radius + ((index % 3) - 1) * 28;
+      const r = radius + ((index % 3) - 1) * 20;
       const angle = index * angleStep - Math.PI / 2;
-      const x = Math.round(centerX + r * Math.cos(angle) - 20);
-      const y = Math.round(centerY + r * 0.72 * Math.sin(angle) - 20);
+      const x = Math.round(centerX + r * Math.cos(angle) - 16);
+      const y = Math.round(centerY + r * 0.72 * Math.sin(angle) - 16);
 
       const isHighRisk = (Number(device.risk_score) || 0) >= 60;
       const isVpn = Boolean(device.is_vpn || device.vpn_provider || device.detection_type === 'vpn');
@@ -192,58 +192,55 @@ export const TopologyGraph = ({
       });
     });
 
-    return { nodes: initialNodes, edges: initialEdges.slice(0, 30) };
+    return { nodes: initialNodes, edges: initialEdges.slice(0, 24) };
   }, [topDevices, onSelectDevice]);
 
   return (
     <div
-      className="glass-card flex flex-col h-full min-h-[520px] relative overflow-hidden"
+      className="glass-card flex flex-col h-[340px] min-h-[340px] max-h-[340px] relative overflow-hidden"
       style={{
         background: 'rgba(10, 14, 26, 0.78)',
         backdropFilter: 'blur(24px) saturate(160%)',
         WebkitBackdropFilter: 'blur(24px) saturate(160%)',
         border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.45)',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.4)',
       }}
     >
       {/* Topology Header matching reference */}
-      <div className="p-5 border-b border-white/[0.06] flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[#60A5FA]">
-            <i className="ri-global-line text-base"></i>
+      <div className="px-3.5 py-2.5 border-b border-white/[0.06] flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[#60A5FA]">
+            <i className="ri-global-line text-xs"></i>
           </div>
           <div>
-            <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
+            <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
               Network Activity
             </h3>
-            <p className="text-[11px] text-[#9AA3B8]">
+            <p className="text-[9.5px] text-[#9AA3B8]">
               Live device connections and traffic flow
             </p>
           </div>
         </div>
 
         {/* Legend matching reference */}
-        <div className="flex items-center gap-4 text-xs text-[#9AA3B8]">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#60A5FA]" /> Normal
+        <div className="flex items-center gap-3 text-[10px] text-[#9AA3B8]">
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#60A5FA]" /> Normal
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#8B5CF6]" /> VPN
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8B5CF6]" /> VPN
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#EF4444]" /> High Risk
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" /> High Risk
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#10B981]" /> New Device
+          <span className="flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> New Device
           </span>
-          <button type="button" className="text-[#5E6579] hover:text-white ml-1">
-            <i className="ri-fullscreen-line text-sm"></i>
-          </button>
         </div>
       </div>
 
       {/* Canvas Area */}
-      <div className="flex-1 w-full h-[430px] relative">
+      <div className="flex-1 w-full relative min-h-0">
         {nodes.length === 0 ? (
           <ObservatoryEmptyState />
         ) : (
@@ -252,7 +249,7 @@ export const TopologyGraph = ({
             edges={edges}
             nodeTypes={nodeTypes}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
+            fitViewOptions={{ padding: 0.15 }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={true}
@@ -262,10 +259,10 @@ export const TopologyGraph = ({
             proOptions={{ hideAttribution: true }}
             className="w-full h-full"
           >
-            <Background color="rgba(255, 255, 255, 0.03)" gap={28} size={1} />
+            <Background color="rgba(255, 255, 255, 0.03)" gap={20} size={1} />
             <Controls
               showInteractive={false}
-              className="!bg-[#0D1222] !border !border-white/10 !rounded-xl !overflow-hidden"
+              className="!bg-[#0D1222] !border !border-white/10 !rounded-lg !overflow-hidden !scale-75 origin-bottom-left"
             />
           </ReactFlow>
         )}

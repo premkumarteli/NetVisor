@@ -90,54 +90,51 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
 
   return (
     <div
-      className="glass-card p-5 flex flex-col justify-between"
+      className="glass-card p-3 flex flex-col justify-between"
       style={{
         background: 'rgba(10, 14, 26, 0.72)',
         backdropFilter: 'blur(20px) saturate(150%)',
         border: '1px solid rgba(255, 255, 255, 0.07)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
       }}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2.5">
-          <i className="ri-shield-flash-line text-[#9AA3B8] text-base"></i>
-          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <i className="ri-shield-flash-line text-[#9AA3B8] text-xs"></i>
+          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
             Threat Distribution
           </h3>
         </div>
-        <button type="button" className="text-[#5E6579] hover:text-white">
-          <i className="ri-more-line"></i>
-        </button>
       </div>
 
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-3">
         {/* Donut Chart with Center Metric */}
-        <div className="relative w-32 h-32 shrink-0">
+        <div className="relative w-20 h-20 shrink-0">
           <Doughnut data={chartData} options={chartOptions} />
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-2xl font-extrabold text-[#FFFFFF] tabular-nums tracking-tight">
+            <span className="text-base font-extrabold text-[#FFFFFF] tabular-nums tracking-tight leading-none">
               {totalThreats}
             </span>
-            <span className="text-[9.5px] text-[#9AA3B8] font-medium">
+            <span className="text-[8px] text-[#9AA3B8] font-medium leading-tight">
               Threats
             </span>
           </div>
         </div>
 
         {/* Legend List (Exact to reference) */}
-        <div className="flex-1 space-y-1.5 min-w-0">
+        <div className="flex-1 space-y-1 min-w-0">
           {categories.map(([category, count]) => {
             const color = CATEGORY_COLORS[category] || '#9AA3B8';
             return (
-              <div key={category} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 truncate">
+              <div key={category} className="flex items-center justify-between text-[10.5px]">
+                <div className="flex items-center gap-1.5 truncate">
                   <span
-                    className="w-2 h-2 rounded-full shrink-0"
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-[#9AA3B8] text-[11.5px] truncate">{category}</span>
+                  <span className="text-[#9AA3B8] text-[10px] truncate">{category}</span>
                 </div>
-                <span className="mono font-semibold text-[#FFFFFF] text-xs">
+                <span className="mono font-semibold text-[#FFFFFF] text-[10.5px]">
                   {count}
                 </span>
               </div>

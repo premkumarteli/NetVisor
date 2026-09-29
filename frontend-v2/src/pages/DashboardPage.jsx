@@ -161,33 +161,33 @@ export const DashboardPage = () => {
       : 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Dashboard Top Header & Time Filter (Matching Reference) */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-xs text-[#9AA3B8] font-medium block">
+      <div className="flex flex-row items-center justify-between gap-3">
+        <div className="flex items-baseline gap-2.5">
+          <span className="text-[11px] text-[#9AA3B8] font-medium">
             Good afternoon,
           </span>
-          <h2 className="text-2xl font-bold text-[#FFFFFF] tracking-tight">
+          <h2 className="text-lg font-bold text-[#FFFFFF] tracking-tight">
             NetVisor
           </h2>
-          <p className="text-xs text-[#9AA3B8] mt-0.5">
-            Live view of your network, devices, threats and activity.
-          </p>
+          <span className="text-[11px] text-[#5E6579] hidden sm:inline">
+            • Live network telemetry & threats
+          </span>
         </div>
 
         {/* Time Filter Dropdown Pill */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-semibold text-[#F1F3F9] hover:bg-white/[0.07] cursor-pointer transition-colors shadow-sm">
-            <i className="ri-calendar-line text-[#9AA3B8]"></i>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] text-[11px] font-semibold text-[#F1F3F9] hover:bg-white/[0.07] cursor-pointer transition-colors shadow-sm">
+            <i className="ri-calendar-line text-[#9AA3B8] text-xs"></i>
             <span>Last 24 hours</span>
-            <i className="ri-arrow-down-s-line text-[#5E6579]"></i>
+            <i className="ri-arrow-down-s-line text-[#5E6579] text-xs"></i>
           </div>
         </div>
       </div>
 
       {/* 1. KPI STRIP — 4 Observatory Cards with Sparklines */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard
           icon="ri-macbook-line"
           label="Active Devices"
@@ -232,9 +232,9 @@ export const DashboardPage = () => {
 
       {/* 2. MAIN COMMAND OBSERVATORY GRID */}
       {/* Left Column (~60% width) = Topology Graph Centerpiece. Right Column = Threat Breakdown, Device Types, Top Talkers */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
         {/* LEFT COLUMN: Topology Graph (Centerpiece Observatory) */}
-        <div className="lg:col-span-7 xl:col-span-7 h-full">
+        <div className="lg:col-span-7 xl:col-span-7 flex flex-col">
           <TopologyGraph
             devices={devices}
             activity={activity}
@@ -249,7 +249,7 @@ export const DashboardPage = () => {
         </div>
 
         {/* RIGHT COLUMN: Stacked Cards (Threats, Device Types, Top Talkers) */}
-        <div className="lg:col-span-5 xl:col-span-5 space-y-6">
+        <div className="lg:col-span-5 xl:col-span-5 flex flex-col justify-between gap-3">
           {/* Section 4: Threat Distribution */}
           <ThreatDistributionCard alerts={alerts} riskDistribution={stats.risk_distribution} />
 
