@@ -5385,9 +5385,20 @@
 **Solution or learning**
 - Direct SVG vector topology rendering provides instant hydration, zero initialization lag, and exact visual parity with the design mockup.
 
+## 2026-09-29 - Frontend V2 Standalone Zip Export
+
+**Work completed**
+- Created a standalone zip archive of the complete `frontend-v2/` workspace (`frontend-v2.zip`, 34.2 MB) containing all source code, components, services, assets, and compiled production builds.
+- Exported copies to both `c:\Users\prem\Network\frontend-v2.zip` and `C:\Users\prem\Downloads\frontend-v2.zip`.
+
+**Problem found**
+- Standard recursive zip of frontend directory would include hundreds of megabytes of `node_modules`.
+
+**Solution or learning**
+- Staged clean source tree and production artifacts excluding `node_modules` before compressing, yielding a compact, portable 34.2 MB archive.
+
 **Evidence**
-- Modified: `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`.
-- Build output: `npm run build` compiled 150 modules in 4.00s (`dist/assets/index-BUyucXKU.js` 481.07 kB).
+- Export files: `C:\Users\prem\Network\frontend-v2.zip` (34,245,074 bytes) and `C:\Users\prem\Downloads\frontend-v2.zip` (34,245,074 bytes).
 
 ---
 
