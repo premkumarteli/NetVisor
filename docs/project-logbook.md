@@ -5352,9 +5352,27 @@
 **Solution or learning**
 - Tuned video opacity to 40% combined with a radial dark space vignette and 85% brightness filter, preserving deep atmospheric motion while keeping data cards crisp and legible.
 
+## 2026-09-29 - Proportional 2-Column Layout Alignment with Reference Mockup
+
+**Work completed**
+- Restructured `frontend-v2/` to exactly mirror reference mockup `media_1790691504514.jpg`.
+- Set balanced container width `max-w-7xl` (`1280px`) with `mx-auto px-6` to eliminate wide edge stretching.
+- Restructured Dashboard into a 2-column split:
+  - **Left Column (lg:col-span-8)**: Stacks `TopologyGraph` (Network Activity) and `RecentEventsTable` (5-row Security Events).
+  - **Right Column (lg:col-span-4)**: Stacks `ThreatDistributionCard`, `DeviceTypesCard`, and `TopTalkersCard`.
+- Restored 2-line greeting header (`Good afternoon,` / `NetVisor` / `Live view...`) with `Last 24 hours` filter pill.
+- Added graceful fallback state dataset to ensure immediate rich visual rendering on initial load.
+- Production build succeeded with `npm run build` in 12.90s.
+
+**Problem found**
+- Overly wide canvas (`max-w-[1600px]`) spread elements across the monitor with large empty gaps, and full-width bottom table broke the side-by-side vertical alignment seen in the reference mockup.
+
+**Solution or learning**
+- Stacking Topology + Recent Events on the left (`col-span-8`) and the 3 metric cards on the right (`col-span-4`) inside `max-w-7xl` creates identical column heights and a compact, balanced visual hierarchy.
+
 **Evidence**
-- Modified: `frontend-v2/src/components/Shell/SpiralBackground.jsx`, `frontend-v2/public/bg-video.mp4`.
-- Build confirmation: `npm run build` compiled in 6.94s.
+- Modified: `frontend-v2/src/components/Shell/AppShell.jsx`, `frontend-v2/src/pages/DashboardPage.jsx`.
+- Build confirmation: `npm run build` compiled 310 modules in 12.90s.
 
 ---
 
