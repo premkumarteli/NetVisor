@@ -35,24 +35,24 @@ export const AppShell = ({
           WebkitBackdropFilter: 'blur(24px) saturate(180%)',
         }}
       >
-        <div className="max-w-7xl w-full mx-auto px-6 h-14 flex items-center justify-between gap-6">
+        <div className="max-w-[1040px] w-full mx-auto px-4 sm:px-6 h-13 flex items-center justify-between gap-4">
           {/* Brand Mark */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-8 h-8 rounded-xl bg-[#2563EB]/20 border border-[#3B82F6]/40 flex items-center justify-center text-[#60A5FA] shadow-[0_0_12px_rgba(59,130,246,0.25)]">
-              <i className="ri-shield-keyhole-fill text-lg"></i>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-[#2563EB]/20 border border-[#3B82F6]/40 flex items-center justify-center text-[#60A5FA] shadow-[0_0_12px_rgba(59,130,246,0.25)]">
+              <i className="ri-shield-keyhole-fill text-base"></i>
             </div>
             <div>
-              <h1 className="font-bold text-sm tracking-tight text-[#FFFFFF] leading-tight">
+              <h1 className="font-bold text-xs tracking-tight text-[#FFFFFF] leading-tight">
                 NetVisor
               </h1>
-              <p className="text-[10px] text-[#9AA3B8] font-medium leading-none">
+              <p className="text-[9px] text-[#9AA3B8] font-medium leading-none">
                 Network Security Monitor
               </p>
             </div>
           </div>
 
           {/* Centered Global Search Input (Exact to reference mockup) */}
-          <div className="flex-1 max-w-md hidden md:block">
+          <div className="flex-1 max-w-sm hidden md:block">
             <div className="relative flex items-center">
               <i className="ri-search-line absolute left-3 text-[#5E6579] text-xs pointer-events-none"></i>
               <input
@@ -60,16 +60,16 @@ export const AppShell = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search devices, IPs, domains, users..."
-                className="w-full h-8 pl-8 pr-10 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/50 text-xs text-[#F1F3F9] placeholder-[#5E6579] outline-none transition-all duration-150"
+                className="w-full h-7.5 pl-8 pr-10 rounded-lg bg-white/[0.04] hover:bg-white/[0.06] focus:bg-white/[0.08] border border-white/[0.08] focus:border-blue-500/50 text-[11px] text-[#F1F3F9] placeholder-[#5E6579] outline-none transition-all duration-150"
               />
-              <span className="absolute right-2.5 px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.1] text-[9.5px] mono text-[#9AA3B8] pointer-events-none">
+              <span className="absolute right-2 px-1.5 py-0.2 rounded bg-white/[0.06] border border-white/[0.1] text-[9px] mono text-[#9AA3B8] pointer-events-none">
                 ⌘ K
               </span>
             </div>
           </div>
 
           {/* Right Action Controls (Theme, Notifications, User Badge) */}
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
             {/* Theme Toggle */}
             <button
               type="button"
@@ -90,22 +90,22 @@ export const AppShell = ({
             </button>
 
             {/* User Profile Pill */}
-            <div className="flex items-center gap-2 pl-1.5 py-0.5 pr-2.5 rounded-full bg-white/[0.03] border border-white/[0.06]">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-[10.5px] font-bold text-white shadow-sm">
+            <div className="flex items-center gap-2 pl-1.5 py-0.5 pr-2 rounded-full bg-white/[0.03] border border-white/[0.06]">
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shadow-sm">
                 P
               </div>
               <div className="text-left hidden sm:block">
-                <div className="text-xs font-semibold text-[#F1F3F9] leading-none">Premkumar</div>
-                <div className="text-[9px] text-[#9AA3B8] leading-tight">Admin</div>
+                <div className="text-[11px] font-semibold text-[#F1F3F9] leading-none">Premkumar</div>
+                <div className="text-[8.5px] text-[#9AA3B8] leading-tight">Admin</div>
               </div>
-              <i className="ri-arrow-down-s-line text-[10px] text-[#5E6579]"></i>
+              <i className="ri-arrow-down-s-line text-[9px] text-[#5E6579]"></i>
             </div>
           </div>
         </div>
       </header>
 
-      {/* 3. Main Workspace Canvas */}
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-6 pt-5 pb-20">
+      {/* 3. Main Workspace Canvas (Shrunk to 1040px) */}
+      <main className="relative z-10 flex-1 max-w-[1040px] w-full mx-auto px-4 sm:px-6 pt-4 pb-18">
         {children}
       </main>
 
