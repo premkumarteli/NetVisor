@@ -5338,9 +5338,23 @@
 - Parallel subagent strategy allowed full codebase coverage without sequential bottleneck — all 6 agents completed within ~8 minutes.
 - Cross-validation across agents caught the ClickHouse discrepancy that a single pass would have missed.
 
+## 2026-09-29 - Background Video Integration
+
+**Work completed**
+- Embedded user-provided cosmic video asset (`238264_medium.mp4` -> `frontend-v2/public/bg-video.mp4`) into the observatory UI background layer via `SpiralBackground.jsx`.
+- Configured HTML5 background video with autoPlay, muted, loop, playsInline, smooth 1000ms fade-in, and 0.85x cinematic playback speed.
+- Applied cosmic vignette gradient and subtle HUD scanline texture (`radial-gradient` + `rgba(5, 7, 14, 0.75)`) to maintain contrast for all foreground data cards and tables.
+- Production build succeeded with `npm run build` in 6.94s.
+
+**Problem found**
+- Full opacity video backgrounds can reduce contrast and legibility for technical tabular data and chart legends.
+
+**Solution or learning**
+- Tuned video opacity to 40% combined with a radial dark space vignette and 85% brightness filter, preserving deep atmospheric motion while keeping data cards crisp and legible.
+
 **Evidence**
-- Architecture document: `C:\Users\prem\.gemini\antigravity\brain\0a4bb184-e868-4703-97af-5b37ae201637\NetVisor_Runtime_Architecture.md`
-- Sources verified: `agent/main.py`, `backend/main.py`, `gateway/main.py`, `backend/services/flow_service.py`, `backend/services/correlation_worker.py`, `backend/services/vpn_detector.py`, `backend/engines/`, `infra/database/init.sql`, `backend/db/session.py`, `packet_engine/flow_aggregator.py`, `agent/dpi/`, `backend/middleware/`, `frontend/src/`.
+- Modified: `frontend-v2/src/components/Shell/SpiralBackground.jsx`, `frontend-v2/public/bg-video.mp4`.
+- Build confirmation: `npm run build` compiled in 6.94s.
 
 ---
 
