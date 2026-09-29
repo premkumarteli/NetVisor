@@ -5397,8 +5397,24 @@
 **Solution or learning**
 - Staged clean source tree and production artifacts excluding `node_modules` before compressing, yielding a compact, portable 34.2 MB archive.
 
+## 2026-09-29 - Floating Bottom Dock Refinement
+
+**Work completed**
+- Refactored `AppShell.jsx` floating bottom dock to match the reference mockup `media_1790691504514.jpg`.
+- Converted dock items to a vertical layout (icon on top, label beneath: `flex flex-col items-center justify-center`).
+- Added 9 destination tabs: `Dashboard`, `Devices`, `Agents`, `Threats` (with red notification badge), `VPN`, `Activity`, `Logs`, `Users`, `Settings`.
+- Styled active tab as an elevated blue glowing bubble button (`bg-blue-600/30 border border-blue-400/40 text-blue-200 shadow-[0_0_14px_rgba(59,130,246,0.35)]`).
+- Verified build and test suite integrity.
+
+**Problem found**
+- Previous horizontal icon+text layout was too wide and diverged from the vertical icon-over-label pill dock in the reference mockup.
+
+**Solution or learning**
+- Vertical icon/label stacking creates a sleek, space-efficient floating pill dock with clear touch targets and ergonomic placement.
+
 **Evidence**
-- Export files: `C:\Users\prem\Network\frontend-v2.zip` (34,245,074 bytes) and `C:\Users\prem\Downloads\frontend-v2.zip` (34,245,074 bytes).
+- Modified: `frontend-v2/src/components/Shell/AppShell.jsx`.
+- Build confirmation: `npm run build` compiled 150 modules in 7.12s (`dist/assets/index-CPiHhvC2.js` 481.26 kB).
 
 ---
 

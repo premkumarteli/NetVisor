@@ -9,7 +9,8 @@ const TABS = [
   { id: 'threats', path: '/threats', label: 'Threats', icon: 'ri-shield-flash-line', badgeKey: 'threats' },
   { id: 'vpn', path: '/vpn', label: 'VPN', icon: 'ri-wifi-line' },
   { id: 'activity', path: '/activity', label: 'Activity', icon: 'ri-pulse-line' },
-  { id: 'apps', path: '/apps', label: 'Apps', icon: 'ri-apps-2-line' },
+  { id: 'logs', path: '/activity?view=search', label: 'Logs', icon: 'ri-file-list-2-line' },
+  { id: 'users', path: '/settings?tab=users', label: 'Users', icon: 'ri-group-line' },
   { id: 'settings', path: '/settings', label: 'Settings', icon: 'ri-settings-4-line' },
 ];
 
@@ -105,26 +106,26 @@ export const AppShell = ({
       </header>
 
       {/* 3. Main Workspace Canvas (Shrunk to 1040px) */}
-      <main className="relative z-10 flex-1 max-w-[1040px] w-full mx-auto px-4 sm:px-6 pt-4 pb-18">
+      <main className="relative z-10 flex-1 max-w-[1040px] w-full mx-auto px-4 sm:px-6 pt-4 pb-20">
         {children}
       </main>
 
-      {/* 4. Floating Bottom Dock (Reference: Pill dock with soft glow) */}
+      {/* 4. Floating Bottom Dock (Reference: Vertical Icon + Label with Blue Pill Glow) */}
       <div className="fixed bottom-3.5 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center gap-1 p-1 rounded-2xl border border-white/[0.09]"
+          className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-2xl border border-white/[0.09]"
           style={{
-            background: 'rgba(11, 15, 27, 0.82)',
+            background: 'rgba(11, 15, 27, 0.85)',
             backdropFilter: 'blur(28px) saturate(180%)',
             WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-            boxShadow: '0 15px 40px rgba(0, 0, 0, 0.6), 0 0 1px 1px rgba(255, 255, 255, 0.05)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.06)',
           }}
         >
           {TABS.map((tab) => {
             const isActive =
               tab.path === '/'
                 ? location.pathname === '/' || location.pathname === '/dashboard'
-                : location.pathname.startsWith(tab.path);
+                : location.pathname.startsWith(tab.path.split('?')[0]);
 
             const hasRoseBadge = tab.badgeKey === 'threats' && highThreatsCount > 0;
 
@@ -132,19 +133,19 @@ export const AppShell = ({
               <NavLink
                 key={tab.id}
                 to={tab.path}
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold transition-all duration-200 ${
+                className={`relative flex flex-col items-center justify-center min-w-[54px] sm:min-w-[62px] py-1 px-2 rounded-xl text-[9.5px] font-medium transition-all duration-200 ${
                   isActive
-                    ? 'bg-blue-500/15 text-[#60A5FA] border border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.18)]'
-                    : 'text-[#9AA3B8] hover:text-[#F1F3F9] hover:bg-white/[0.03] border border-transparent'
+                    ? 'bg-blue-600/30 text-blue-200 border border-blue-400/40 shadow-[0_0_14px_rgba(59,130,246,0.35)]'
+                    : 'text-[#9AA3B8] hover:text-[#FFFFFF] hover:bg-white/[0.04] border border-transparent'
                 }`}
               >
-                <div className="relative flex items-center justify-center">
-                  <i className={`${tab.icon} text-sm`}></i>
+                <div className="relative flex items-center justify-center mb-0.5">
+                  <i className={`${tab.icon} text-sm sm:text-base`}></i>
                   {hasRoseBadge && (
-                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_6px_#EF4444]" />
+                    <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_6px_#EF4444]" />
                   )}
                 </div>
-                <span className="hidden sm:inline">{tab.label}</span>
+                <span className="tracking-tight leading-none">{tab.label}</span>
               </NavLink>
             );
           })}
