@@ -5507,6 +5507,24 @@
 - Modified: `frontend-v2/src/pages/DashboardPage.jsx`.
 - Production build confirmation: `npm run build` compiled 151 modules cleanly in 11.03s (`dist/assets/index-C2vOn-yR.js` 497.58 kB).
 
+## 2026-09-30 - Frosted Obsidian Glass Texture Refinement
+
+**Work completed**
+- Refined `.glass-card` and `.glass-chrome` in `index.css` to a silky, natural dark frosted glass texture (`background: rgba(11, 15, 28, 0.74)` with `backdrop-filter: blur(24px) saturate(160%)` and soft `1px solid rgba(255, 255, 255, 0.08)` borders).
+- Removed artificial harsh top specular borders and high-contrast white gradients to match the smooth reference aesthetic (`media_1790691504514.jpg`).
+- Refined `MetricCard.jsx` padding, icon boxes, and sparkline flush rendering.
+
+**Problem found**
+- Earlier glossy gradients produced high-contrast white glares that looked plastic rather than frosted glass.
+
+**Solution or learning**
+- Clean translucent alpha tints combined with high backdrop saturation and soft micro borders create an authentic frosted dark glass look.
+
+**Evidence**
+- `frontend-v2/src/index.css`
+- `frontend-v2/src/components/Common/MetricCard.jsx`
+- Production build confirmation: `npm run build` compiled 151 modules cleanly in 5.00s (`dist/assets/index-YUrHxkn5.js` 497.51 kB).
+
 ---
 
 ## Template for Future Daily Entries

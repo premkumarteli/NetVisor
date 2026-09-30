@@ -7,12 +7,11 @@
   /* Nebula intensity multiplier */
   --nebula-intensity: 0.5;
 
-  /* Glass tokens */
-  --glass: rgba(17, 20, 34, 0.52);
-  --glass-hi: rgba(24, 28, 46, 0.68);
-  --border: rgba(255, 255, 255, 0.12);
-  --border-top: rgba(255, 255, 255, 0.24);
-  --border-focus: rgba(96, 165, 250, 0.5);
+  /* Premium Obsidian Glass tokens */
+  --glass-bg: rgba(11, 15, 28, 0.74);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-hover-border: rgba(255, 255, 255, 0.16);
+  --glass-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
 
   /* Color tokens */
   --ink: #F1F3F9;
@@ -55,25 +54,28 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Ultra-Glossy Obsidian Glass Card */
+/* Premium Dark Frosted Glass Card (Reference Matched) */
 .glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, rgba(10, 14, 26, 0.6) 100%), rgba(10, 14, 26, 0.58);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-top: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(11, 15, 28, 0.74);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.2), 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(59, 130, 246, 0.08);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Floating Chrome (Tab bar, topbar) */
+.glass-card:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* Floating Chrome (Bottom Dock, Topbar) */
 .glass-chrome {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(11, 15, 27, 0.8) 100%), rgba(11, 15, 27, 0.82);
-  backdrop-filter: blur(30px) saturate(190%);
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-top: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.18), 0 20px 50px rgba(0, 0, 0, 0.7);
+  background: rgba(10, 14, 26, 0.86);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.06);
 }
 
 /* Flat Dark Table Rows (CRITICAL RULE: No per-row glass) */
@@ -82,7 +84,7 @@ body {
   transition: background-color 0.15s ease;
 }
 .data-table-row:hover {
-  background-color: rgba(255, 255, 255, 0.04);
+  background-color: rgba(255, 255, 255, 0.035);
 }
 
 /* React Flow custom styles to match dark glass aesthetic */
@@ -109,9 +111,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.2);
 }
