@@ -1,19 +1,19 @@
 import React, { useMemo, useState } from 'react';
 
 const MOCK_NODES = [
-  { id: '1', ip: '192.168.1.10', hostname: 'Laptop-01', type: 'laptop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 140, y: 70 },
-  { id: '2', ip: '192.168.1.15', hostname: 'Android-12', type: 'phone', os: 'Android', risk: 'VPN', color: '#8B5CF6', icon: 'ri-smartphone-line', x: 235, y: 48 },
-  { id: '3', ip: '192.168.1.20', hostname: 'PC-Office', type: 'desktop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-computer-line', x: 345, y: 45 },
-  { id: '4', ip: '192.168.1.25', hostname: 'iPhone', type: 'phone', os: 'iOS', risk: 'High Risk', color: '#EF4444', icon: 'ri-smartphone-line', x: 455, y: 55 },
-  { id: '5', ip: '192.168.1.30', hostname: 'Server-01', type: 'server', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-server-line', x: 545, y: 80 },
-  { id: '6', ip: '192.168.1.35', hostname: 'SmartTV', type: 'tv', os: 'Others', risk: 'Normal', color: '#60A5FA', icon: 'ri-tv-line', x: 560, y: 155 },
-  { id: '7', ip: '192.168.1.40', hostname: 'Printer-HQ', type: 'printer', os: 'Others', risk: 'New Device', color: '#10B981', icon: 'ri-printer-line', x: 480, y: 175 },
-  { id: '8', ip: '192.168.1.45', hostname: 'Security-Cam', type: 'camera', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-camera-line', x: 375, y: 185 },
-  { id: '9', ip: '192.168.1.50', hostname: 'VPN-Gateway', type: 'server', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 275, y: 180 },
-  { id: '10', ip: '192.168.1.55', hostname: 'New-Device', type: 'phone', os: 'Android', risk: 'High Risk', color: '#EF4444', icon: 'ri-smartphone-line', x: 220, y: 145 },
-  { id: '11', ip: '192.168.1.60', hostname: 'Backup-NAS', type: 'storage', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-hard-drive-2-line', x: 95, y: 125 },
-  { id: '12', ip: '192.168.1.65', hostname: 'Tablet-02', type: 'tablet', os: 'iOS', risk: 'Normal', color: '#60A5FA', icon: 'ri-tablet-line', x: 75, y: 165 },
-  { id: '13', ip: '192.168.1.70', hostname: 'Workstation', type: 'desktop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 405, y: 120 },
+  { id: '1', ip: '192.168.1.10', hostname: 'Laptop-01', type: 'laptop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 155, y: 75 },
+  { id: '2', ip: '192.168.1.15', hostname: 'Android-12', type: 'phone', os: 'Android', risk: 'VPN', color: '#8B5CF6', icon: 'ri-smartphone-line', x: 265, y: 52 },
+  { id: '3', ip: '192.168.1.20', hostname: 'PC-Office', type: 'desktop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-computer-line', x: 390, y: 48 },
+  { id: '4', ip: '192.168.1.25', hostname: 'iPhone', type: 'phone', os: 'iOS', risk: 'High Risk', color: '#EF4444', icon: 'ri-smartphone-line', x: 515, y: 60 },
+  { id: '5', ip: '192.168.1.30', hostname: 'Server-01', type: 'server', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-server-line', x: 615, y: 90 },
+  { id: '6', ip: '192.168.1.35', hostname: 'SmartTV', type: 'tv', os: 'Others', risk: 'Normal', color: '#60A5FA', icon: 'ri-tv-line', x: 635, y: 175 },
+  { id: '7', ip: '192.168.1.40', hostname: 'Printer-HQ', type: 'printer', os: 'Others', risk: 'New Device', color: '#10B981', icon: 'ri-printer-line', x: 540, y: 200 },
+  { id: '8', ip: '192.168.1.45', hostname: 'Security-Cam', type: 'camera', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-camera-line', x: 425, y: 210 },
+  { id: '9', ip: '192.168.1.50', hostname: 'VPN-Gateway', type: 'server', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 310, y: 205 },
+  { id: '10', ip: '192.168.1.55', hostname: 'New-Device', type: 'phone', os: 'Android', risk: 'High Risk', color: '#EF4444', icon: 'ri-smartphone-line', x: 245, y: 165 },
+  { id: '11', ip: '192.168.1.60', hostname: 'Backup-NAS', type: 'storage', os: 'Linux', risk: 'Normal', color: '#60A5FA', icon: 'ri-hard-drive-2-line', x: 105, y: 140 },
+  { id: '12', ip: '192.168.1.65', hostname: 'Tablet-02', type: 'tablet', os: 'iOS', risk: 'Normal', color: '#60A5FA', icon: 'ri-tablet-line', x: 85, y: 188 },
+  { id: '13', ip: '192.168.1.70', hostname: 'Workstation', type: 'desktop', os: 'Windows', risk: 'Normal', color: '#60A5FA', icon: 'ri-macbook-line', x: 460, y: 135 },
 ];
 
 export const TopologyGraph = ({
@@ -60,44 +60,37 @@ export const TopologyGraph = ({
 
   return (
     <div
-      className="glass-card flex flex-col h-[270px] relative overflow-hidden rounded-2xl"
-      style={{
-        background: 'rgba(10, 14, 26, 0.76)',
-        backdropFilter: 'blur(24px) saturate(160%)',
-        WebkitBackdropFilter: 'blur(24px) saturate(160%)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.45)',
-      }}
+      className="glass-card flex flex-col h-[310px] relative overflow-hidden"
     >
       {/* Topology Header */}
-      <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[#60A5FA]">
-            <i className="ri-global-line text-xs"></i>
+      <div className="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-[#60A5FA] shadow-sm">
+            <i className="ri-global-line text-sm"></i>
           </div>
           <div>
-            <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
+            <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
               Network Activity
             </h3>
-            <p className="text-[9.5px] text-[#9AA3B8]">
+            <p className="text-[10.5px] text-[#9AA3B8]">
               Live device connections and traffic flow
             </p>
           </div>
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-3 text-[10px] text-[#9AA3B8]">
+        <div className="flex items-center gap-3.5 text-[11px] text-[#9AA3B8]">
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#60A5FA]" /> Normal
+            <span className="w-2 h-2 rounded-full bg-[#60A5FA] shadow-[0_0_6px_#60A5FA]" /> Normal
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#8B5CF6]" /> VPN
+            <span className="w-2 h-2 rounded-full bg-[#8B5CF6] shadow-[0_0_6px_#8B5CF6]" /> VPN
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" /> High Risk
+            <span className="w-2 h-2 rounded-full bg-[#EF4444] shadow-[0_0_6px_#EF4444]" /> High Risk
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> New Device
+            <span className="w-2 h-2 rounded-full bg-[#10B981] shadow-[0_0_6px_#10B981]" /> New Device
           </span>
           <button
             type="button"
@@ -109,18 +102,18 @@ export const TopologyGraph = ({
         </div>
       </div>
 
-      {/* SVG Observatory Constellation Canvas */}
+      {/* SVG Observatory Constellation Canvas (Scaled 720x250) */}
       <div className="relative flex-1 w-full h-full overflow-hidden select-none">
         <svg
           className="w-full h-full"
-          viewBox="0 0 640 220"
+          viewBox="0 0 720 250"
           preserveAspectRatio="xMidYMid meet"
         >
           <defs>
             {/* Center Router Hub Glow */}
             <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.4" />
-              <stop offset="50%" stopColor="#3B82F6" stopOpacity="0.12" />
+              <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.45" />
+              <stop offset="50%" stopColor="#3B82F6" stopOpacity="0.15" />
               <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
             </radialGradient>
 
@@ -133,48 +126,49 @@ export const TopologyGraph = ({
 
           {/* Background Orbit Radar Grid Rings */}
           <ellipse
-            cx="320"
-            cy="110"
-            rx="250"
-            ry="90"
+            cx="360"
+            cy="125"
+            rx="285"
+            ry="105"
             fill="none"
-            stroke="rgba(255, 255, 255, 0.03)"
+            stroke="rgba(255, 255, 255, 0.04)"
             strokeWidth="1"
             strokeDasharray="4 4"
           />
           <ellipse
-            cx="320"
-            cy="110"
-            rx="160"
-            ry="60"
+            cx="360"
+            cy="125"
+            rx="180"
+            ry="70"
             fill="none"
-            stroke="rgba(255, 255, 255, 0.04)"
+            stroke="rgba(255, 255, 255, 0.05)"
             strokeWidth="1"
           />
-          <circle cx="320" cy="110" r="55" fill="url(#hubGlow)" />
+          <circle cx="360" cy="125" r="65" fill="url(#hubGlow)" />
 
-          {/* Constellation Spoke Lines from Hub (320, 110) to each Node */}
+          {/* Constellation Spoke Lines from Hub (360, 125) to each Node */}
           {nodes.map((node) => {
             const isHovered = hoveredNode?.id === node.id;
             return (
               <g key={`spoke-${node.id}`}>
                 <line
-                  x1="320"
-                  y1="110"
+                  x1="360"
+                  y1="125"
                   x2={node.x}
                   y2={node.y}
                   stroke={node.color}
-                  strokeOpacity={isHovered ? 0.8 : node.risk === 'High Risk' ? 0.5 : 0.22}
-                  strokeWidth={isHovered ? 1.5 : node.risk === 'High Risk' ? 1.2 : 0.8}
+                  strokeOpacity={isHovered ? 0.85 : node.risk === 'High Risk' ? 0.55 : 0.25}
+                  strokeWidth={isHovered ? 1.8 : node.risk === 'High Risk' ? 1.4 : 1}
                   strokeDasharray={node.risk === 'VPN' ? '4 3' : 'none'}
                 />
                 {/* Data Packet Pulse on spoke */}
                 <circle
-                  cx={320 + (node.x - 320) * 0.52}
-                  cy={110 + (node.y - 110) * 0.52}
-                  r={isHovered ? 2.5 : 1.5}
+                  cx={360 + (node.x - 360) * 0.52}
+                  cy={125 + (node.y - 125) * 0.52}
+                  r={isHovered ? 3 : 1.8}
                   fill={node.color}
                   opacity={isHovered ? 1 : 0.85}
+                  filter="url(#nodeGlow)"
                 />
               </g>
             );
@@ -183,7 +177,7 @@ export const TopologyGraph = ({
           {/* Satellite Orbiting Device Nodes */}
           {nodes.map((node) => {
             const isHovered = hoveredNode?.id === node.id;
-            const r = 13;
+            const r = 15;
 
             return (
               <g
@@ -198,11 +192,11 @@ export const TopologyGraph = ({
                   <circle
                     cx={node.x}
                     cy={node.y}
-                    r={r + 4}
+                    r={r + 5}
                     fill="none"
                     stroke={node.color}
-                    strokeWidth="1.5"
-                    strokeOpacity="0.6"
+                    strokeWidth="1.8"
+                    strokeOpacity="0.7"
                     className="animate-pulse"
                   />
                 )}
@@ -214,19 +208,20 @@ export const TopologyGraph = ({
                   r={r}
                   fill="#0B0F1A"
                   stroke={node.color}
-                  strokeWidth={isHovered ? 2 : 1.5}
+                  strokeWidth={isHovered ? 2.2 : 1.6}
+                  style={{ filter: `drop-shadow(0 0 6px ${node.color}40)` }}
                 />
 
                 {/* Device Icon inside Node */}
                 <foreignObject
-                  x={node.x - 10}
-                  y={node.y - 10}
-                  width="20"
-                  height="20"
+                  x={node.x - 11}
+                  y={node.y - 11}
+                  width="22"
+                  height="22"
                   className="pointer-events-none"
                 >
                   <div
-                    className="w-full h-full flex items-center justify-center text-[10px]"
+                    className="w-full h-full flex items-center justify-center text-[11px]"
                     style={{ color: node.color }}
                   >
                     <i className={node.icon}></i>
@@ -236,21 +231,22 @@ export const TopologyGraph = ({
             );
           })}
 
-          {/* Center Router Hub Gateway (320, 110) */}
+          {/* Center Router Hub Gateway (360, 125) */}
           <g className="pointer-events-none">
             {/* Outer halo */}
             <circle
-              cx="320"
-              cy="110"
-              r="24"
+              cx="360"
+              cy="125"
+              r="28"
               fill="#0F172A"
               stroke="#3B82F6"
-              strokeWidth="2"
+              strokeWidth="2.2"
               filter="url(#nodeGlow)"
+              style={{ filter: 'drop-shadow(0 0 16px rgba(59,130,246,0.6))' }}
             />
             {/* Inner router badge */}
-            <foreignObject x="306" y="96" width="28" height="28">
-              <div className="w-full h-full flex items-center justify-center text-sm text-[#60A5FA]">
+            <foreignObject x="345" y="110" width="30" height="30">
+              <div className="w-full h-full flex items-center justify-center text-base text-[#60A5FA]">
                 <i className="ri-router-line"></i>
               </div>
             </foreignObject>
@@ -260,14 +256,14 @@ export const TopologyGraph = ({
         {/* Hover Tooltip Overlay */}
         {hoveredNode && (
           <div
-            className="absolute z-30 pointer-events-none px-2 py-1 rounded-md bg-[#0F172A]/95 border border-white/15 shadow-xl text-[10px] text-white flex flex-col gap-0.5 -translate-x-1/2 -translate-y-full"
+            className="absolute z-30 pointer-events-none px-2.5 py-1.5 rounded-lg bg-[#0F172A]/95 border border-white/20 shadow-2xl text-[10.5px] text-white flex flex-col gap-0.5 -translate-x-1/2 -translate-y-full"
             style={{
-              left: `${(hoveredNode.x / 640) * 100}%`,
-              top: `${(hoveredNode.y / 220) * 100 - 8}%`,
+              left: `${(hoveredNode.x / 720) * 100}%`,
+              top: `${(hoveredNode.y / 250) * 100 - 8}%`,
             }}
           >
             <span className="font-bold text-[#F1F3F9] leading-none">{hoveredNode.hostname}</span>
-            <span className="mono text-[8.5px] text-[#9AA3B8]">{hoveredNode.ip} • {hoveredNode.risk}</span>
+            <span className="mono text-[9px] text-[#9AA3B8]">{hoveredNode.ip} • {hoveredNode.risk}</span>
           </div>
         )}
       </div>

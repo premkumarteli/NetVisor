@@ -80,7 +80,7 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    cutout: '74%',
+    cutout: '72%',
     plugins: {
       legend: { display: false },
       tooltip: {
@@ -88,44 +88,36 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
         backgroundColor: '#0F172A',
         titleColor: '#F8FAFC',
         bodyColor: '#94A3B8',
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
-        padding: 8,
+        padding: 10,
       },
     },
   };
 
   return (
-    <div
-      className="glass-card p-3.5 flex flex-col justify-between rounded-2xl"
-      style={{
-        background: 'rgba(10, 14, 26, 0.76)',
-        backdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
-      }}
-    >
-      <div className="flex items-center justify-between mb-2">
+    <div className="glass-card p-4 flex flex-col justify-between">
+      <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
-          <i className="ri-shield-flash-line text-[#9AA3B8] text-xs"></i>
-          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
+          <i className="ri-shield-flash-line text-[#9AA3B8] text-sm"></i>
+          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
             Threat Distribution
           </h3>
         </div>
         <button type="button" className="text-[#5E6579] hover:text-white" title="Options">
-          <i className="ri-more-fill text-xs"></i>
+          <i className="ri-more-fill text-sm"></i>
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         {/* Donut Chart with Center Metric */}
-        <div className="relative w-22 h-22 shrink-0 flex items-center justify-center">
+        <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
           <Doughnut data={chartData} options={chartOptions} />
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-lg font-black text-[#FFFFFF] tabular-nums tracking-tight leading-none">
+            <span className="text-xl font-black text-[#FFFFFF] tabular-nums tracking-tight leading-none">
               {totalThreats}
             </span>
-            <span className="text-[8.5px] text-[#9AA3B8] font-medium leading-tight mt-0.5">
+            <span className="text-[9px] text-[#9AA3B8] font-medium leading-tight mt-0.5">
               Threats
             </span>
           </div>
@@ -136,15 +128,15 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
           {categories.map(([category, count]) => {
             const color = CATEGORY_COLORS[category] || '#9AA3B8';
             return (
-              <div key={category} className="flex items-center justify-between text-[10.5px]">
-                <div className="flex items-center gap-1.5 truncate">
+              <div key={category} className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2 truncate">
                   <span
-                    className="w-1.5 h-1.5 rounded-full shrink-0"
-                    style={{ backgroundColor: color }}
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}66` }}
                   />
-                  <span className="text-[#9AA3B8] text-[10px] truncate">{category}</span>
+                  <span className="text-[#9AA3B8] text-[11px] truncate">{category}</span>
                 </div>
-                <span className="mono font-semibold text-[#FFFFFF] text-[10.5px]">
+                <span className="mono font-semibold text-[#FFFFFF] text-xs">
                   {count}
                 </span>
               </div>

@@ -8,9 +8,10 @@
   --nebula-intensity: 0.5;
 
   /* Glass tokens */
-  --glass: rgba(17, 20, 34, 0.58);
-  --glass-hi: rgba(24, 28, 46, 0.72);
-  --border: rgba(255, 255, 255, 0.09);
+  --glass: rgba(17, 20, 34, 0.52);
+  --glass-hi: rgba(24, 28, 46, 0.68);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-top: rgba(255, 255, 255, 0.24);
   --border-focus: rgba(96, 165, 250, 0.5);
 
   /* Color tokens */
@@ -54,22 +55,25 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Glass Card Shell */
+/* Ultra-Glossy Obsidian Glass Card */
 .glass-card {
-  background: rgba(11, 15, 27, 0.72);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 40%, rgba(10, 14, 26, 0.6) 100%), rgba(10, 14, 26, 0.58);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.2), 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 24px rgba(59, 130, 246, 0.08);
 }
 
 /* Floating Chrome (Tab bar, topbar) */
 .glass-chrome {
-  background: rgba(11, 15, 27, 0.85);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(11, 15, 27, 0.8) 100%), rgba(11, 15, 27, 0.82);
+  backdrop-filter: blur(30px) saturate(190%);
+  -webkit-backdrop-filter: blur(30px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.18), 0 20px 50px rgba(0, 0, 0, 0.7);
 }
 
 /* Flat Dark Table Rows (CRITICAL RULE: No per-row glass) */
@@ -78,7 +82,7 @@ body {
   transition: background-color 0.15s ease;
 }
 .data-table-row:hover {
-  background-color: rgba(255, 255, 255, 0.035);
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 /* React Flow custom styles to match dark glass aesthetic */
@@ -105,9 +109,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
 }

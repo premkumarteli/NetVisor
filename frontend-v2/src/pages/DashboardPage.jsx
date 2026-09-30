@@ -186,24 +186,24 @@ export const DashboardPage = () => {
       : 100;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Dashboard Top Header & Time Filter (Matching Reference Mockup) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <span className="text-xs text-[#9AA3B8] font-medium block">
             Good afternoon,
           </span>
-          <h2 className="text-2xl font-bold text-[#FFFFFF] tracking-tight leading-tight">
+          <h2 className="text-3xl font-bold text-[#FFFFFF] tracking-tight leading-tight">
             NetVisor
           </h2>
-          <p className="text-xs text-[#9AA3B8] mt-0.5">
+          <p className="text-xs text-[#9AA3B8] mt-1">
             Live view of your network, devices, threats and activity.
           </p>
         </div>
 
         {/* Time Filter Dropdown Pill */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.08] text-xs font-semibold text-[#F1F3F9] hover:bg-white/[0.07] cursor-pointer transition-colors shadow-sm">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.08] text-xs font-semibold text-[#F1F3F9] cursor-pointer transition-colors shadow-sm">
             <i className="ri-calendar-line text-[#9AA3B8] text-xs"></i>
             <span>Last 24 hours</span>
             <i className="ri-arrow-down-s-line text-[#5E6579] text-xs"></i>
@@ -212,7 +212,7 @@ export const DashboardPage = () => {
       </div>
 
       {/* 1. KPI STRIP — 4 Observatory Cards with Sparklines */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         <MetricCard
           icon="ri-macbook-line"
           label="Active Devices"
@@ -256,9 +256,9 @@ export const DashboardPage = () => {
       </div>
 
       {/* 2. MAIN 2-COLUMN OBSERVATORY GRID (Matching Reference Mockup) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-start">
         {/* LEFT COLUMN (lg:col-span-8): Topology Graph on Top + Recent Events Table on Bottom */}
-        <div className="lg:col-span-8 space-y-4">
+        <div className="lg:col-span-8 space-y-4 sm:space-y-5">
           {/* Section 2: Topology Graph Centerpiece */}
           <TopologyGraph
             devices={activeDevicesList}

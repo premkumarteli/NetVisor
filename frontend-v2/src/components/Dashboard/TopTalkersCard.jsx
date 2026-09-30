@@ -51,76 +51,68 @@ export const TopTalkersCard = ({ topDevices = [], devices = [], onSelectDevice }
   };
 
   return (
-    <div
-      className="glass-card p-3 flex flex-col justify-between"
-      style={{
-        background: 'rgba(10, 14, 26, 0.72)',
-        backdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255, 255, 255, 0.07)',
-        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
-      }}
-    >
+    <div className="glass-card p-4 flex flex-col justify-between">
       {/* Header matching reference */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
-          <i className="ri-share-forward-2-line text-[#9AA3B8] text-xs"></i>
-          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
+          <i className="ri-share-forward-2-line text-[#9AA3B8] text-sm"></i>
+          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
             Top Talkers
           </h3>
         </div>
         <Link
           to="/activity?view=search"
-          className="text-[10.5px] text-[#60A5FA] hover:text-blue-300 flex items-center gap-1"
+          className="text-xs text-[#60A5FA] hover:text-blue-300 flex items-center gap-1 font-medium"
         >
           <span>View All</span>
-          <i className="ri-arrow-right-line text-[10px]"></i>
+          <i className="ri-arrow-right-line text-[11px]"></i>
         </Link>
       </div>
 
       {/* Table Subheaders */}
-      <div className="flex items-center justify-between text-[9px] uppercase font-bold text-[#5E6579] tracking-wider mb-1 px-1">
-        <span className="w-20">Device</span>
+      <div className="flex items-center justify-between text-[9.5px] uppercase font-bold text-[#5E6579] tracking-wider mb-1.5 px-1">
+        <span className="w-24">Device</span>
         <span className="flex-1 px-3 text-left">Data Usage</span>
-        <span className="w-14 text-right">Conns</span>
+        <span className="w-16 text-right">Conns</span>
       </div>
 
       {talkers.length === 0 ? (
-        <div className="py-3 text-center text-[10.5px] text-[#9AA3B8]">
+        <div className="py-4 text-center text-xs text-[#9AA3B8]">
           No active traffic consumers recorded.
         </div>
       ) : (
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {talkers.map((talker, idx) => {
             const barWidth = Math.max(Math.round((talker.bytes / maxBytes) * 100), 6);
             return (
               <div
                 key={talker.ip || idx}
                 onClick={() => onSelectDevice?.(talker.ip)}
-                className="group cursor-pointer flex items-center justify-between gap-2 text-[10.5px] py-0.5 px-1 rounded hover:bg-white/[0.03] transition-colors"
+                className="group cursor-pointer flex items-center justify-between gap-2.5 text-xs py-1 px-1.5 rounded-lg hover:bg-white/[0.04] transition-colors"
               >
                 {/* Device */}
-                <div className="flex items-center gap-1.5 w-20 shrink-0 truncate">
-                  <i className={`${getDeviceIcon(talker.hostname)} text-xs text-[#5E6579]`}></i>
+                <div className="flex items-center gap-2 w-24 shrink-0 truncate">
+                  <i className={`${getDeviceIcon(talker.hostname)} text-sm text-[#5E6579]`}></i>
                   <span className="text-[#F1F3F9] font-medium truncate group-hover:text-blue-400 transition-colors">
                     {talker.hostname}
                   </span>
                 </div>
 
                 {/* Data Usage with Bar */}
-                <div className="flex-1 flex items-center gap-2 px-2 min-w-0">
-                  <span className="mono text-[#F1F3F9] font-medium text-[10px] shrink-0 w-12">
+                <div className="flex-1 flex items-center gap-2.5 px-2 min-w-0">
+                  <span className="mono text-[#F1F3F9] font-medium text-[11px] shrink-0 w-14">
                     {formatByteCount(talker.bytes)}
                   </span>
-                  <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
+                  <div className="flex-1 h-2 bg-white/[0.05] rounded-full overflow-hidden shadow-inner">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400"
+                      className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.5)]"
                       style={{ width: `${barWidth}%` }}
                     />
                   </div>
                 </div>
 
                 {/* Connections */}
-                <span className="mono text-[#9AA3B8] text-[10px] w-14 text-right shrink-0">
+                <span className="mono text-[#9AA3B8] text-[11px] w-16 text-right shrink-0">
                   {talker.connections.toLocaleString()}
                 </span>
               </div>

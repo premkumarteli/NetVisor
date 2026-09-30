@@ -5458,6 +5458,34 @@
 - Modified: `frontend-v2/src/components/Shell/SpiralBackground.jsx`.
 - Production build confirmation: `npm run build` compiled 151 modules in 8.21s (`dist/assets/index-Div_dMcs.js` 498.16 kB).
 
+## 2026-09-30 - 20% Viewport Scale-Up & Glossy Glass Card Refinement
+
+**Work completed**
+- Expanded AppShell and dashboard canvas width by +20% (`max-w-[1260px]` centered).
+- Enhanced `index.css` `.glass-card` and `.glass-chrome` with multi-stop specular reflection gradients (`linear-gradient(135deg, rgba(255, 255, 255, 0.08)...)`), crisp top-rim highlight borders (`border-top: 1px solid rgba(255, 255, 255, 0.24)`), and inset light reflections.
+- Scaled up the `TopologyGraph` SVG viewport to `720x250` with `h-[310px]`, wider constellation orbit ellipses (`rx = 285, ry = 105`), and larger orbiting device nodes with glowing ambient aura.
+- Scaled up MetricCards, ThreatDistributionCard, DeviceTypesCard, TopTalkersCard, and RecentEventsTable typography and padding.
+
+**Problem found**
+- Standard 1040px width appeared too compact on 1080p/1440p displays, leaving excessive empty margin around the observatory background.
+- Flat dark card backgrounds lacked the high-tech liquid crystal / glossy glass sheen seen in futuristic HUD references.
+
+**Solution or learning**
+- Increasing container width by 20% to 1260px provides roomier card density while preserving single-viewport above-the-fold display.
+- Layering specular gradient highlights and inset reflections over high backdrop blur produces an authentic glossy acrylic glass effect.
+
+**Evidence**
+- `frontend-v2/src/index.css`
+- `frontend-v2/src/components/Shell/AppShell.jsx`
+- `frontend-v2/src/components/Common/MetricCard.jsx`
+- `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`
+- `frontend-v2/src/components/Dashboard/ThreatDistributionCard.jsx`
+- `frontend-v2/src/components/Dashboard/DeviceTypesCard.jsx`
+- `frontend-v2/src/components/Dashboard/TopTalkersCard.jsx`
+- `frontend-v2/src/components/Dashboard/RecentEventsTable.jsx`
+- `frontend-v2/src/pages/DashboardPage.jsx`
+- Build verification: `npm run build` compiled 151 modules cleanly in 2.85s (`dist/assets/index-DN0Z1g0_.js` 497.36 kB).
+
 ---
 
 ## Template for Future Daily Entries

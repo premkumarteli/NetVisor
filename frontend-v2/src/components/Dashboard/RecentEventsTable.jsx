@@ -30,29 +30,21 @@ export const RecentEventsTable = ({ events = [], onSelectDevice }) => {
   };
 
   return (
-    <div
-      className="glass-card overflow-hidden"
-      style={{
-        background: 'rgba(10, 14, 26, 0.72)',
-        backdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255, 255, 255, 0.07)',
-        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
-      }}
-    >
+    <div className="glass-card overflow-hidden">
       {/* Header matching reference */}
-      <div className="px-3.5 py-2 border-b border-white/[0.06] flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-white/[0.08] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <i className="ri-file-list-2-line text-[#9AA3B8] text-xs"></i>
-          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
+          <i className="ri-file-list-2-line text-[#9AA3B8] text-sm"></i>
+          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
             Recent Events
           </h3>
         </div>
         <Link
           to="/activity?view=search"
-          className="text-[10.5px] text-[#60A5FA] hover:text-blue-300 flex items-center gap-1 font-medium"
+          className="text-xs text-[#60A5FA] hover:text-blue-300 flex items-center gap-1 font-medium"
         >
           <span>View All</span>
-          <i className="ri-arrow-right-line text-[10px]"></i>
+          <i className="ri-arrow-right-line text-[11px]"></i>
         </Link>
       </div>
 
@@ -60,20 +52,20 @@ export const RecentEventsTable = ({ events = [], onSelectDevice }) => {
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="border-b border-white/[0.04]">
-              <th className="py-1.5 px-3 text-[9.5px] uppercase font-bold tracking-wider text-[#5E6579]">
+            <tr className="border-b border-white/[0.05] bg-white/[0.01]">
+              <th className="py-2.5 px-4 text-[10px] uppercase font-bold tracking-wider text-[#5E6579]">
                 Time
               </th>
-              <th className="py-1.5 px-3 text-[9.5px] uppercase font-bold tracking-wider text-[#5E6579]">
+              <th className="py-2.5 px-3 text-[10px] uppercase font-bold tracking-wider text-[#5E6579]">
                 Type
               </th>
-              <th className="py-1.5 px-3 text-[9.5px] uppercase font-bold tracking-wider text-[#5E6579]">
+              <th className="py-2.5 px-3 text-[10px] uppercase font-bold tracking-wider text-[#5E6579]">
                 Details
               </th>
-              <th className="py-1.5 px-3 text-[9.5px] uppercase font-bold tracking-wider text-[#5E6579]">
+              <th className="py-2.5 px-3 text-[10px] uppercase font-bold tracking-wider text-[#5E6579]">
                 Device
               </th>
-              <th className="py-1.5 px-3 text-[9.5px] uppercase font-bold tracking-wider text-[#5E6579] text-right">
+              <th className="py-2.5 px-4 text-[10px] uppercase font-bold tracking-wider text-[#5E6579] text-right">
                 Risk
               </th>
             </tr>
@@ -81,7 +73,7 @@ export const RecentEventsTable = ({ events = [], onSelectDevice }) => {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan="5" className="py-4 text-center text-[10.5px] text-[#9AA3B8]">
+                <td colSpan="5" className="py-6 text-center text-xs text-[#9AA3B8]">
                   No recent security events recorded in the active window.
                 </td>
               </tr>
@@ -113,50 +105,52 @@ export const RecentEventsTable = ({ events = [], onSelectDevice }) => {
                 return (
                   <tr
                     key={row.id || `${rawTimestamp}-${index}`}
-                    className="data-table-row border-b border-white/[0.03] last:border-b-0 text-[11px]"
+                    className="data-table-row border-b border-white/[0.03] last:border-b-0 text-xs"
                   >
                     {/* Time with colored severity dot */}
-                    <td className="py-1.5 px-3 text-[#9AA3B8] whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
+                    <td className="py-2 px-4 text-[#9AA3B8] whitespace-nowrap">
+                      <div className="flex items-center gap-2">
                         <span
-                          className="w-1.5 h-1.5 rounded-full shrink-0"
-                          style={{ backgroundColor: dotColor, boxShadow: `0 0 4px ${dotColor}66` }}
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}88` }}
                         />
-                        <span className="mono text-[10px] text-[#9AA3B8]" title={formatUtcTimestampToLocal(rawTimestamp)}>
+                        <span className="mono text-[11px] text-[#9AA3B8]" title={formatUtcTimestampToLocal(rawTimestamp)}>
                           {formatShortTime(rawTimestamp)}
                         </span>
                       </div>
                     </td>
 
                     {/* Type with Icon */}
-                    <td className="py-1.5 px-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5 font-medium text-[#F1F3F9]">
-                        <i className={`${visual.icon} text-xs`} style={{ color: visual.color }}></i>
-                        <span className="text-[10.5px]">{visual.label}</span>
+                    <td className="py-2 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-2 font-medium text-[#F1F3F9]">
+                        <i className={`${visual.icon} text-sm`} style={{ color: visual.color }}></i>
+                        <span className="text-xs">{visual.label}</span>
                       </div>
                     </td>
 
                     {/* Details */}
-                    <td className="py-1.5 px-3 text-[#9AA3B8]">
-                      <span className="text-[#F1F3F9] font-medium truncate max-w-sm block text-[10.5px]" title={detailsText}>
+                    <td className="py-2 px-3 text-[#9AA3B8]">
+                      <span className="text-[#F1F3F9] font-medium truncate max-w-sm block text-xs" title={detailsText}>
                         {detailsText}
                       </span>
                     </td>
 
                     {/* Device */}
-                    <td className="py-1.5 px-3 whitespace-nowrap">
+                    <td className="py-2 px-3 whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => row.src_ip && onSelectDevice?.(row.src_ip)}
-                        className="mono text-[10px] text-[#9AA3B8] hover:text-blue-400 cursor-pointer"
+                        className="mono text-[11px] text-[#9AA3B8] hover:text-blue-400 cursor-pointer"
                       >
                         {row.src_ip || row.device_ip || '192.168.1.1'}
                       </button>
                     </td>
 
                     {/* Risk Badge */}
-                    <td className="py-1.5 px-3 text-right whitespace-nowrap">
-                      <StatusBadge tone={riskTone} className="text-[9px] py-0.2 px-1.5">{riskLevel}</StatusBadge>
+                    <td className="py-2 px-4 text-right whitespace-nowrap">
+                      <StatusBadge tone={riskTone} className="text-[10px] py-0.5 px-2 font-semibold">
+                        {riskLevel}
+                      </StatusBadge>
                     </td>
                   </tr>
                 );

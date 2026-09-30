@@ -53,37 +53,29 @@ export const DeviceTypesCard = ({ devices = [] }) => {
   }, [devices]);
 
   return (
-    <div
-      className="glass-card p-3.5 flex flex-col justify-between rounded-2xl"
-      style={{
-        background: 'rgba(10, 14, 26, 0.76)',
-        backdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
-      }}
-    >
+    <div className="glass-card p-4 flex flex-col justify-between">
       {/* Header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2">
-          <i className="ri-computer-line text-[#9AA3B8] text-xs"></i>
-          <h3 className="text-xs font-bold text-[#FFFFFF] tracking-tight">
+          <i className="ri-computer-line text-[#9AA3B8] text-sm"></i>
+          <h3 className="text-sm font-bold text-[#FFFFFF] tracking-tight">
             Device Types
           </h3>
         </div>
-        <span className="text-[10px] text-[#9AA3B8]">
+        <span className="text-[11px] text-[#9AA3B8]">
           Total <strong className="text-[#FFFFFF] mono font-bold">{total}</strong>
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {Object.entries(counts).map(([type, count]) => {
           const config = OS_CONFIG[type] || OS_CONFIG.Others;
           const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
 
           return (
-            <div key={type} className="flex items-center justify-between gap-2.5 text-[10.5px]">
-              <div className="flex items-center gap-1.5 w-16 shrink-0 text-[#9AA3B8]">
-                <i className={`${config.icon} text-xs text-[#5E6579]`}></i>
+            <div key={type} className="flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 w-20 shrink-0 text-[#9AA3B8]">
+                <i className={`${config.icon} text-sm text-[#5E6579]`}></i>
                 <span className="truncate">{type}</span>
               </div>
 
@@ -92,9 +84,9 @@ export const DeviceTypesCard = ({ devices = [] }) => {
               </span>
 
               {/* Composition Progress Bar (Blue-gradient rounded bar per reference) */}
-              <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden mx-1">
+              <div className="flex-1 h-2 bg-white/[0.05] rounded-full overflow-hidden mx-1 shadow-inner">
                 <div
-                  className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500"
+                  className="h-full rounded-full bg-gradient-to-r from-blue-600 to-blue-400 transition-all duration-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"
                   style={{
                     width: `${percentage}%`,
                     opacity: count > 0 ? 1 : 0,
@@ -102,7 +94,7 @@ export const DeviceTypesCard = ({ devices = [] }) => {
                 />
               </div>
 
-              <span className="mono text-[#9AA3B8] text-[10px] w-8 text-right shrink-0">
+              <span className="mono text-[#9AA3B8] text-[11px] w-9 text-right shrink-0">
                 {percentage}%
               </span>
             </div>
