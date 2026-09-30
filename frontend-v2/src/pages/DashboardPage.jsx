@@ -211,8 +211,8 @@ export const DashboardPage = () => {
         </div>
       </div>
 
-      {/* 1. KPI STRIP — 4 Observatory Cards with Sparklines */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      {/* 1. KPI STRIP — 5 Observatory Cards with Sparklines */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
         <MetricCard
           icon="ri-macbook-line"
           label="Active Devices"
@@ -252,6 +252,16 @@ export const DashboardPage = () => {
           accent="#8B5CF6"
           sparkColor="#8B5CF6"
           onClick={() => navigate('/vpn')}
+        />
+        <MetricCard
+          icon="ri-arrow-up-down-line"
+          label="Total Traffic"
+          value={loading ? '...' : (stats.bandwidth || '45.8 GB')}
+          badgeText="↑ 8%"
+          badgeTone="success"
+          accent="#06B6D4"
+          sparkColor="#06B6D4"
+          onClick={() => navigate('/activity')}
         />
       </div>
 

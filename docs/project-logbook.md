@@ -5486,6 +5486,27 @@
 - `frontend-v2/src/pages/DashboardPage.jsx`
 - Build verification: `npm run build` compiled 151 modules cleanly in 2.85s (`dist/assets/index-DN0Z1g0_.js` 497.36 kB).
 
+## 2026-09-30 - 5-Card Top KPI Strip Addition
+
+**Work completed**
+- Expanded the top KPI strip from 4 to 5 cards:
+  1. `Active Devices` (127, ↑ 12%, Blue `#3B82F6`)
+  2. `Active Agents` (4, • Online, Emerald `#10B981`)
+  3. `Threats Detected` (23, ↑ 5, Crimson `#EF4444`)
+  4. `VPN Users` (6, ↑ 2, Purple `#8B5CF6`)
+  5. `Total Traffic` (45.8 GB, ↑ 8%, Cyan `#06B6D4`) with `ri-arrow-up-down-line` icon and cyan sparkline wave.
+- Updated the grid layout to `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4` inside `DashboardPage.jsx`.
+
+**Problem found**
+- 4 cards left slightly uneven spacing across wide high-resolution viewports.
+
+**Solution or learning**
+- Adding a 5th high-value telemetry metric (Total Traffic) balances the top row symmetrically and provides instant throughput visibility.
+
+**Evidence**
+- Modified: `frontend-v2/src/pages/DashboardPage.jsx`.
+- Production build confirmation: `npm run build` compiled 151 modules cleanly in 11.03s (`dist/assets/index-C2vOn-yR.js` 497.58 kB).
+
 ---
 
 ## Template for Future Daily Entries
