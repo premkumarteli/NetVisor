@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AppShell from './components/Shell/AppShell';
 import DashboardPage from './pages/DashboardPage';
+import DevicesPage from './pages/DevicesPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import { useWebSocket } from './hooks/useWebSocket';
 import { systemService } from './services/api';
@@ -34,15 +35,7 @@ export function App() {
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
 
           {/* 2. Devices */}
-          <Route
-            path="/devices"
-            element={
-              <PlaceholderPage
-                title="Device Inventory"
-                description="Explainable asset inventory with inline slide-in detail panel. Ready for build pass."
-              />
-            }
-          />
+          <Route path="/devices" element={<DevicesPage />} />
 
           {/* 3. Agents */}
           <Route

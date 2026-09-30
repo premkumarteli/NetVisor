@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import SpiralBackground from './SpiralBackground';
 
 const TABS = [
-  { id: 'dashboard', path: '/', label: 'Dashboard', icon: 'ri-home-5-line' },
+  { id: 'dashboard', path: '/', label: 'Dashboard', icon: 'ri-home-4-line' },
   { id: 'devices', path: '/devices', label: 'Devices', icon: 'ri-macbook-line' },
   { id: 'agents', path: '/agents', label: 'Agents', icon: 'ri-box-3-line' },
   { id: 'threats', path: '/threats', label: 'Threats', icon: 'ri-shield-flash-line', badgeKey: 'threats' },
@@ -24,7 +24,7 @@ export const AppShell = ({
 
   return (
     <div className="min-h-screen relative flex flex-col bg-[#05070E] text-[#F1F3F9] selection:bg-blue-500/20 selection:text-blue-200">
-      {/* 1. Spiral Particle Observatory Background Layer */}
+      {/* 1. Ambient Observatory Cosmic Video Background */}
       <SpiralBackground />
 
       {/* 2. Topbar Navigation Header */}
@@ -105,27 +105,29 @@ export const AppShell = ({
         </div>
       </header>
 
-      {/* 3. Main Workspace Canvas (Shrunk to 1040px) */}
-      <main className="relative z-10 flex-1 max-w-[1040px] w-full mx-auto px-4 sm:px-6 pt-4 pb-20">
+      {/* 3. Main Workspace Canvas (Max width 1040px centered) */}
+      <main className="relative z-10 flex-1 max-w-[1040px] w-full mx-auto px-4 sm:px-6 pt-4 pb-24">
         {children}
       </main>
 
-      {/* 4. Floating Bottom Dock (Reference: Vertical Icon + Label with Blue Pill Glow) */}
-      <div className="fixed bottom-3.5 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+      {/* 4. Floating Bottom Dock Bar (Exact 9-Item Capsule Dock with Vertical Stack and Radiant Halo) */}
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center gap-1.5 p-1.5 rounded-2xl border border-white/[0.09]"
+          className="pointer-events-auto flex items-center gap-1 sm:gap-2 px-2.5 py-1.5 rounded-2xl border border-white/[0.09]"
           style={{
-            background: 'rgba(11, 15, 27, 0.85)',
-            backdropFilter: 'blur(28px) saturate(180%)',
-            WebkitBackdropFilter: 'blur(28px) saturate(180%)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.06)',
+            background: 'rgba(10, 14, 26, 0.88)',
+            backdropFilter: 'blur(30px) saturate(190%)',
+            WebkitBackdropFilter: 'blur(30px) saturate(190%)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.75), 0 0 1px 1px rgba(255, 255, 255, 0.08)',
           }}
         >
           {TABS.map((tab) => {
-            const isActive =
+            const isTabActive =
               tab.path === '/'
                 ? location.pathname === '/' || location.pathname === '/dashboard'
-                : location.pathname.startsWith(tab.path.split('?')[0]);
+                : tab.path.includes('?')
+                ? location.pathname + location.search === tab.path
+                : location.pathname.startsWith(tab.path);
 
             const hasRoseBadge = tab.badgeKey === 'threats' && highThreatsCount > 0;
 
@@ -133,19 +135,34 @@ export const AppShell = ({
               <NavLink
                 key={tab.id}
                 to={tab.path}
-                className={`relative flex flex-col items-center justify-center min-w-[54px] sm:min-w-[62px] py-1 px-2 rounded-xl text-[9.5px] font-medium transition-all duration-200 ${
-                  isActive
-                    ? 'bg-blue-600/30 text-blue-200 border border-blue-400/40 shadow-[0_0_14px_rgba(59,130,246,0.35)]'
+                className={`relative flex flex-col items-center justify-center w-14 sm:w-16 py-1 px-1 rounded-xl transition-all duration-200 group ${
+                  isTabActive
+                    ? 'bg-gradient-to-b from-blue-500/25 to-blue-600/10 text-white border border-blue-400/30 shadow-[0_0_18px_rgba(59,130,246,0.35)]'
                     : 'text-[#9AA3B8] hover:text-[#FFFFFF] hover:bg-white/[0.04] border border-transparent'
                 }`}
               >
                 <div className="relative flex items-center justify-center mb-0.5">
-                  <i className={`${tab.icon} text-sm sm:text-base`}></i>
+                  <i
+                    className={`${tab.icon} text-base sm:text-lg transition-transform duration-150 group-hover:scale-110 ${
+                      isTabActive ? 'text-white drop-shadow-[0_0_8px_rgba(96,165,250,0.8)]' : 'text-[#9AA3B8]'
+                    }`}
+                  ></i>
                   {hasRoseBadge && (
                     <span className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full bg-[#EF4444] ring-2 ring-[#0B0F1A] shadow-[0_0_6px_#EF4444]" />
                   )}
                 </div>
-                <span className="tracking-tight leading-none">{tab.label}</span>
+                <span
+                  className={`text-[9.5px] tracking-tight leading-none ${
+                    isTabActive ? 'font-semibold text-white' : 'font-medium text-[#9AA3B8]'
+                  }`}
+                >
+                  {tab.label}
+                </span>
+
+                {/* Radiant Active Dot under bottom border */}
+                {isTabActive && (
+                  <span className="absolute -bottom-1.5 w-1 h-1 rounded-full bg-[#60A5FA] shadow-[0_0_8px_#60A5FA]" />
+                )}
               </NavLink>
             );
           })}

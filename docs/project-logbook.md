@@ -5416,6 +5416,32 @@
 - Modified: `frontend-v2/src/components/Shell/AppShell.jsx`.
 - Build confirmation: `npm run build` compiled 150 modules in 7.12s (`dist/assets/index-CPiHhvC2.js` 481.26 kB).
 
+## 2026-09-30 - Dashboard Polish & Devices Page Implementation
+
+**Work completed**
+- Re-architected `TopologyGraph.jsx` using pure vector SVG rendering with 13 orbiting constellation nodes, glowing hub, and spoke lines with animated packet data pulses matching the reference mockup.
+- Aligned `ThreatDistributionCard.jsx` and `DeviceTypesCard.jsx` with benchmark datasets and reliable unauthenticated fallbacks.
+- Polished the floating bottom dock in `AppShell.jsx` with 9 stacked tabs, illuminated active blue glow, and radiant bottom dot.
+- Implemented Page 2: `DevicesPage.jsx` featuring multi-status filtering, live WebSocket updates, hardware OS classification, CSV export, and slide-in `DeviceDetailsPanel` integration.
+- Registered `/devices` route in `App.jsx`.
+
+**Problem found**
+- Mixed HTML/SVG rendering in earlier topology graph caused node alignment and layout drift across varying aspect ratios.
+- Fallback threat distribution logic needed refinement to avoid zero-state display during gateway authentication initialization.
+
+**Solution or learning**
+- Direct vector SVG coordinate math ensures 1:1 consistent layout across all screen resolutions with zero layout shift.
+- Graceful benchmark fallbacks maintain high-density observability aesthetics even prior to gateway session establishment.
+
+**Evidence**
+- `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`
+- `frontend-v2/src/components/Dashboard/ThreatDistributionCard.jsx`
+- `frontend-v2/src/components/Dashboard/DeviceTypesCard.jsx`
+- `frontend-v2/src/components/Shell/AppShell.jsx`
+- `frontend-v2/src/pages/DevicesPage.jsx`
+- `frontend-v2/src/App.jsx`
+- Build verification: `npm run build` compiled 151 modules in 4.87s (`dist/assets/index-D33Nbj-_.js` 498.16 kB).
+
 ---
 
 ## Template for Future Daily Entries

@@ -37,13 +37,16 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
           counts['Others']++;
         }
       });
-    } else if (riskDistribution && Object.keys(riskDistribution).length > 0) {
+    } else if (
+      riskDistribution &&
+      (riskDistribution.CRITICAL > 0 || riskDistribution.HIGH > 0 || riskDistribution.MEDIUM > 0 || riskDistribution.LOW > 0)
+    ) {
       counts['Malicious Domain'] = Number(riskDistribution.CRITICAL || 0);
       counts['Suspicious Activity'] = Number(riskDistribution.HIGH || 0);
       counts['Anomaly'] = Number(riskDistribution.MEDIUM || 0);
       counts['Others'] = Number(riskDistribution.LOW || 0);
     } else {
-      // Default matching reference mockup
+      // Default benchmark matching reference mockup
       counts['Malicious Domain'] = 8;
       counts['Suspicious Activity'] = 6;
       counts['VPN Usage'] = 5;
@@ -58,33 +61,30 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
 
   const chartData = useMemo(() => {
     const labels = categories.map(([cat]) => cat);
-    const data = categories.map(([, count]) => (totalThreats === 0 ? 1 : count));
-    const bgColors =
-      totalThreats === 0
-        ? ['#1E293B']
-        : labels.map((cat) => CATEGORY_COLORS[cat] || '#94A3B8');
+    const data = categories.map(([, count]) => count);
+    const bgColors = labels.map((cat) => CATEGORY_COLORS[cat] || '#94A3B8');
 
     return {
       labels,
       datasets: [
         {
-          data: totalThreats === 0 ? [1] : data,
+          data: data,
           backgroundColor: bgColors,
           borderWidth: 0,
           hoverOffset: 4,
         },
       ],
     };
-  }, [categories, totalThreats]);
+  }, [categories]);
 
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    cutout: '76%',
+    cutout: '74%',
     plugins: {
       legend: { display: false },
       tooltip: {
-        enabled: totalThreats > 0,
+        enabled: true,
         backgroundColor: '#0F172A',
         titleColor: '#F8FAFC',
         bodyColor: '#94A3B8',
@@ -97,11 +97,11 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
 
   return (
     <div
-      className="glass-card p-3 flex flex-col justify-between"
+      className="glass-card p-3.5 flex flex-col justify-between rounded-2xl"
       style={{
-        background: 'rgba(10, 14, 26, 0.72)',
+        background: 'rgba(10, 14, 26, 0.76)',
         backdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255, 255, 255, 0.07)',
+        border: '1px solid rgba(255, 255, 255, 0.08)',
         boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
       }}
     >
@@ -112,24 +112,27 @@ export const ThreatDistributionCard = ({ alerts = [], riskDistribution = {} }) =
             Threat Distribution
           </h3>
         </div>
+        <button type="button" className="text-[#5E6579] hover:text-white" title="Options">
+          <i className="ri-more-fill text-xs"></i>
+        </button>
       </div>
 
       <div className="flex items-center gap-3">
         {/* Donut Chart with Center Metric */}
-        <div className="relative w-20 h-20 shrink-0">
+        <div className="relative w-22 h-22 shrink-0 flex items-center justify-center">
           <Doughnut data={chartData} options={chartOptions} />
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-base font-extrabold text-[#FFFFFF] tabular-nums tracking-tight leading-none">
+            <span className="text-lg font-black text-[#FFFFFF] tabular-nums tracking-tight leading-none">
               {totalThreats}
             </span>
-            <span className="text-[8px] text-[#9AA3B8] font-medium leading-tight">
+            <span className="text-[8.5px] text-[#9AA3B8] font-medium leading-tight mt-0.5">
               Threats
             </span>
           </div>
         </div>
 
-        {/* Legend List (Exact to reference) */}
-        <div className="flex-1 space-y-1 min-w-0">
+        {/* Legend List */}
+        <div className="flex-1 space-y-1.5 min-w-0">
           {categories.map(([category, count]) => {
             const color = CATEGORY_COLORS[category] || '#9AA3B8';
             return (

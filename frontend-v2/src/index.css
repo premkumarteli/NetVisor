@@ -56,20 +56,20 @@ body {
 
 /* Glass Card Shell */
 .glass-card {
-  background: var(--glass);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  border: 1px solid var(--border);
+  background: rgba(11, 15, 27, 0.72);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
 }
 
 /* Floating Chrome (Tab bar, topbar) */
 .glass-chrome {
-  background: var(--glass-hi);
+  background: rgba(11, 15, 27, 0.85);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
 /* Flat Dark Table Rows (CRITICAL RULE: No per-row glass) */
@@ -78,7 +78,7 @@ body {
   transition: background-color 0.15s ease;
 }
 .data-table-row:hover {
-  background-color: rgba(255, 255, 255, 0.025);
+  background-color: rgba(255, 255, 255, 0.035);
 }
 
 /* React Flow custom styles to match dark glass aesthetic */
