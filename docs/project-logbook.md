@@ -5548,6 +5548,27 @@
 - Modified: `frontend-v2/src/index.css`.
 - Production build confirmation: `npm run build` compiled 151 modules cleanly in 5.19s (`dist/assets/index-C7OuC_O-.js` 497.51 kB).
 
+## 2026-10-01 - Interactive Animations, Glowing Aura, and Dynamic Vector Constellation
+
+**Work completed**
+- Implemented animated continuous packet flows along the vector spokes of `TopologyGraph.jsx` (`<animate>` tags for traveling pulses and multi-packet streams on High Risk / VPN routes).
+- Added concentric animated radar beacon wave animations (`animate` rings) radiating from the central Gateway Router hub.
+- Added interactive category filters directly in the Topology legend (`Normal`, `VPN`, `High Risk`, `New Device`) with auto-dimming of non-selected nodes (`opacity: 0.25`).
+- Enhanced `MetricCard.jsx` with dynamic ambient colored hover glow behind each card (`group-hover:opacity-40 blur-2xl`), icon micro-rotations, and glowing badges.
+- Implemented staggered slide-up entrance animations (`.anim-enter` with `--stagger-index`) on the KPI cards and main dashboard sections.
+
+**Problem found**
+- Static vector edges and nodes felt rigid and lacked visual cues for live streaming telemetry.
+
+**Solution or learning**
+- Layering lightweight SVG `<animate>` data pulses and ambient CSS radial blurs creates rich, fluid, cyberpunk interactivity with zero extra CPU overhead.
+
+**Evidence**
+- `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`
+- `frontend-v2/src/components/Common/MetricCard.jsx`
+- `frontend-v2/src/pages/DashboardPage.jsx`
+- Production build confirmation: `npm run build` compiled 151 modules cleanly in 3.76s (`dist/assets/index-BJEa52so.js` 502.69 kB).
+
 ---
 
 ## Template for Future Daily Entries

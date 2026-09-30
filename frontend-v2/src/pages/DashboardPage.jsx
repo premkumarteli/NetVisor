@@ -213,56 +213,66 @@ export const DashboardPage = () => {
 
       {/* 1. KPI STRIP — 5 Observatory Cards with Sparklines */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
-        <MetricCard
-          icon="ri-macbook-line"
-          label="Active Devices"
-          value={loading ? '...' : activeDevicesCount}
-          badgeText="↑ 12%"
-          badgeTone="success"
-          accent="#3B82F6"
-          sparkColor="#3B82F6"
-          onClick={() => navigate('/devices')}
-        />
-        <MetricCard
-          icon="ri-box-3-line"
-          label="Active Agents"
-          value={loading ? '...' : activeAgentsCount}
-          badgeText="• Online"
-          badgeTone="success"
-          accent="#10B981"
-          sparkColor="#10B981"
-          onClick={() => navigate('/agents')}
-        />
-        <MetricCard
-          icon="ri-shield-flash-line"
-          label="Threats Detected"
-          value={loading ? '...' : threatsCount}
-          badgeText="↑ 5"
-          badgeTone="danger"
-          accent="#EF4444"
-          sparkColor="#EF4444"
-          onClick={() => navigate('/threats')}
-        />
-        <MetricCard
-          icon="ri-user-shared-line"
-          label="VPN Users"
-          value={loading ? '...' : vpnUsersCount}
-          badgeText="↑ 2"
-          badgeTone="success"
-          accent="#8B5CF6"
-          sparkColor="#8B5CF6"
-          onClick={() => navigate('/vpn')}
-        />
-        <MetricCard
-          icon="ri-arrow-up-down-line"
-          label="Total Traffic"
-          value={loading ? '...' : (stats.bandwidth || '45.8 GB')}
-          badgeText="↑ 8%"
-          badgeTone="success"
-          accent="#06B6D4"
-          sparkColor="#06B6D4"
-          onClick={() => navigate('/activity')}
-        />
+        <div className="anim-enter" style={{ '--stagger-index': 0 }}>
+          <MetricCard
+            icon="ri-macbook-line"
+            label="Active Devices"
+            value={loading ? '...' : activeDevicesCount}
+            badgeText="↑ 12%"
+            badgeTone="success"
+            accent="#3B82F6"
+            sparkColor="#3B82F6"
+            onClick={() => navigate('/devices')}
+          />
+        </div>
+        <div className="anim-enter" style={{ '--stagger-index': 1 }}>
+          <MetricCard
+            icon="ri-box-3-line"
+            label="Active Agents"
+            value={loading ? '...' : activeAgentsCount}
+            badgeText="• Online"
+            badgeTone="success"
+            accent="#10B981"
+            sparkColor="#10B981"
+            onClick={() => navigate('/agents')}
+          />
+        </div>
+        <div className="anim-enter" style={{ '--stagger-index': 2 }}>
+          <MetricCard
+            icon="ri-shield-flash-line"
+            label="Threats Detected"
+            value={loading ? '...' : threatsCount}
+            badgeText="↑ 5"
+            badgeTone="danger"
+            accent="#EF4444"
+            sparkColor="#EF4444"
+            onClick={() => navigate('/threats')}
+          />
+        </div>
+        <div className="anim-enter" style={{ '--stagger-index': 3 }}>
+          <MetricCard
+            icon="ri-user-shared-line"
+            label="VPN Users"
+            value={loading ? '...' : vpnUsersCount}
+            badgeText="↑ 2"
+            badgeTone="success"
+            accent="#8B5CF6"
+            sparkColor="#8B5CF6"
+            onClick={() => navigate('/vpn')}
+          />
+        </div>
+        <div className="anim-enter" style={{ '--stagger-index': 4 }}>
+          <MetricCard
+            icon="ri-arrow-up-down-line"
+            label="Total Traffic"
+            value={loading ? '...' : (stats.bandwidth || '45.8 GB')}
+            badgeText="↑ 8%"
+            badgeTone="success"
+            accent="#06B6D4"
+            sparkColor="#06B6D4"
+            onClick={() => navigate('/activity')}
+          />
+        </div>
       </div>
 
       {/* 2. MAIN 2-COLUMN OBSERVATORY GRID (Matching Reference Mockup) */}
@@ -270,39 +280,49 @@ export const DashboardPage = () => {
         {/* LEFT COLUMN (lg:col-span-8): Topology Graph on Top + Recent Events Table on Bottom */}
         <div className="lg:col-span-8 space-y-4 sm:space-y-5">
           {/* Section 2: Topology Graph Centerpiece */}
-          <TopologyGraph
-            devices={activeDevicesList}
-            activity={activeEventsList}
-            onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
-            trustStatusProps={{
-              wsStatus,
-              agentsSummary: stats.agents_summary || { online: activeAgentsCount, total: agents.length },
-              bandwidthStr: stats.bandwidth || '0 B/s',
-              inspectionCoverage,
-            }}
-          />
+          <div className="anim-enter" style={{ '--stagger-index': 5 }}>
+            <TopologyGraph
+              devices={activeDevicesList}
+              activity={activeEventsList}
+              onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
+              trustStatusProps={{
+                wsStatus,
+                agentsSummary: stats.agents_summary || { online: activeAgentsCount, total: agents.length },
+                bandwidthStr: stats.bandwidth || '0 B/s',
+                inspectionCoverage,
+              }}
+            />
+          </div>
 
           {/* Section 3: Recent Events Table */}
-          <RecentEventsTable
-            events={activeEventsList}
-            onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
-          />
+          <div className="anim-enter" style={{ '--stagger-index': 6 }}>
+            <RecentEventsTable
+              events={activeEventsList}
+              onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
+            />
+          </div>
         </div>
 
         {/* RIGHT COLUMN (lg:col-span-4): Threat Distribution + Device Types + Top Talkers */}
-        <div className="lg:col-span-4 space-y-4">
+        <div className="lg:col-span-4 space-y-4 sm:space-y-5">
           {/* Section 4: Threat Distribution */}
-          <ThreatDistributionCard alerts={alerts} riskDistribution={stats.risk_distribution} />
+          <div className="anim-enter" style={{ '--stagger-index': 7 }}>
+            <ThreatDistributionCard alerts={alerts} riskDistribution={stats.risk_distribution} />
+          </div>
 
           {/* Section 5: Device Types */}
-          <DeviceTypesCard devices={activeDevicesList} />
+          <div className="anim-enter" style={{ '--stagger-index': 8 }}>
+            <DeviceTypesCard devices={activeDevicesList} />
+          </div>
 
           {/* Section 6: Top Talkers */}
-          <TopTalkersCard
-            topDevices={analytics.top_devices}
-            devices={activeDevicesList}
-            onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
-          />
+          <div className="anim-enter" style={{ '--stagger-index': 9 }}>
+            <TopTalkersCard
+              topDevices={analytics.top_devices}
+              devices={activeDevicesList}
+              onSelectDevice={(ip) => setSelectedDeviceIp(ip)}
+            />
+          </div>
         </div>
       </div>
 
