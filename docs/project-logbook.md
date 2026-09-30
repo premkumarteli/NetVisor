@@ -5442,6 +5442,22 @@
 - `frontend-v2/src/App.jsx`
 - Build verification: `npm run build` compiled 151 modules in 4.87s (`dist/assets/index-D33Nbj-_.js` 498.16 kB).
 
+## 2026-09-30 - Ambient Video Brightness & Contrast Restoration
+
+**Work completed**
+- Restored `SpiralBackground.jsx` video rendering to 100% full opacity (`opacity-100`) and 100% natural video brightness and saturation (`filter: brightness(100%) contrast(100%) saturate(100%)`).
+- Removed aggressive heavy dark radial vignette layers, leaving a delicate ambient background overlay to ensure full video clarity while maintaining text legibility.
+
+**Problem found**
+- Video layer was previously dimmed down to 40% opacity with an 85% brightness filter and heavy opaque gradient masks, making the cosmic background appear overly dark.
+
+**Solution or learning**
+- Removing artificial dimming filters restores the authentic luminous richness of the background video assets.
+
+**Evidence**
+- Modified: `frontend-v2/src/components/Shell/SpiralBackground.jsx`.
+- Production build confirmation: `npm run build` compiled 151 modules in 8.21s (`dist/assets/index-Div_dMcs.js` 498.16 kB).
+
 ---
 
 ## Template for Future Daily Entries

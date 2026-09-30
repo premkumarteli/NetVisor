@@ -6,13 +6,13 @@ export const SpiralBackground = () => {
 
   useEffect(() => {
     if (videoRef.current) {
-      videoRef.current.playbackRate = 0.85; // Slightly slower cinematic pace
+      videoRef.current.playbackRate = 1.0; // Original natural playback rate
     }
   }, []);
 
   return (
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#05070E]">
-      {/* 1. HTML5 Ambient Background Video */}
+      {/* 1. HTML5 Ambient Background Video - Original Brightness & Full Clarity */}
       <video
         ref={videoRef}
         autoPlay
@@ -20,28 +20,28 @@ export const SpiralBackground = () => {
         muted
         playsInline
         onLoadedData={() => setVideoLoaded(true)}
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${
-          videoLoaded ? 'opacity-40' : 'opacity-0'
+        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${
+          videoLoaded ? 'opacity-100' : 'opacity-0'
         }`}
         style={{
-          filter: 'saturate(130%) contrast(110%) brightness(85%)',
+          filter: 'brightness(100%) contrast(100%) saturate(100%)',
         }}
       >
         <source src="/bg-video.mp4" type="video/mp4" />
       </video>
 
-      {/* 2. Observatory Cosmic Vignette & Color Grading Overlay */}
+      {/* 2. Delicate ambient contrast overlay to preserve UI card readability */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(ellipse at 60% 30%, rgba(16, 24, 48, 0.45) 0%, rgba(5, 7, 14, 0.75) 55%, rgba(3, 4, 8, 0.92) 100%)',
+            'radial-gradient(ellipse at 50% 40%, rgba(5, 7, 14, 0.15) 0%, rgba(5, 7, 14, 0.45) 80%, rgba(3, 4, 8, 0.7) 100%)',
         }}
       />
 
-      {/* 3. Subtle grid scanline texture for high-tech HUD feeling */}
+      {/* 3. Micro scanline grid for observatory HUD depth */}
       <div
-        className="absolute inset-0 opacity-[0.035]"
+        className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage:
             'linear-gradient(to right, rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.1) 1px, transparent 1px)',
@@ -53,4 +53,3 @@ export const SpiralBackground = () => {
 };
 
 export default SpiralBackground;
-
