@@ -5525,6 +5525,29 @@
 - `frontend-v2/src/components/Common/MetricCard.jsx`
 - Production build confirmation: `npm run build` compiled 151 modules cleanly in 5.00s (`dist/assets/index-YUrHxkn5.js` 497.51 kB).
 
+## 2026-09-30 - Single Source of Truth Design Tokens Integration
+
+**Work completed**
+- Integrated official NetVisor design tokens into `frontend-v2/src/index.css`:
+  - Surfaces: `--glass: rgba(14, 18, 32, 0.64)` and `--glass-hi: rgba(13, 17, 30, 0.78)`.
+  - Borders: `--border: rgba(255, 255, 255, 0.09)` and `--border-hover: rgba(255, 255, 255, 0.18)`.
+  - Radii: `--radius-card: 18px`, `--radius-chrome: 20px`, `--radius-sm: 10px`, `--radius-badge: 999px`.
+  - Blurs: `--blur-card: blur(22px) saturate(160%)` and `--blur-chrome: blur(28px) saturate(180%)`.
+  - Elevation: `--shadow-card: 0 10px 32px rgba(0, 0, 0, 0.4)` and `--shadow-chrome: 0 20px 48px rgba(0, 0, 0, 0.55)`.
+  - Semantic colors, soft 15% tint fills, and standard motion curves (`--dur-fast: 150ms`, `--dur-base: 220ms`, `--dur-slow: 420ms`).
+  - Added animations: `fade-rise`, `.anim-enter`, `live-pulse`, `.status-dot.is-live`, `.skeleton` shimmer, and `.count-up`.
+  - Added interactive states: `.btn-glass`, `.tab`, `.tab-alert-dot`, `.input-glass`, and focus rings.
+
+**Problem found**
+- Dispersed glass opacity and border definitions created slight visual variations across cards.
+
+**Solution or learning**
+- Centralizing all styling properties into root CSS variables establishes a unified, reproducible single source of truth across the entire platform.
+
+**Evidence**
+- Modified: `frontend-v2/src/index.css`.
+- Production build confirmation: `npm run build` compiled 151 modules cleanly in 5.19s (`dist/assets/index-C7OuC_O-.js` 497.51 kB).
+
 ---
 
 ## Template for Future Daily Entries

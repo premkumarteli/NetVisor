@@ -1,32 +1,91 @@
 @import "tailwindcss";
 
+/* ============================================================
+   NETVISOR — DESIGN TOKENS
+   Single source of truth. Every glass/border/radius value used
+   anywhere in the app must reference one of these variables —
+   never hardcode an rgba()/blur()/radius directly in a component
+   or a one-off class. If it needs to change, it changes here once.
+   ============================================================ */
+
 :root {
-  /* Base */
+  /* ---- Base ---- */
   --base-bg: #05060B;
 
-  /* Nebula intensity multiplier */
+  /* ---- Nebula ----
+     Single multiplier drives every glow layer. Tune brightness
+     here, never per-gradient. */
   --nebula-intensity: 0.5;
 
-  /* Premium Obsidian Glass tokens */
-  --glass-bg: rgba(11, 15, 28, 0.74);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-hover-border: rgba(255, 255, 255, 0.16);
-  --glass-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
+  /* ---- Glass surfaces ----
+     --glass       : content cards (SectionCard, MetricCard, tables' outer shell)
+     --glass-hi    : floating chrome that sits ABOVE content (bottom tab bar, topbar,
+                     modals/SidePanel — needs more opacity since it must stay legible
+                     over whatever's scrolling underneath it)
+     Resolved from last review: Antigravity's .74/.86 was too opaque (killed the glass
+     effect entirely); original spec's .58/.72 was too thin against the starfield.
+     Landing in between. */
+  --glass: rgba(14, 18, 32, 0.64);
+  --glass-hi: rgba(13, 17, 30, 0.78);
 
-  /* Color tokens */
+  /* ---- Borders ----
+     Generic --border is the default for every glass surface.
+     --border-hover is the shared hover/focus escalation — every
+     interactive glass element (card, button, input) should use
+     this on :hover/:focus-visible rather than inventing its own. */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.18);
+
+  /* ---- Elevation ---- */
+  --shadow-card: 0 10px 32px rgba(0, 0, 0, 0.4);
+  --shadow-chrome: 0 20px 48px rgba(0, 0, 0, 0.55), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+  --shadow-glow-blue: 0 0 0 1px rgba(96, 165, 250, 0.4), 0 0 24px rgba(96, 165, 250, 0.25);
+  --shadow-glow-rose: 0 0 0 1px rgba(251, 113, 133, 0.4), 0 0 24px rgba(251, 113, 133, 0.25);
+
+  /* ---- Radius ----
+     Reconciled to 18/20 per spec (Antigravity had cards at 16px). */
+  --radius-card: 18px;
+  --radius-chrome: 20px;
+  --radius-sm: 10px;
+  --radius-badge: 999px;
+
+  /* ---- Blur ---- */
+  --blur-card: blur(22px) saturate(160%);
+  --blur-chrome: blur(28px) saturate(180%);
+
+  /* ---- Semantic color ---- */
   --ink: #F1F3F9;
   --ink-2: #9AA3B8;
   --ink-3: #5E6579;
-  --blue: #60A5FA;
-  --rose: #FB7185;
-  --amber: #F59E0B;
-  --teal: #54C8E8;
-  --green: #34D399;
-  --violet: #A78BFA;
 
-  /* Typography */
+  --blue: #60A5FA;   /* info / VPN / normal */
+  --rose: #FB7185;   /* high severity / malicious */
+  --amber: #F59E0B;  /* medium severity / warning */
+  --teal: #54C8E8;   /* confidence / truth / positive accent */
+  --green: #34D399;  /* low severity / healthy / resolved */
+  --violet: #A78BFA; /* secondary accent */
+
+  /* Soft (15%) fills for badges/icon chips — derived once here so
+     every StatusBadge/MetricCard icon uses the exact same tint. */
+  --blue-15: rgba(96, 165, 250, 0.15);
+  --rose-15: rgba(251, 113, 133, 0.15);
+  --amber-15: rgba(245, 158, 11, 0.15);
+  --teal-15: rgba(84, 200, 232, 0.15);
+  --green-15: rgba(52, 211, 153, 0.15);
+  --violet-15: rgba(167, 139, 250, 0.15);
+
+  /* ---- Typography ---- */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* ---- Motion ----
+     Two durations, two easings. Don't invent a third — consistency
+     of *feel* matters more than per-element tuning. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 420ms;
 }
 
 * {
@@ -44,50 +103,223 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Technical Monospace Elements */
-.mono {
+.mono,
+.tabular-nums {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
+/* ============================================================
+   GLASS SURFACES — composed from tokens, never hardcoded
+   ============================================================ */
 
-/* Premium Dark Frosted Glass Card (Reference Matched) */
 .glass-card {
-  background: rgba(11, 15, 28, 0.74);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45);
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  background: var(--glass);
+  backdrop-filter: var(--blur-card);
+  -webkit-backdrop-filter: var(--blur-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition:
+    border-color var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
 }
 
+/* Subtle lift on hover — signals interactivity without being loud.
+   Only applied where the card itself is clickable; add .glass-card--static
+   to opt a purely informational card out of the lift. */
 .glass-card:hover {
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: var(--border-hover);
+  transform: translateY(-1px);
 }
 
-/* Floating Chrome (Bottom Dock, Topbar) */
+.glass-card--static:hover {
+  transform: none;
+}
+
 .glass-chrome {
-  background: rgba(10, 14, 26, 0.86);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(255, 255, 255, 0.06);
+  background: var(--glass-hi);
+  backdrop-filter: var(--blur-chrome);
+  -webkit-backdrop-filter: var(--blur-chrome);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-chrome);
 }
 
-/* Flat Dark Table Rows (CRITICAL RULE: No per-row glass) */
+/* Flat dark table rows — CRITICAL RULE, unchanged: never glass a row. */
 .data-table-row {
   background-color: transparent;
-  transition: background-color 0.15s ease;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 .data-table-row:hover {
   background-color: rgba(255, 255, 255, 0.035);
 }
 
-/* React Flow custom styles to match dark glass aesthetic */
+/* ============================================================
+   ANIMATION — entrance, live-state, loading
+   All respect prefers-reduced-motion at the bottom of this file.
+   ============================================================ */
+
+/* Staggered card entrance on page/section mount. Apply .anim-enter
+   to each card and set --stagger-index (0,1,2…) via inline style or
+   a small JS loop — gives the "cards settle into place" feel instead
+   of a hard pop-in, without needing a JS animation library. */
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anim-enter {
+  animation: fade-rise var(--dur-slow) var(--ease-out) both;
+  animation-delay: calc(var(--stagger-index, 0) * 60ms);
+}
+
+/* Live/connected pulse — for the WebSocket status dot, the sensor
+   trust-status indicator, anything claiming "this is live right now."
+   Ties animation to actual state via the .is-live class — do NOT
+   apply this to a static/disconnected dot, that's exactly the kind
+   of "decoration lying about state" the last two reviews flagged. */
+@keyframes live-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 1;
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+    opacity: 0.85;
+  }
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.is-live {
+  animation: live-pulse 2s var(--ease-in-out) infinite;
+}
+
+/* Skeleton loading shimmer — for the gap between "request in flight"
+   and "confirmed zero." This is the piece that was actually missing:
+   right now a loading dashboard and an empty dashboard both just show
+   "0" with no distinction, which is how the hardcoded-sparkline and
+   "100% coverage on 0 devices" bugs went unnoticed. Use .skeleton on
+   any value/chart placeholder while a request is pending; swap to the
+   real empty-state markup only once the response confirms zero. */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+  color: transparent !important;
+}
+
+/* Number count-up — optional polish for KPI values once real data
+   lands (e.g. 0 → 127 on first load instead of popping straight to
+   the final number). Needs a tiny JS tween (requestAnimationFrame
+   or a one-liner like a custom useCountUp hook) driving a CSS var;
+   this class just makes the digits render with tabular-nums so they
+   don't jitter in width while counting. Flagging as JS-dependent,
+   not pure CSS — don't expect this class alone to animate anything. */
+.count-up {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================
+   INTERACTIVE STATES — buttons, nav tabs, inputs
+   ============================================================ */
+
+.btn-glass {
+  background: var(--glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.btn-glass:hover {
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.06);
+}
+.btn-glass:active {
+  transform: scale(0.97);
+}
+
+/* Bottom tab bar — active state as a soft glow, not a hard fill,
+   per the locked spec. Transition the glow itself so switching tabs
+   feels like a handoff, not a snap. */
+.tab {
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-base) var(--ease-out),
+    color var(--dur-base) var(--ease-out);
+}
+.tab.active {
+  background: var(--blue-15);
+  color: var(--blue);
+}
+
+/* Unresolved high-severity badge on a tab icon — small pulse so it
+   reads as "needs attention," but a gentle one; this is chrome you
+   look at constantly, it should never feel alarming at idle. */
+.tab-alert-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rose);
+  animation: live-pulse 2.4s var(--ease-in-out) infinite;
+}
+
+/* Inputs — accent-colored glow on focus instead of the default
+   browser outline, consistent across FilterBar / forms / SidePanel. */
+.input-glass {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.input-glass:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+}
+
+/* Generic focus-visible for anything glass-based that isn't an input
+   (cards acting as buttons, nav items) — keeps keyboard navigation
+   visible without reverting to the default blue browser outline that
+   would clash with the whole token system. */
+.glass-card:focus-visible,
+.btn-glass:focus-visible,
+.tab:focus-visible {
+  outline: none;
+  box-shadow: var(--shadow-glow-blue);
+}
+
+/* ============================================================
+   REACT FLOW — topology graph
+   ============================================================ */
+
 .react-flow__attribution {
   display: none !important;
 }
@@ -99,10 +331,20 @@ body {
 }
 .react-flow__edge-path {
   stroke-width: 1.5;
-  transition: stroke 0.2s ease;
+  transition: stroke var(--dur-fast) var(--ease-out), stroke-width var(--dur-fast) var(--ease-out);
+}
+/* Hovering a node should visually lift its edges — helps trace one
+   device's connections in a graph that already has ~15 nodes/30 edges
+   competing for attention. */
+.react-flow__node:hover ~ .react-flow__edge .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke-width: 2.5;
 }
 
-/* Scrollbars */
+/* ============================================================
+   SCROLLBARS
+   ============================================================ */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -112,8 +354,23 @@ body {
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
+  border-radius: var(--radius-badge);
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================================
+   ACCESSIBILITY — always last, always wins
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
