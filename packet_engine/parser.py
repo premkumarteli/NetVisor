@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .classifier import analyze_packet, TCP_SIGNATURE_PORTS, UDP_SIGNATURE_PORTS
+from .types import LinkType
 from .metadata import (
     DomainHintCache,
     _extract_tls_sni,
@@ -234,12 +235,16 @@ class PacketObservation:
         cls,
         raw_bytes: bytes,
         *,
+        link_type: LinkType | str = LinkType.ETHERNET,
         source_type: str = "agent",
         metadata_only: bool = False,
         domain_cache: DomainHintCache | None = None,
         observed_at: float | None = None,
     ) -> "PacketObservation | None":
-        if not raw_bytes or len(raw_bytes) < 14:
+        if not raw_bytes:
+            return None
+
+        if dpkt is None:
             return None
 
         src_mac = None
@@ -253,16 +258,33 @@ class PacketObservation:
         tcp_flags = None
         payload = b""
 
-        if dpkt is None:
-            return None
+        is_raw_ip = (link_type == LinkType.RAW_IP or str(link_type).upper() == "RAW_IP")
 
         try:
-            eth = dpkt.ethernet.Ethernet(raw_bytes)
-            if eth.type in (0x0800, 0x86DD, 0x8100, 0x0806) and isinstance(eth.data, (dpkt.ip.IP, dpkt.ip6.IP6)):
-                src_mac = ":".join(f"{b:02x}" for b in eth.src)
-                dst_mac = ":".join(f"{b:02x}" for b in eth.dst)
-                vlan_id = getattr(eth, "vlanid", 0)
-                ip_layer = eth.data
+            if is_raw_ip:
+                if len(raw_bytes) < 20:
+                    return None
+                ip_version = (raw_bytes[0] >> 4) & 0x0F
+                if ip_version == 4:
+                    ip_layer = dpkt.ip.IP(raw_bytes)
+                elif ip_version == 6:
+                    if len(raw_bytes) < 40:
+                        return None
+                    ip_layer = dpkt.ip6.IP6(raw_bytes)
+                else:
+                    return None
+            else:
+                if len(raw_bytes) < 14:
+                    return None
+                eth = dpkt.ethernet.Ethernet(raw_bytes)
+                if eth.type in (0x0800, 0x86DD, 0x8100, 0x0806) and isinstance(eth.data, (dpkt.ip.IP, dpkt.ip6.IP6)):
+                    src_mac = ":".join(f"{b:02x}" for b in eth.src)
+                    dst_mac = ":".join(f"{b:02x}" for b in eth.dst)
+                    vlan_id = getattr(eth, "vlanid", 0)
+                    ip_layer = eth.data
+                else:
+                    return None
+
             if isinstance(ip_layer, dpkt.ip.IP):
                 src_ip = socket.inet_ntop(socket.AF_INET, ip_layer.src)
                 dst_ip = socket.inet_ntop(socket.AF_INET, ip_layer.dst)
@@ -448,6 +470,7 @@ class PacketObservation:
         cls,
         packet,
         *,
+        link_type: LinkType | str = LinkType.ETHERNET,
         source_type: str = "agent",
         metadata_only: bool = False,
         domain_cache: DomainHintCache | None = None,
@@ -456,6 +479,7 @@ class PacketObservation:
         if isinstance(packet, bytes):
             dpkt_obs = cls.from_raw_bytes(
                 packet,
+                link_type=link_type,
                 source_type=source_type,
                 metadata_only=metadata_only,
                 domain_cache=domain_cache,
@@ -468,6 +492,7 @@ class PacketObservation:
                 raw_b = bytes(packet)
                 dpkt_obs = cls.from_raw_bytes(
                     raw_b,
+                    link_type=link_type,
                     source_type=source_type,
                     metadata_only=metadata_only,
                     domain_cache=domain_cache,

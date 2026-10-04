@@ -13,6 +13,7 @@ from .ring_buffer import DualRingBuffer, RawPacketEnvelope, wfq_worker_drain_loo
 from .stream_registry import CONFIDENCE_MATRIX, StreamConsumerRegistry
 from .tcp_stream import TCPStreamBuffer, TCPStreamStateEnum, TCPStreamTrackerManager
 from .tls_consumer import TLSHandshakeMetadata, TlsStreamConsumer
+from .types import LinkType
 
 __all__ = [
     "CONFIDENCE_MATRIX",
@@ -27,6 +28,7 @@ __all__ = [
     "FlowSummary",
     "HttpStreamConsumer",
     "HttpTransaction",
+    "LinkType",
     "LinuxRawSocketCaptureBackend",
     "PacketAnalysis",
     "PacketObservation",

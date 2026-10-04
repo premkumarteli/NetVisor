@@ -10,6 +10,8 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Callable, Optional
 
+from .types import LinkType
+
 logger = logging.getLogger("netvisor.packet_engine.backend")
 
 
@@ -29,12 +31,14 @@ class CaptureBackend(ABC):
         requested_backend: str = "auto",
         promiscuous: bool = True,
         bpf_filter: str | None = None,
+        link_type: LinkType | str = LinkType.ETHERNET,
     ) -> None:
         self.role = str(role or "capture")
         self.interface = str(interface or "").strip() or None
         self.requested_backend = str(requested_backend or "auto").strip().lower() or "auto"
         self.promiscuous = bool(promiscuous)
         self.bpf_filter = str(bpf_filter or "").strip() or None
+        self.link_type = LinkType(link_type) if isinstance(link_type, (str, LinkType)) else LinkType.ETHERNET
         self._running = False
         self._stop_event = threading.Event()
         self._metrics_lock = threading.Lock()
@@ -319,6 +323,7 @@ def build_capture_backend(
     requested_backend: str = "auto",
     promiscuous: bool = True,
     bpf_filter: str | None = None,
+    link_type: LinkType | str = LinkType.ETHERNET,
 ) -> CaptureBackend:
     backend_name = str(requested_backend or "auto").strip().lower() or "auto"
     if backend_name in {"linux", "linux_raw", "native"}:
@@ -328,6 +333,7 @@ def build_capture_backend(
             requested_backend=backend_name,
             promiscuous=promiscuous,
             bpf_filter=bpf_filter,
+            link_type=link_type,
         )
     if backend_name in {"scapy", "python"}:
         return ScapyCaptureBackend(
@@ -336,6 +342,7 @@ def build_capture_backend(
             requested_backend=backend_name,
             promiscuous=promiscuous,
             bpf_filter=bpf_filter,
+            link_type=link_type,
         )
 
     if platform.system().lower() == "linux":
@@ -345,6 +352,7 @@ def build_capture_backend(
             requested_backend=backend_name,
             promiscuous=promiscuous,
             bpf_filter=bpf_filter,
+            link_type=link_type,
         )
 
     return ScapyCaptureBackend(
@@ -353,4 +361,5 @@ def build_capture_backend(
         requested_backend=backend_name,
         promiscuous=promiscuous,
         bpf_filter=bpf_filter,
+        link_type=link_type,
     )

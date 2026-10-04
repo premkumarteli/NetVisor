@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from .types import LinkType
 
-def classify_packet_tier_fast(raw_bytes: bytes) -> int:
+
+def classify_packet_tier_fast(raw_bytes: bytes, link_type: LinkType | str = LinkType.ETHERNET) -> int:
     """
     Zero-allocation L2-L4 byte offset classifier.
     Determines packet priority tier before queue insertion:
@@ -10,17 +12,31 @@ def classify_packet_tier_fast(raw_bytes: bytes) -> int:
       Priority 2 = Low / Bulk Payload & ACKs
     """
     length = len(raw_bytes)
-    if length < 34:
-        return 2  # Truncated frame -> Bulk Queue
+    is_raw_ip = (link_type == LinkType.RAW_IP or str(link_type).upper() == "RAW_IP")
 
-    # Parse Layer 2 (Ethernet Header = 14 bytes default)
-    l3_offset = 14
-    ethertype = (raw_bytes[12] << 8) | raw_bytes[13]
+    if is_raw_ip:
+        if length < 20:
+            return 2  # Truncated raw IP packet -> Bulk Queue
+        ip_version = (raw_bytes[0] >> 4) & 0x0F
+        l3_offset = 0
+        if ip_version == 4:
+            ethertype = 0x0800
+        elif ip_version == 6:
+            ethertype = 0x86DD
+        else:
+            return 2
+    else:
+        if length < 34:
+            return 2  # Truncated frame -> Bulk Queue
 
-    # Dynamically skip 802.1Q / 802.1ad VLAN tags
-    while ethertype in (0x8100, 0x88A8, 0x9100) and l3_offset + 4 <= length:
-        ethertype = (raw_bytes[l3_offset + 2] << 8) | raw_bytes[l3_offset + 3]
-        l3_offset += 4
+        # Parse Layer 2 (Ethernet Header = 14 bytes default)
+        l3_offset = 14
+        ethertype = (raw_bytes[12] << 8) | raw_bytes[13]
+
+        # Dynamically skip 802.1Q / 802.1ad VLAN tags
+        while ethertype in (0x8100, 0x88A8, 0x9100) and l3_offset + 4 <= length:
+            ethertype = (raw_bytes[l3_offset + 2] << 8) | raw_bytes[l3_offset + 3]
+            l3_offset += 4
 
     # Process IPv4 Header (Ethertype 0x0800)
     if ethertype == 0x0800:

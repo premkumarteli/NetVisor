@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import socket
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
 try:
     import dpkt
 except ImportError:
     dpkt = None
-from dataclasses import dataclass
-from typing import Optional, Tuple
+
+from .types import LinkType
 
 
 @dataclass(slots=True)
@@ -36,11 +40,12 @@ class DpktFastParser:
     @staticmethod
     def parse_packet_memoryview(
         raw_data: bytes | memoryview,
+        link_type: LinkType | str = LinkType.ETHERNET,
     ) -> FastParsedHeader | None:
-        if not raw_data or len(raw_data) < 14:
+        if not raw_data:
             return None
 
-        # Convert to memoryview for zero-copy slicing
+        # Convert to memoryview for slicing
         mv = memoryview(raw_data) if isinstance(raw_data, bytes) else raw_data
         packet_len = len(mv)
 
@@ -48,25 +53,24 @@ class DpktFastParser:
         dst_mac: Optional[str] = None
         vlan_id: int = 0
 
-        # Fast header inspection
-        first_byte = mv[0]
-        ip_offset = 0
+        # Determine framing based on explicit link_type
+        is_raw_ip = (link_type == LinkType.RAW_IP or str(link_type).upper() == "RAW_IP")
 
-        # Determine framing: Ethernet vs Direct IP
-        if (first_byte >> 4) in (4, 6):
-            # Direct IP packet
+        if is_raw_ip:
             ip_offset = 0
+            if packet_len < 20:
+                return None
         else:
             # Ethernet header (14 bytes minimum)
             if packet_len < 14:
                 return None
             eth_bytes = bytes(mv[:14])
+            dst_mac = ":".join(f"{b:02x}" for b in eth_bytes[0:6])
             src_mac = ":".join(f"{b:02x}" for b in eth_bytes[6:12])
-            dst_mac = ":".join(f"{b:02x}" for b in eth.dst) if False else ":".join(f"{b:02x}" for b in eth_bytes[0:6])
             ether_type = (eth_bytes[12] << 8) | eth_bytes[13]
             ip_offset = 14
 
-            if ether_type == 0x8100:  # 802.1Q VLAN
+            if ether_type in (0x8100, 0x88A8, 0x9100):  # 802.1Q / QinQ VLAN
                 if packet_len < 18:
                     return None
                 vlan_bytes = bytes(mv[14:18])
