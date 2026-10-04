@@ -243,11 +243,17 @@ class TCPStreamTrackerManager:
         max_stream_bytes: int = 512 * 1024,                # 512 KB Per-Flow Cap
         max_idle_seconds: float = 60.0,
         max_stream_age_seconds: float = 300.0,
+        max_streams: int = 65536,
+        max_streams_per_shard: Optional[int] = None,
     ) -> None:
         self.max_global_memory_bytes = max_global_memory_bytes
         self.max_stream_bytes = max_stream_bytes
         self.max_idle_seconds = max_idle_seconds
         self.max_stream_age_seconds = max_stream_age_seconds
+        self.max_streams = max_streams
+        self.max_streams_per_shard = (
+            max_streams_per_shard if max_streams_per_shard is not None else max(1, max_streams // self.NUM_SHARDS)
+        )
 
         # 16 Sharded Dictionaries & Locks
         self._shards: List[Dict[tuple, TCPStreamBuffer]] = [{} for _ in range(self.NUM_SHARDS)]
@@ -258,6 +264,7 @@ class TCPStreamTrackerManager:
 
         # Global Telemetry Counters
         self.streams_tracked_total = 0
+        self.streams_evicted_total = 0
         self.retransmissions_detected_total = 0
         self.out_of_order_buffered_total = 0
         self.stream_bytes_assembled_total = 0
@@ -270,7 +277,7 @@ class TCPStreamTrackerManager:
         return sum(self._shard_memory_bytes)
 
     def _enforce_global_memory_budget_locked(self, shard_idx: int, now: float) -> None:
-        """Enforces stream age pruning and global 512MB memory budget immediately."""
+        """Enforces stream age pruning, per-shard stream count cap, and global memory budget."""
         shard = self._shards[shard_idx]
         
         # 1. Prune expired / idle streams
@@ -280,7 +287,16 @@ class TCPStreamTrackerManager:
             if st:
                 self._shard_memory_bytes[shard_idx] -= st.memory_footprint_bytes
 
-        # 2. If total memory across shards exceeds cap, evict oldest streams in this shard
+        # 2. Enforce per-shard stream count cap (evict oldest idle stream)
+        while len(shard) > self.max_streams_per_shard:
+            oldest_key = min(shard.keys(), key=lambda k: shard[k].last_seen)
+            oldest_stream = shard.pop(oldest_key, None)
+            if oldest_stream:
+                self._shard_memory_bytes[shard_idx] -= oldest_stream.memory_footprint_bytes
+                self.streams_evicted_total += 1
+                logger.debug("Evicted oldest TCP stream %s in shard %d (per-shard stream cap).", oldest_key, shard_idx)
+
+        # 3. If total memory across shards exceeds cap, evict oldest streams in this shard
         if self.current_global_memory_bytes() > self.max_global_memory_bytes and shard:
             logger.warning(
                 "Global TCP Stream memory (%d MB) exceeds cap (%d MB). Evicting oldest streams in shard %d.",
@@ -292,6 +308,7 @@ class TCPStreamTrackerManager:
             oldest_stream = shard.pop(oldest_key, None)
             if oldest_stream:
                 self._shard_memory_bytes[shard_idx] -= oldest_stream.memory_footprint_bytes
+                self.streams_evicted_total += 1
                 logger.info(f"Evicted oldest TCP stream {oldest_key} to enforce global memory cap.")
 
     def process_bidirectional_segment(
@@ -396,10 +413,13 @@ class TCPStreamTrackerManager:
         return {
             "active_tcp_streams_count": active_streams,
             "num_shards": self.NUM_SHARDS,
+            "max_streams": self.max_streams,
+            "max_streams_per_shard": self.max_streams_per_shard,
             "global_memory_bytes": global_mem,
             "global_memory_mb": round(global_mem / (1024 * 1024), 2),
             "max_global_memory_mb": round(self.max_global_memory_bytes / (1024 * 1024), 2),
             "streams_tracked_total": self.streams_tracked_total,
+            "streams_evicted_total": self.streams_evicted_total,
             "retransmissions_detected_total": self.retransmissions_detected_total,
             "out_of_order_buffered_total": self.out_of_order_buffered_total,
             "stream_bytes_assembled_total": self.stream_bytes_assembled_total,

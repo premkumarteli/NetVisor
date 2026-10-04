@@ -2,12 +2,53 @@ from __future__ import annotations
 
 import logging
 import queue
+import socket
 import threading
 import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 logger = logging.getLogger("netvisor.packet_engine.ring_buffer")
+
+
+class SourceIpTokenBucket:
+    """
+    Token Bucket Rate Limiter per Source IP for Priority 0 Control Path Admission.
+    Guarantees legitimate control traffic (SYN, DNS, TLS) admission during single-source
+    or multi-source volumetric control floods by diverting excess to the bulk data queue.
+    """
+
+    def __init__(self, rate: float = 20.0, burst: float = 50.0, max_tracked_ips: int = 10000) -> None:
+        self.rate = float(rate)
+        self.burst = float(burst)
+        self.max_tracked_ips = max_tracked_ips
+        self._buckets: dict[str, tuple[float, float]] = {}  # ip -> (tokens, last_ts)
+        self._lock = threading.Lock()
+
+    def consume(self, src_ip: str, tokens: float = 1.0, timestamp: float | None = None) -> bool:
+        now = timestamp if timestamp is not None else time.time()
+        with self._lock:
+            if src_ip in self._buckets:
+                curr_tokens, last_ts = self._buckets[src_ip]
+                elapsed = max(0.0, now - last_ts)
+                curr_tokens = min(self.burst, curr_tokens + elapsed * self.rate)
+            else:
+                if len(self._buckets) >= self.max_tracked_ips:
+                    oldest_ip = min(self._buckets.keys(), key=lambda k: self._buckets[k][1])
+                    self._buckets.pop(oldest_ip, None)
+                curr_tokens = self.burst
+
+            if curr_tokens >= tokens:
+                curr_tokens -= tokens
+                self._buckets[src_ip] = (curr_tokens, now)
+                return True
+            else:
+                self._buckets[src_ip] = (curr_tokens, now)
+                return False
+
+    def reset(self) -> None:
+        with self._lock:
+            self._buckets.clear()
 
 
 @dataclass(slots=True)
@@ -23,11 +64,18 @@ class DualRingBuffer:
     (SYN/FIN/RST/DNS/TLS/QUIC) from bulk data payloads to prevent queue starvation.
     """
 
-    def __init__(self, control_capacity: int = 16384, data_capacity: int = 32768) -> None:
+    def __init__(
+        self,
+        control_capacity: int = 16384,
+        data_capacity: int = 32768,
+        token_rate: float = 20.0,
+        token_burst: float = 50.0,
+    ) -> None:
         self.control_queue: queue.Queue[RawPacketEnvelope] = queue.Queue(maxsize=control_capacity)
         self.data_queue: queue.Queue[RawPacketEnvelope] = queue.Queue(maxsize=data_capacity)
         self.control_capacity = control_capacity
         self.data_capacity = data_capacity
+        self.token_bucket = SourceIpTokenBucket(rate=token_rate, burst=token_burst)
 
         # Thread-safe counter lock (separate from queue mutexes)
         self._counter_lock = threading.Lock()
@@ -37,6 +85,7 @@ class DualRingBuffer:
         self.packets_processed_total = 0
         self.control_drops_total = 0
         self.data_drops_total = 0
+        self.control_rate_limited_total = 0
         self.capture_loop_exceptions_total = 0
 
     def _increment_counter(self, name: str, amount: int = 1) -> None:
@@ -44,10 +93,54 @@ class DualRingBuffer:
         with self._counter_lock:
             setattr(self, name, getattr(self, name) + amount)
 
-    def push(self, raw_bytes: bytes, priority: int = 2, timestamp: float | None = None) -> bool:
+    @staticmethod
+    def _extract_src_ip_fast(raw_bytes: bytes) -> str | None:
+        """Zero-overhead extraction of src IP for rate limiting from Ethernet or raw IP frames."""
+        length = len(raw_bytes)
+        if length < 20:
+            return None
+        try:
+            # Ethernet IPv4 (offset 12-13 == 0x0800, src IP at 26..30)
+            if length >= 34 and raw_bytes[12] == 0x08 and raw_bytes[13] == 0x00:
+                return socket.inet_ntoa(raw_bytes[26:30])
+            # Direct raw IPv4 (first nibble == 4, src IP at 12..16)
+            if (raw_bytes[0] >> 4) == 4 and length >= 20:
+                return socket.inet_ntoa(raw_bytes[12:16])
+            # Direct raw IPv6 (first nibble == 6, src IP at 8..24)
+            if (raw_bytes[0] >> 4) == 6 and length >= 40:
+                return socket.inet_ntop(socket.AF_INET6, raw_bytes[8:24])
+            # Ethernet IPv6 (offset 12-13 == 0x86DD, src IP at 22..38)
+            if length >= 54 and raw_bytes[12] == 0x86 and raw_bytes[13] == 0xDD:
+                return socket.inet_ntop(socket.AF_INET6, raw_bytes[22:38])
+        except Exception:
+            pass
+        return None
+
+    def push(
+        self,
+        raw_bytes: bytes,
+        priority: int = 2,
+        timestamp: float | None = None,
+        src_ip: str | None = None,
+    ) -> bool:
         ts = timestamp if timestamp is not None else time.time()
-        envelope = RawPacketEnvelope(raw_bytes=raw_bytes, timestamp=ts, priority=priority)
         self._increment_counter("packets_received_total")
+
+        # Per-source-IP token bucket admission check for Priority 0 (Control)
+        if priority == 0:
+            if src_ip is None:
+                src_ip = self._extract_src_ip_fast(raw_bytes)
+
+            admitted = True
+            if src_ip:
+                admitted = self.token_bucket.consume(src_ip, timestamp=ts)
+
+            if not admitted:
+                # Excess control packets are downgraded to bulk data queue and counted
+                self._increment_counter("control_rate_limited_total")
+                priority = 2
+
+        envelope = RawPacketEnvelope(raw_bytes=raw_bytes, timestamp=ts, priority=priority)
 
         if priority == 0:
             # Control Traffic: Strict push. Drops packet only if Control Queue is 100% full.
@@ -131,6 +224,7 @@ class DualRingBuffer:
             "packets_dropped_total": self.control_drops_total + self.data_drops_total,
             "control_queue_drops_total": self.control_drops_total,
             "data_queue_drops_total": self.data_drops_total,
+            "control_rate_limited_total": self.control_rate_limited_total,
             "capture_loop_exceptions_total": self.capture_loop_exceptions_total,
             "worker_lag_warning": c_lag_ms > 500 or d_lag_ms > 2000,
             "worker_lag_critical": c_lag_ms > 2000 or d_lag_ms > 5000,

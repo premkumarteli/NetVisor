@@ -9,7 +9,7 @@ from .http_consumer import HttpStreamConsumer, HttpTransaction
 from .metadata import DomainHintCache, extract_domain_hint, extract_flow_hints, extract_ja4_fingerprint
 from .parser import DpiObservation, FlowObservation, PacketObservation
 from .quic_parser import QuicMetadata, extract_quic_metadata
-from .ring_buffer import DualRingBuffer, RawPacketEnvelope, wfq_worker_drain_loop
+from .ring_buffer import DualRingBuffer, RawPacketEnvelope, SourceIpTokenBucket, wfq_worker_drain_loop
 from .stream_registry import CONFIDENCE_MATRIX, StreamConsumerRegistry
 from .tcp_stream import TCPStreamBuffer, TCPStreamStateEnum, TCPStreamTrackerManager
 from .tls_consumer import TLSAccumulator, TLSHandshakeMetadata, TlsStreamConsumer
@@ -36,6 +36,7 @@ __all__ = [
     "QuicMetadata",
     "RawPacketEnvelope",
     "ScapyCaptureBackend",
+    "SourceIpTokenBucket",
     "StreamConsumerRegistry",
     "TCPStreamBuffer",
     "TCPStreamStateEnum",
