@@ -1,3 +1,10 @@
+"""
+[EXPERIMENTAL / UNUSED]
+Worker Thread-Level CPU Affinity & NUMA Core Binding Prototype.
+NOTE: Not invoked in production runtime. In CPython, worker threads share a single
+Global Interpreter Lock (GIL), so thread-level CPU pinning does not bypass the GIL.
+"""
+
 from __future__ import annotations
 
 import os
@@ -12,9 +19,8 @@ logger = logging.getLogger("netvisor.packet_engine.cpu_affinity")
 
 class CPUAffinityManager:
     """
-    Multi-Core Worker Thread-Level CPU Affinity & NUMA Core Binding Manager.
-    Pins specific worker threads (Capture Thread -> CPU0, Workers -> CPU1..N) to physical CPU cores
-    to eliminate cross-CPU L1/L2 cache line thrashing.
+    Experimental Thread-Level CPU Affinity & NUMA Core Binding Manager.
+    Marked as unused in production.
     """
 
     __slots__ = ("_num_cpus",)

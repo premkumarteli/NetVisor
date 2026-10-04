@@ -26,8 +26,10 @@ TP_STATUS_USER = 1
 
 class AFPacketMmapBackend:
     """
-    Linux AF_PACKET + PACKET_MMAP Zero-Copy Kernel Ring Buffer Capture Driver.
+    [EXPERIMENTAL / UNWIRED]
+    Linux AF_PACKET + PACKET_MMAP Kernel Ring Buffer Capture Driver Prototype.
     Implements TPACKET_V3 block-based ring traversal with TPACKET_V2 and raw socket fallback.
+    NOTE: Currently unwired in production build_capture_backend() factory.
     """
 
     ETH_P_ALL = 0x0003  # Capture all Ethernet protocols

@@ -25,9 +25,10 @@ class FastParsedHeader:
 
 class DpktFastParser:
     """
-    Zero-copy memoryview packet header extractor using DPKT.
-    Extracts only core routing & 5-tuple fields (src_ip, dst_ip, src_port, dst_port,
-    protocol, flags, payload_offset, payload_length) without building heavy protocol trees.
+    Fast memoryview-sliced packet header extractor.
+    Extracts core routing & 5-tuple fields (src_ip, dst_ip, src_port, dst_port,
+    protocol, flags, payload_offset, payload_length) using memoryview byte offset slicing.
+    Note: Allocates address strings and dataclass records per packet.
     """
 
     __slots__ = ()

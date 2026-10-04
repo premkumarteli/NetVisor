@@ -56,8 +56,10 @@ def read_quic_vli(data: bytes, offset: int) -> tuple[int, int]:
 
 def extract_quic_metadata(payload: bytes) -> QuicMetadata | None:
     """
-    Parses UDP Port 443 QUIC Long Header Initial packets using true VLI integer decoding.
-    Locates CRYPTO frames (Type 0x06) and invokes TLS ClientHello extension dissector.
+    Parses UDP Port 443 QUIC Long Header Initial packets using VLI integer decoding.
+    NOTE: RFC 9001 HKDF secret derivation, header protection removal, and AEAD decryption
+    are not implemented in this prototype; unencrypted synthetic test payloads or version
+    headers can be parsed, but live wire QUIC Initial packets require full crypto decryption.
     """
     if not payload or len(payload) < 12:
         return None

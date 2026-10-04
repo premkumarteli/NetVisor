@@ -1,3 +1,10 @@
+"""
+[EXPERIMENTAL / UNUSED]
+Pre-allocated object free-list prototype.
+NOTE: Not used on the production hot path. In CPython, object pooling with threading.Lock
+introduces synchronization overhead and is slower than native memory allocation.
+"""
+
 from __future__ import annotations
 
 import queue
@@ -9,8 +16,8 @@ T = TypeVar("T")
 
 class ObjectPool(Generic[T]):
     """
-    Thread-safe object pool / free-list for recycling objects.
-    Eliminates Python garbage collection (GC) allocation overhead under high packet rates.
+    Experimental thread-safe object pool / free-list prototype.
+    Marked as unused in production.
     """
 
     __slots__ = ("_pool", "_max_size", "_lock", "_recycled_count", "_borrowed_count")

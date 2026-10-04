@@ -81,6 +81,9 @@ This document records the architectural history, rationale, trade-offs, deferred
 2. **Native Multi-Factor Authentication (MFA/TOTP):** Analyst TOTP login postponed to v7.2; current authentication relies on single-factor RS256 JWT credentials.
 3. **Automated Incident Remediation Playbooks:** Automated firewall rule injection upon alert detection postponed to v8.0 to prevent accidental lockout during early pilot deployments.
 4. **Android Offline Telemetry Sync:** Mobile offline SQLite queue sync postponed; current Android app requires active backend connectivity.
+5. **QUIC Initial AEAD Decryption:** Live RFC 9001 HKDF key derivation and AEAD decryption from DCID deferred; unencrypted synthetic test payloads supported in prototype only.
+6. **Object Pooling (`object_pool.py`):** Retained as experimental prototype only; unused on hot path due to GIL/mutex overhead in Python.
+7. **Thread-Level CPU Pinning (`cpu_affinity.py`):** Deferred until multi-process architecture; single-process threads remain scheduled by OS under GIL.
 
 ---
 
