@@ -5569,6 +5569,27 @@
 - `frontend-v2/src/pages/DashboardPage.jsx`
 - Production build confirmation: `npm run build` compiled 151 modules cleanly in 3.76s (`dist/assets/index-BJEa52so.js` 502.69 kB).
 
+## 2026-10-04 - Packet Engine and Dependencies Audit
+
+**Work completed**
+- Executed read-only verification and performance profiling across `packet_engine/` and runtime dependencies.
+- Verified flow key canonicalization, QUIC dissector limitations, JA4 specification compliance, dual ring buffer scheduling, TCP stream reassembly semantics, and link framing assumptions.
+- Profiled Windows Scapy capture pipeline throughput on replayed PCAPs and audited Npcap, WinDivert, and Scapy software licensing.
+- Authored comprehensive audit report and test artifacts in `audit_scratch/AUDIT_REPORT.md`.
+
+**Problem found**
+- QUIC parser lacks RFC 9001 HKDF secret derivation and AEAD decryption, processing raw ciphertext.
+- Scapy 2.5.0 carries GPLv2 copyleft licensing risks for proprietary distribution.
+- Split-segment TLS ClientHellos fail to extract SNI or JA4 due to immediate per-chunk TCP stream flushing.
+- Zero-payload SYN floods bypass global memory limits because stream tracker allocates objects without incrementing payload byte counters.
+
+**Solution or learning**
+- Documented technical constraints and one-sentence mitigations in `audit_scratch/AUDIT_REPORT.md` for engineering roadmap planning.
+
+**Evidence**
+- `audit_scratch/AUDIT_REPORT.md`
+- `audit_scratch/test_flow_key.py`, `audit_scratch/test_quic.py`, `audit_scratch/test_ja4.py`, `audit_scratch/test_queues.py`, `audit_scratch/test_tcp_reassembly.py`, `audit_scratch/test_split_tls.py`, `audit_scratch/profile_scapy.py`
+
 ---
 
 ## Template for Future Daily Entries
