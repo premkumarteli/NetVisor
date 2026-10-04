@@ -5588,7 +5588,32 @@
 
 **Evidence**
 - `audit_scratch/AUDIT_REPORT.md`
-- `audit_scratch/test_flow_key.py`, `audit_scratch/test_quic.py`, `audit_scratch/test_ja4.py`, `audit_scratch/test_queues.py`, `audit_scratch/test_tcp_reassembly.py`, `audit_scratch/test_split_tls.py`, `audit_scratch/profile_scapy.py`
+
+## 2026-10-04 - Packet Engine Correctness and Hardening Implementation
+
+**Work completed**
+- Item 0 (Docs): Corrected claims of zero-copy, object pooling, thread pinning, and QUIC SNI extraction across `packet_engine/object_pool.py`, `cpu_affinity.py`, `dpkt_parser.py`, `quic_parser.py`, `af_packet_backend.py`, and `docs/ENGINEERING_MEMORY.md`.
+- Item 1 (Link type): Added explicit `LinkType` enum (`ETHERNET`, `RAW_IP`) in `packet_engine/types.py`, threaded through `CaptureBackend`, `classifier_fast.py`, `dpkt_parser.py`, and `parser.py`. Removed `(first_byte >> 4)` heuristic, ensuring Ethernet frames starting with MACs `0x40` or `0x60` and raw IP frames parse accurately.
+- Item 2 (TLS accumulator): Implemented `TLSAccumulator` in `packet_engine/tls_consumer.py` with 16KB+5 record length cap, 5.0s timeout, overflow/timeout drop accounting, and multi-segment/out-of-order ClientHello reassembly.
+- Item 3 (Hardening): Added `max_streams` per shard enforcement with idle stream eviction and `streams_evicted_total` tracking in `TCPStreamTrackerManager`. Added `SourceIpTokenBucket` per-source-IP rate limiter for Priority 0 admission in `DualRingBuffer`, diverting excess control traffic to the data queue and tracking `control_rate_limited_total`.
+- Item 4 (Flow key): Removed MAC addresses from `canonical_conversation_key` in `PacketObservation`, retaining first-seen MACs as attributes on `FlowState`. Confirmed flows seen with differing MACs across router hops merge into a single conversation.
+
+**Problem found**
+- Ethernet frames with destination MACs starting with 0x40 or 0x60 triggered `(first_byte >> 4) in (4, 6)` heuristic in `dpkt_parser.py`, corrupting header offset slicing.
+- Multi-segment TLS ClientHellos flushed incomplete records immediately, preventing SNI extraction and JA4 fingerprinting.
+- Zero-payload SYN floods bypassed memory limits in `TCPStreamTrackerManager` and threatened Priority 0 queue starvation in `DualRingBuffer`.
+- Inclusion of MAC addresses in `canonical_conversation_key` fractured flows crossing L2 network hops and routers into separate flow records.
+
+**Solution or learning**
+- Requiring an explicit `LinkType` from the capture layer eliminates framing ambiguity between L2 Ethernet and L3 raw IP.
+- Buffering reassembled TCP bytes until the 5-byte TLS record length is satisfied enables seamless L7 inspection across segment boundaries.
+- Per-shard stream caps and source-IP token bucket admission protect memory and priority queue paths against denial-of-service floods.
+- Stripping L2 MACs from the canonical flow key unifies routed conversations while preserving first-seen hardware addresses on the flow summary.
+
+**Evidence**
+- Unit tests: `tests/test_link_type_framing.py` (5 passed), `tests/test_tls_accumulator.py` (7 passed), `tests/test_stream_hardening.py` (3 passed), `tests/test_flow_key_mac_independence.py` (2 passed), `tests/test_collector_observations.py` (11 passed).
+- Combined packet engine test suite: 56 passed in 6.26s (`pytest tests/test_link_type_framing.py tests/test_tls_accumulator.py tests/test_stream_hardening.py tests/test_flow_key_mac_independence.py tests/test_collector_observations.py tests/test_packet_engine_hardening.py tests/test_packet_engine_validation.py tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py`).
+- Commits: `cee0988` (Item 0), `bdc000b` (Item 1), `c92d8df` (Item 2), `bcdeb47` (Item 3), `f1dac28` (Item 4).
 
 ---
 
