@@ -202,7 +202,6 @@ def test_10tuple_and_canonical_conversation_keys():
         ("142.250.190.46", "192.168.1.50"),
         (443, 54321),
         "TCP",
-        ("aa:bb:cc:dd:ee:02", "aa:bb:cc:dd:ee:01"),
         "agent",
         10,
     )

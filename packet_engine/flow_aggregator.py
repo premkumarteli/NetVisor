@@ -11,7 +11,8 @@ from .parser import PacketObservation
 
 
 FlowKey = (
-    Tuple[Tuple[str, str], Tuple[int, int], str, Tuple[str, str], str, int]
+    Tuple[Tuple[str, str], Tuple[int, int], str, str, int]
+    | Tuple[Tuple[str, str], Tuple[int, int], str, Tuple[str, str], str, int]
     | Tuple[str, str, int, int, str]
 )
 GENERIC_LAYER4_PROTOCOLS = {"TCP", "UDP", "IP", "IPV4", "IPV6", "UNKNOWN"}
@@ -336,14 +337,14 @@ class FlowManager:
                 if observation.sni:
                     state.sni = observation.sni
                 if is_fwd:
-                    if src_mac:
+                    if src_mac and not state.src_mac:
                         state.src_mac = src_mac
-                    if dst_mac:
+                    if dst_mac and not state.dst_mac:
                         state.dst_mac = dst_mac
                 else:
-                    if dst_mac:
+                    if dst_mac and not state.src_mac:
                         state.src_mac = dst_mac
-                    if src_mac:
+                    if src_mac and not state.dst_mac:
                         state.dst_mac = src_mac
                 if observation.application_protocol:
                     candidate_protocol = str(observation.application_protocol).strip().upper()

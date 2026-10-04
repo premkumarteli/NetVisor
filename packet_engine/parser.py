@@ -200,21 +200,18 @@ class PacketObservation:
         return (self.src_ip, self.src_port) <= (self.dst_ip, self.dst_port)
 
     @property
-    def canonical_conversation_key(self) -> tuple[tuple[str, str], tuple[int, int], str, tuple[str, str], str, int]:
-        """Bidirectional conversation key: merges Client->Server and Server->Client into a single conversation."""
+    def canonical_conversation_key(self) -> tuple[tuple[str, str], tuple[int, int], str, str, int]:
+        """Bidirectional conversation key: merges Client->Server and Server->Client into a single conversation without MAC dependence."""
         if self.is_forward_direction:
             ip_pair = (self.src_ip, self.dst_ip)
             port_pair = (self.src_port, self.dst_port)
-            mac_pair = (self.src_mac or "-", self.dst_mac or "-")
         else:
             ip_pair = (self.dst_ip, self.src_ip)
             port_pair = (self.dst_port, self.src_port)
-            mac_pair = (self.dst_mac or "-", self.src_mac or "-")
         return (
             ip_pair,
             port_pair,
             self.protocol,
-            mac_pair,
             self.source_type,
             self.vlan_id,
         )
