@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from .metadata import extract_ja4_fingerprint
 
@@ -265,8 +266,135 @@ def parse_tls_client_hello_record(stream_bytes: bytes) -> TLSHandshakeMetadata |
     )
 
 
-class TlsStreamConsumer:
-    """Reassembled TLS ClientHello Handshake Consumer."""
+class TLSAccumulator:
+    """
+    TLS Record Accumulator.
+    Buffers reassembled bytes until the 5-byte TLS record length is satisfied.
+    Caps buffer at 16 KB + 5 (16,389 bytes), enforces 5.0 s timeout, and drops/counts on overflow or timeout.
+    """
 
-    def parse_stream_chunk(self, stream_bytes: bytes) -> TLSHandshakeMetadata | None:
-        return parse_tls_client_hello_record(stream_bytes)
+    MAX_RECORD_LEN = 16 * 1024 + 5  # 16,389 bytes
+
+    def __init__(self, max_capacity: int = 16 * 1024 + 5, timeout: float = 5.0) -> None:
+        self.max_capacity = max_capacity
+        self.timeout = timeout
+        self.buffer = bytearray()
+        self.first_seen: Optional[float] = None
+        self.overflow_drops = 0
+        self.timeout_drops = 0
+
+    def reset(self) -> None:
+        self.buffer.clear()
+        self.first_seen = None
+        self.overflow_drops = 0
+        self.timeout_drops = 0
+
+    def feed(self, chunk: bytes, timestamp: float | None = None) -> bytes | None:
+        if not chunk:
+            return None
+
+        now = timestamp if timestamp is not None else time.time()
+
+        # Check timeout if there is already pending buffered data
+        if self.first_seen is not None and (now - self.first_seen) > self.timeout:
+            self.timeout_drops += 1
+            self.buffer.clear()
+            self.first_seen = None
+
+        # Check if single incoming chunk exceeds max capacity
+        if len(chunk) > self.max_capacity:
+            self.overflow_drops += 1
+            self.buffer.clear()
+            self.first_seen = None
+            return None
+
+        if self.first_seen is None:
+            self.first_seen = now
+
+        self.buffer.extend(chunk)
+
+        if len(self.buffer) > self.max_capacity:
+            self.overflow_drops += 1
+            self.buffer.clear()
+            self.first_seen = None
+            return None
+
+        # Need at least 5 bytes to inspect TLS record header
+        if len(self.buffer) < 5:
+            return None
+
+        # Check TLS Record Header (0x16 Handshake)
+        if self.buffer[0] == 0x16:
+            rec_len = int.from_bytes(self.buffer[3:5], "big")
+            expected_total = 5 + rec_len
+            if expected_total > self.max_capacity:
+                self.overflow_drops += 1
+                self.buffer.clear()
+                self.first_seen = None
+                return None
+
+            if len(self.buffer) >= expected_total:
+                assembled = bytes(self.buffer[:expected_total])
+                remaining = self.buffer[expected_total:]
+                self.buffer.clear()
+                if remaining:
+                    self.buffer.extend(remaining)
+                    self.first_seen = now
+                else:
+                    self.first_seen = None
+                return assembled
+
+        # Check direct Handshake without 5-byte record wrapper (0x01 ClientHello)
+        elif self.buffer[0] == 0x01 and len(self.buffer) >= 4:
+            hs_len = int.from_bytes(self.buffer[1:4], "big")
+            expected_total = 4 + hs_len
+            if expected_total > self.max_capacity:
+                self.overflow_drops += 1
+                self.buffer.clear()
+                self.first_seen = None
+                return None
+
+            if len(self.buffer) >= expected_total:
+                assembled = bytes(self.buffer[:expected_total])
+                remaining = self.buffer[expected_total:]
+                self.buffer.clear()
+                if remaining:
+                    self.buffer.extend(remaining)
+                    self.first_seen = now
+                else:
+                    self.first_seen = None
+                return assembled
+
+        return None
+
+
+class TlsStreamConsumer:
+    """Reassembled TLS ClientHello Handshake Consumer with accumulator buffering."""
+
+    def __init__(self, max_capacity: int = 16 * 1024 + 5, timeout: float = 5.0) -> None:
+        self.accumulator = TLSAccumulator(max_capacity=max_capacity, timeout=timeout)
+        self._flow_accumulators: Dict[tuple, TLSAccumulator] = {}
+
+    @property
+    def overflow_drops(self) -> int:
+        return self.accumulator.overflow_drops
+
+    @property
+    def timeout_drops(self) -> int:
+        return self.accumulator.timeout_drops
+
+    def parse_stream_chunk(
+        self,
+        stream_bytes: bytes,
+        flow_key: tuple | None = None,
+        timestamp: float | None = None,
+    ) -> TLSHandshakeMetadata | None:
+        acc = self._flow_accumulators.get(flow_key) if flow_key else self.accumulator
+        if flow_key and acc is None:
+            acc = TLSAccumulator(max_capacity=self.accumulator.max_capacity, timeout=self.accumulator.timeout)
+            self._flow_accumulators[flow_key] = acc
+
+        assembled = acc.feed(stream_bytes, timestamp=timestamp)
+        if assembled is not None:
+            return parse_tls_client_hello_record(assembled)
+        return None

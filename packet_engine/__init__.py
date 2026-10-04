@@ -12,7 +12,7 @@ from .quic_parser import QuicMetadata, extract_quic_metadata
 from .ring_buffer import DualRingBuffer, RawPacketEnvelope, wfq_worker_drain_loop
 from .stream_registry import CONFIDENCE_MATRIX, StreamConsumerRegistry
 from .tcp_stream import TCPStreamBuffer, TCPStreamStateEnum, TCPStreamTrackerManager
-from .tls_consumer import TLSHandshakeMetadata, TlsStreamConsumer
+from .tls_consumer import TLSAccumulator, TLSHandshakeMetadata, TlsStreamConsumer
 from .types import LinkType
 
 __all__ = [
@@ -40,6 +40,7 @@ __all__ = [
     "TCPStreamBuffer",
     "TCPStreamStateEnum",
     "TCPStreamTrackerManager",
+    "TLSAccumulator",
     "TLSHandshakeMetadata",
     "TlsStreamConsumer",
     "analyze_packet",
