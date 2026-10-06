@@ -253,8 +253,8 @@ class Settings(BaseSettings):
     NETVISOR_LARGE_UPLOAD_THRESHOLD_BYTES: int = 5000000
 
     # Sentry Configuration
-    SENTRY_DSN: str = Field(
-        default="https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224",
+    SENTRY_DSN: Optional[str] = Field(
+        default=None,
         validation_alias="NETVISOR_SENTRY_DSN",
     )
     SENTRY_ENVIRONMENT: str = Field(

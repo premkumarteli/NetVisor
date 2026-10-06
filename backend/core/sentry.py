@@ -20,9 +20,6 @@ logger = logging.getLogger("netvisor.sentry")
 import socket
 from urllib.parse import urlparse
 
-DEFAULT_SENTRY_DSN = "https://5d439a4ef329a54ccf53058c455a3e31@o4511967075893248.ingest.de.sentry.io/4511967117574224"
-
-
 def init_sentry(dsn: str | None = None, environment: str = "production") -> bool:
     """Initialize Sentry Error Monitoring and Tracing SDK for NetVisor."""
     if not HAS_SENTRY:
@@ -38,7 +35,6 @@ def init_sentry(dsn: str | None = None, environment: str = "production") -> bool
         dsn
         or os.getenv("NETVISOR_SENTRY_DSN")
         or os.getenv("SENTRY_DSN")
-        or DEFAULT_SENTRY_DSN
     )
 
     if not target_dsn or str(target_dsn).strip().lower() in ("false", "0", "disabled", "none", ""):
