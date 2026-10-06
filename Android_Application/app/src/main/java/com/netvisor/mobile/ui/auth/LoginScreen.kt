@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
+import com.netvisor.mobile.BuildConfig
 import com.netvisor.mobile.R
 import com.netvisor.mobile.ui.components.GlassButton
 import com.netvisor.mobile.ui.components.GlassCard
@@ -30,8 +31,8 @@ fun LoginScreen(
     val uiState by viewModel.uiState.collectAsState()
     val backendUrl by viewModel.backendUrl.collectAsState()
     
-    var username by remember { mutableStateOf("admin") }
-    var password by remember { mutableStateOf("NetVisor!DemoAccess99") }
+    var username by remember { mutableStateOf(if (BuildConfig.DEBUG) "admin" else "") }
+    var password by remember { mutableStateOf(if (BuildConfig.DEBUG) "NetVisor!DemoAccess99" else "") }
     
     LaunchedEffect(uiState) {
         if (uiState is LoginViewModel.LoginUiState.Success) {
@@ -133,38 +134,40 @@ fun LoginScreen(
                 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Quick Demo Account Selector
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = {
-                            username = "admin"
-                            password = "NetVisor!DemoAccess99"
-                        },
-                        label = { Text("Admin (Default)", fontSize = 11.sp) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = Primary.copy(alpha = 0.15f),
-                            labelColor = Primary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    AssistChip(
-                        onClick = {
-                            username = "operator"
-                            password = "NetVisor!OperatorAccess99"
-                        },
-                        label = { Text("Operator", fontSize = 11.sp) },
-                        colors = AssistChipDefaults.assistChipColors(
-                            containerColor = Color(0xFF8B5CF6).copy(alpha = 0.15f),
-                            labelColor = Color(0xFF8B5CF6)
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
+                if (BuildConfig.DEBUG) {
+                    // Quick Demo Account Selector
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AssistChip(
+                            onClick = {
+                                username = "admin"
+                                password = "NetVisor!DemoAccess99"
+                            },
+                            label = { Text("Admin (Default)", fontSize = 11.sp) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Primary.copy(alpha = 0.15f),
+                                labelColor = Primary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                        AssistChip(
+                            onClick = {
+                                username = "operator"
+                                password = "NetVisor!OperatorAccess99"
+                            },
+                            label = { Text("Operator", fontSize = 11.sp) },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = Color(0xFF8B5CF6).copy(alpha = 0.15f),
+                                labelColor = Color(0xFF8B5CF6)
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
-                
-                Spacer(modifier = Modifier.height(16.dp))
                 
                 if (uiState is LoginViewModel.LoginUiState.Error) {
                     Text(

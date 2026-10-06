@@ -35,13 +35,13 @@ describe('LoginPage', () => {
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument()
   })
 
-  it('has default demo credentials pre-filled', () => {
+  it('has empty credentials by default when demo mode is disabled', () => {
     render(
       <MemoryRouter>
         <LoginPage />
       </MemoryRouter>
     )
-    expect(screen.getByLabelText(/username/i)).toHaveValue('admin')
-    expect(screen.getByLabelText(/password/i)).toHaveValue('NetVisor!DemoAccess99')
+    expect(screen.getByLabelText(/username/i)).toHaveValue('')
+    expect(screen.getByLabelText(/password/i)).toHaveValue('')
   })
 })

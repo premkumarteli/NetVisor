@@ -4,9 +4,11 @@ import { useAuth } from '../hooks/useAuth';
 import { authService } from '../services/api';
 import AuthSurface from '../components/V2/AuthSurface';
 
+const isDemoMode = import.meta.env?.VITE_DEMO_MODE === 'true';
+
 const LoginPage = () => {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('NetVisor!DemoAccess99');
+  const [username, setUsername] = useState(isDemoMode ? 'admin' : '');
+  const [password, setPassword] = useState(isDemoMode ? 'NetVisor!DemoAccess99' : '');
   const [showPassword, setShowPassword] = useState(false);
   const [capsLockActive, setCapsLockActive] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,7 +44,7 @@ const LoginPage = () => {
       } else if (err.code === 'ERR_NETWORK') {
         setError('Cannot reach NetVisor gateway. Please ensure the backend server is running on port 8000.');
       } else {
-        setError('Invalid username or password. Please try again or use the demo buttons.');
+        setError(isDemoMode ? 'Invalid username or password. Please try again or use the demo buttons.' : 'Invalid username or password. Please try again.');
       }
     } finally {
       setIsSubmitting(false);
@@ -57,33 +59,35 @@ const LoginPage = () => {
 
   const aside = (
     <div className="nv-auth__points">
-      <div className="nv-auth__point">
-        <i className="ri-key-2-line"></i>
-        <div>
-          <strong>Instant Demo Credentials</strong>
-          <p className="mb-2">Click to load pre-configured roles instantly:</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
-            <button
-              type="button"
-              onClick={() => autoFillDemo('admin', 'NetVisor!DemoAccess99')}
-              className="nv-button nv-button--xs nv-button--primary"
-              style={{ fontSize: '0.74rem' }}
-            >
-              <i className="ri-shield-user-line"></i>
-              Admin (admin)
-            </button>
-            <button
-              type="button"
-              onClick={() => autoFillDemo('operator', 'NetVisor!OperatorAccess99')}
-              className="nv-button nv-button--xs nv-button--secondary"
-              style={{ fontSize: '0.74rem' }}
-            >
-              <i className="ri-user-settings-line"></i>
-              Operator (operator)
-            </button>
+      {isDemoMode && (
+        <div className="nv-auth__point">
+          <i className="ri-key-2-line"></i>
+          <div>
+            <strong>Instant Demo Credentials</strong>
+            <p className="mb-2">Click to load pre-configured roles instantly:</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => autoFillDemo('admin', 'NetVisor!DemoAccess99')}
+                className="nv-button nv-button--xs nv-button--primary"
+                style={{ fontSize: '0.74rem' }}
+              >
+                <i className="ri-shield-user-line"></i>
+                Admin (admin)
+              </button>
+              <button
+                type="button"
+                onClick={() => autoFillDemo('operator', 'NetVisor!OperatorAccess99')}
+                className="nv-button nv-button--xs nv-button--secondary"
+                style={{ fontSize: '0.74rem' }}
+              >
+                <i className="ri-user-settings-line"></i>
+                Operator (operator)
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
       <div className="nv-auth__point">
         <i className="ri-shield-keyhole-line"></i>
         <div>
@@ -105,7 +109,7 @@ const LoginPage = () => {
     <AuthSurface
       eyebrow="Authentication"
       title="NetVisor SOC Login"
-      description="Sign in to the operational security workspace. Default demo credentials are ready below for 1-click access."
+      description={isDemoMode ? "Sign in to the operational security workspace. Default demo credentials are ready below for 1-click access." : "Sign in to the operational security workspace."}
       badge="Protected session"
       asideTitle="Quick Workspace Access"
       asideCaption="Control plane"
@@ -208,23 +212,25 @@ const LoginPage = () => {
           </div>
         </label>
 
-        <div style={{
-          padding: '0.75rem 1rem',
-          borderRadius: '12px',
-          background: 'rgba(84, 200, 232, 0.06)',
-          border: '1px solid rgba(84, 200, 232, 0.16)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          fontSize: '0.76rem',
-          color: 'var(--nv-text-soft)',
-        }}>
-          <i className="ri-information-line" style={{ fontSize: '1.2rem', color: 'var(--nv-accent, #54c8e8)', flexShrink: 0 }}></i>
-          <div>
-            <strong style={{ color: 'var(--nv-text)', display: 'block', marginBottom: '0.1rem' }}>Demo Credentials Ready</strong>
-            <span>Click the Admin or Operator buttons on the right to prefill credentials instantly.</span>
+        {isDemoMode && (
+          <div style={{
+            padding: '0.75rem 1rem',
+            borderRadius: '12px',
+            background: 'rgba(84, 200, 232, 0.06)',
+            border: '1px solid rgba(84, 200, 232, 0.16)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            fontSize: '0.76rem',
+            color: 'var(--nv-text-soft)',
+          }}>
+            <i className="ri-information-line" style={{ fontSize: '1.2rem', color: 'var(--nv-accent, #54c8e8)', flexShrink: 0 }}></i>
+            <div>
+              <strong style={{ color: 'var(--nv-text)', display: 'block', marginBottom: '0.1rem' }}>Demo Credentials Ready</strong>
+              <span>Click the Admin or Operator buttons on the right to prefill credentials instantly.</span>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="nv-auth__footer" style={{ marginTop: '0.5rem' }}>
           <button
