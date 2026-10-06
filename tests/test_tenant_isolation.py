@@ -44,11 +44,12 @@ from backend.services import (
 
 import os
 
+_DB_PASSWORD = os.environ.get("NETVISOR_DB_PASSWORD") or os.environ.get("DB_PASSWORD")
 TEST_DB = "network_security_test"
 DB_ARGS = dict(
     host=os.environ.get("NETVISOR_DB_HOST") or getattr(settings, "DB_HOST", "127.0.0.1"),
     user=os.environ.get("NETVISOR_DB_USER") or getattr(settings, "DB_USER", "root"),
-    password=os.environ.get("NETVISOR_DB_PASSWORD") or getattr(settings, "DB_PASSWORD", "Prem@333"),
+    password=_DB_PASSWORD or "",
     port=int(os.environ.get("NETVISOR_DB_PORT") or getattr(settings, "DB_PORT", 3306)),
 )
 
@@ -197,6 +198,9 @@ def _connect(database: str | None = None):
 
 @pytest.fixture(scope="module", autouse=True)
 def scratch_db():
+    if not _DB_PASSWORD:
+        pytest.skip("NETVISOR_DB_PASSWORD or DB_PASSWORD environment variable is not set; skipping tenant isolation test suite.")
+        return
     try:
         admin = _connect()
     except Exception as exc:
