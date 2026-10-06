@@ -5615,9 +5615,36 @@
 - Combined packet engine test suite: 56 passed in 6.26s (`pytest tests/test_link_type_framing.py tests/test_tls_accumulator.py tests/test_stream_hardening.py tests/test_flow_key_mac_independence.py tests/test_collector_observations.py tests/test_packet_engine_hardening.py tests/test_packet_engine_validation.py tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py`).
 - Commits: `cee0988` (Item 0), `bdc000b` (Item 1), `c92d8df` (Item 2), `bcdeb47` (Item 3), `f1dac28` (Item 4).
 
+## 2026-10-06 - Secret Management, Default Credentials Cleanup, and Ignore Rules Hardening
+
+**Work completed**
+- Installed and ran gitleaks history audit across entire git history with full redaction.
+- Removed hardcoded default Sentry DSN from `backend/core/config.py` and `backend/core/sentry.py`, disabling Sentry telemetry cleanly when unset.
+- Updated `tests/test_tenant_isolation.py` to require `NETVISOR_DB_PASSWORD` or `DB_PASSWORD` from environment and skip the suite cleanly when unset.
+- Replaced static placeholder agent key in `config/agent.json` with environment variable reference (`${AGENT_API_KEY}`).
+- Updated `frontend/src/pages/LoginPage.jsx`, `frontend/src/pages/LoginPage.test.jsx`, and `Android_Application/app/src/main/java/com/netvisor/mobile/ui/auth/LoginScreen.kt` to remove pre-filled demo credentials and quick account switcher chips unless explicit demo flags (`VITE_DEMO_MODE=true` / `BuildConfig.DEBUG`) are enabled.
+- Appended `.gitignore` rules for `audit_scratch/`, `*.pcapng`, `*.sqlite`, `*.db`, `*.key`, `*.crt`, `*.p12`, `*.pfx`, and `*.dump` while confirming `tests/fixtures/pcaps/` remains tracked.
+- Conducted host interface binding audit for MySQL, Redis, ClickHouse, and API services across docker-compose files and `run_server.py`.
+
+**Problem found**
+- Hardcoded test credentials and default Sentry endpoints were embedded in configuration files and test setups.
+- Demo login credentials were exposed on default production login views on web and mobile.
+- Intermediate audit artifacts and database/key formats lacked comprehensive `.gitignore` rules.
+
+**Solution or learning**
+- Enforcing environment-driven secrets and gating demo account switchers behind build/env flags prevents accidental exposure in production.
+- Ignoring certificate keys, database files, and audit directories protects sensitive local data from git indexing.
+
+**Evidence**
+- Pytest test execution: `tests/test_secret_management.py`, `tests/test_agent_transport_policy.py`, `tests/test_gateway_transport_policy.py`, `tests/test_phase1_security_fixes.py`, `tests/test_tenant_isolation.py` (63 passed, 34 skipped in 20.44s).
+- Vitest test execution: `frontend/src/pages/LoginPage.test.jsx` (3 passed in 585ms).
+- Gitleaks scan completed cleanly with redacted findings reported.
+- Local commits: `92f20b4`, `2184813`, `215b6f3`, `c1d9cb8`, `5c8ffb3`.
+
 ---
 
 ## Template for Future Daily Entries
+
 
 
 ```text
