@@ -98,4 +98,15 @@ database_export.txt
 python
 zeek/
 
+# Audit artifacts, databases, certificates & keys
+audit_scratch/
+*.pcapng
+*.sqlite
+*.db
+*.key
+*.crt
+*.p12
+*.pfx
+*.dump
+
 
