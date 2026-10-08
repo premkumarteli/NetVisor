@@ -57,3 +57,27 @@ def test_source_ip_uses_direct_peer_when_proxy_is_not_trusted(monkeypatch):
     )
 
     assert resolve_source_ip(request) == "198.51.100.7"
+
+
+def test_source_ip_uses_a_valid_forwarded_address_only_from_a_trusted_proxy(monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "127.0.0.1")
+    request = _FakeRequest(
+        client=type("Client", (), {"host": "127.0.0.1"})(),
+        headers={"X-Forwarded-For": "203.0.113.99, 127.0.0.1"},
+    )
+
+    assert resolve_source_ip(request) == "203.0.113.99"
+
+
+def test_source_ip_falls_back_to_trusted_peer_for_an_invalid_forwarded_address(monkeypatch):
+    from backend.core.config import settings
+
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "127.0.0.1")
+    request = _FakeRequest(
+        client=type("Client", (), {"host": "127.0.0.1"})(),
+        headers={"X-Forwarded-For": "not-an-ip"},
+    )
+
+    assert resolve_source_ip(request) == "127.0.0.1"

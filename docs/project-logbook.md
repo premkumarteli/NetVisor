@@ -5680,6 +5680,24 @@
 - `python -m py_compile backend/utils/network.py`: passed.
 - Files changed: `backend/utils/network.py`, `tests/test_network_utils.py`.
 
+## 2026-10-08 - Forwarded IP Validation
+
+**Work completed**
+- Normalized configured proxy addresses and direct peer addresses before comparison.
+- Validated `X-Forwarded-For` and `X-Real-IP` values before using them as client identities, falling back to the trusted peer when invalid.
+- Added trusted-proxy and malformed-forwarding regression coverage.
+
+**Problem found**
+- A trusted proxy's malformed forwarding value could become a rate-limit and audit identity verbatim, creating fragmented buckets and untrustworthy audit data.
+
+**Solution or learning**
+- Every source-IP value crossing the request boundary must be syntactically validated and canonicalized before it is used as a security identity.
+
+**Evidence**
+- `python -m pytest tests/test_network_utils.py tests/test_rate_limit.py tests/test_auth_api.py -q -p no:cacheprovider`: 13 passed in 13.06s.
+- `python -m py_compile backend/utils/network.py`: passed.
+- Files changed: `backend/utils/network.py`, `tests/test_network_utils.py`.
+
 ## Template for Future Daily Entries
 
 

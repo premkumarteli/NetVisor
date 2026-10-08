@@ -201,18 +201,24 @@ def resolve_source_ip(request: Request) -> str:
         # Forwarded headers are caller-controlled in this situation.
         return "unknown"
 
-    socket_ip = str(client.host).strip()
+    socket_ip = normalize_ip(getattr(client, "host", None))
+    if not socket_ip:
+        return "unknown"
 
-    trusted_proxies = {p.strip() for p in (settings.TRUSTED_PROXIES or "").split(",") if p.strip()}
+    trusted_proxies = {
+        normalized
+        for proxy in (settings.TRUSTED_PROXIES or "").split(",")
+        if (normalized := normalize_ip(proxy))
+    }
     if socket_ip in trusted_proxies and hasattr(request, "headers"):
         forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
         if forwarded_for:
             # First IP in X-Forwarded-For is the original client
             parts = [p.strip() for p in forwarded_for.split(",")]
             if parts and parts[0]:
-                return parts[0]
+                return normalize_ip(parts[0]) or socket_ip
         real_ip = str(request.headers.get("X-Real-IP") or "").strip()
         if real_ip:
-            return real_ip
+            return normalize_ip(real_ip) or socket_ip
 
     return socket_ip
