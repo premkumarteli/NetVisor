@@ -465,6 +465,38 @@ def test_wireguard_heuristic_detector():
     assert detector.analyze(flow_resp) is True
 
 
+def test_wireguard_heuristic_detector_with_merged_bidirectional_flow():
+    from backend.engines.vpn.wireguard import WireGuardHeuristicDetector
+    detector = WireGuardHeuristicDetector()
+
+    flow = {
+        "protocol": "UDP",
+        "src_ip": "192.168.1.50",
+        "dst_ip": "10.0.0.99",
+        "src_port": 51820,
+        "dst_port": 51820,
+        "analysis_signals": ["wg_size_148", "wg_size_92", "wg_size_32"],
+        "fwd_packets": 2,
+        "rev_packets": 1,
+    }
+    assert detector.analyze(flow) is True
+
+
+def test_wireguard_heuristic_detector_with_aggregated_handshake_sizes():
+    from backend.engines.vpn.wireguard import WireGuardHeuristicDetector
+    detector = WireGuardHeuristicDetector()
+
+    flow = {
+        "protocol": "UDP",
+        "src_ip": "192.168.1.50",
+        "dst_ip": "10.0.0.99",
+        "src_port": 51820,
+        "dst_port": 51820,
+        "analysis_signals": ["wg_size_148", "wg_size_92"],
+    }
+    assert detector.analyze(flow) is True
+
+
 def test_openvpn_signature_detector():
     from backend.engines.vpn.openvpn import OpenVPNSignatureDetector
     detector = OpenVPNSignatureDetector()
@@ -570,5 +602,3 @@ def test_asn_lookup_pruning_and_pending_count():
             assert "8.8.8.8" in svc._pending
     finally:
         svc.shutdown()
-
-

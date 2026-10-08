@@ -5663,6 +5663,26 @@
 - `python -m py_compile agent/dpi/mitm_addon.py agent/dpi/event_buffer.py agent/dpi/redaction.py`: passed.
 - Files changed: `agent/dpi/mitm_addon.py`, `agent/dpi/event_buffer.py`, `agent/dpi/redaction.py`, `tests/test_dpi_redaction.py`, `tests/test_mitm_addon.py`.
 
+## 2026-10-08 - Validate Workflow WireGuard Heuristic Recovery
+
+**Work completed**
+- Investigated GitHub Actions validate run logs for job `113152067315` and isolated three WireGuard-related test failures.
+- Updated `backend/engines/vpn/wireguard.py` to detect bidirectional WireGuard handshakes from both merged directional counters (`fwd_packets`/`rev_packets`) and aggregated handshake-size signals when counters are absent.
+- Added focused regression tests in `tests/test_vpn_detector.py` for merged bidirectional flow summaries and aggregated handshake-size-only contexts.
+
+**Problem found**
+- Flow aggregation now merges both directions into a single flow summary for the same 5-tuple conversation, but WireGuard detection still expected two separate opposite-direction flow records in history.
+- This mismatch prevented WireGuard evidence from contributing confidence in some ingestion paths, causing `test_wireguard_pipeline`, `test_wireguard_plus_tls`, and `test_real_wireguard_traffic_ingestion` to fail in CI validate.
+
+**Solution or learning**
+- WireGuard heuristics must support both flow models: legacy split-direction records and modern merged conversation summaries.
+- Using explicit directional counters when available and falling back to multiple distinct handshake sizes preserves existing behavior while restoring detections for merged ingestion contexts.
+
+**Evidence**
+- GitHub Actions log analyzed: run `37728510699`, job `113152067315` (`3 failed, 948 passed, 3 skipped` with failures in WireGuard pipeline/ingestion tests).
+- Targeted verification: `python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_vpn_detector.py::test_wireguard_heuristic_detector tests/test_vpn_detector.py::test_wireguard_heuristic_detector_with_merged_bidirectional_flow tests/test_vpn_detector.py::test_wireguard_heuristic_detector_with_aggregated_handshake_sizes tests/test_pcap_pipeline.py::test_wireguard_pipeline tests/test_pcap_pipeline.py::test_wireguard_plus_tls tests/test_real_traffic_evaluation.py::test_real_wireguard_traffic_ingestion` → `6 passed in 1.47s`.
+- Guardrail checks: `python scripts/run_pytest_ci.py -q -p no:cacheprovider --tb=short -ra tests/test_pcap_pipeline.py::test_wireguard_without_asn_reputation tests/test_pcap_pipeline.py::test_openvpn_pipeline tests/test_vpn_detector.py::test_wireguard_heuristic_detector` → `3 passed in 0.98s`.
+
 ## Template for Future Daily Entries
 
 
