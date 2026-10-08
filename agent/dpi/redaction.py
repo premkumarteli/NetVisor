@@ -7,7 +7,6 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 import re
 
 SENSITIVE_QUERY_KEYWORDS = ("token", "auth", "code", "session", "key", "password")
-SENSITIVE_HEADERS = {"authorization", "cookie", "set-cookie"}
 MAX_SNIPPET_BYTES = 256
 
 UUID_PATTERN = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -15,18 +14,6 @@ JWT_PATTERN = re.compile(r"^eyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]*$")
 HIGH_ENTROPY_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{32,}$|^[a-zA-Z0-9+/=]{32,}$")
 
 SENSITIVE_PATH_KEYWORDS = {"reset-password", "verify", "magic", "invite", "oauth", "token", "reset", "session"}
-
-
-def redact_headers(headers: dict | None) -> dict:
-    redacted = {}
-    for key, value in (headers or {}).items():
-        normalized_key = str(key).strip()
-        lower_key = normalized_key.lower()
-        if lower_key in SENSITIVE_HEADERS or lower_key.startswith("x-auth-"):
-            redacted[normalized_key] = "[REDACTED]"
-        else:
-            redacted[normalized_key] = value
-    return redacted
 
 
 def redact_url(url: str, *, keep_youtube_values: bool = True) -> str:

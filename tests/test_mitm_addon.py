@@ -75,6 +75,32 @@ def test_build_event_maps_edge_to_msedge_process(monkeypatch):
     assert "headers" not in event
 
 
+def test_build_event_inspects_mixed_case_text_content_and_uses_shared_url_redaction(monkeypatch):
+    monkeypatch.setattr(mitm_addon, "ALLOWED_DOMAINS", {"example.com"})
+    flow = SimpleNamespace(
+        request=SimpleNamespace(
+            pretty_host="example.com",
+            pretty_url="https://example.com/reset-password/a-long-secret-value-that-must-not-be-kept?token=secret",
+            method="GET",
+            headers=FakeHeaders({"User-Agent": "Mozilla/5.0 Chrome/123.0"}),
+            raw_content=b"",
+        ),
+        response=SimpleNamespace(
+            headers=FakeHeaders({"Content-Type": "Text/HTML; Charset=UTF-8"}),
+            content=b"<html><head><title>Safe title</title></head></html>",
+            status_code=200,
+        ),
+    )
+
+    event = mitm_addon.build_event(flow)
+
+    assert event is not None
+    assert event["snippet_redacted"] is not None
+    assert event["page_title"] == "Safe title"
+    assert "secret" not in event["page_url"]
+    assert "[REDACTED]" in event["page_url"]
+
+
 def test_build_event_bypasses_sensitive_destinations(monkeypatch):
     monkeypatch.setattr(mitm_addon, "ALLOWED_DOMAINS", {"paypal.com"})
     flow = SimpleNamespace(

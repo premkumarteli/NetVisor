@@ -5643,6 +5643,26 @@
 
 ---
 
+## 2026-10-08 - DPI Event Sanitization and Inspection Hygiene
+
+**Work completed**
+- Consolidated mitmproxy URL handling onto the shared `redact_url` implementation and removed the obsolete local regex redactor.
+- Made textual response detection case-insensitive so valid values such as `Text/HTML; Charset=UTF-8` are inspected for page titles and snippets.
+- Removed the unused header-redaction pipeline: headers were neither collected by the DPI producer nor uploaded by the event buffer.
+- Added a regression test covering mixed-case content types and URL-path/query secret redaction.
+
+**Problem found**
+- Mixed-case but valid MIME types bypassed body inspection because `Content-Type` matching was case-sensitive.
+- Two URL redaction implementations had diverged, while header-redaction code consumed CPU and test maintenance without affecting an emitted payload.
+
+**Solution or learning**
+- A single shared sanitizer avoids inconsistent redaction behavior; normalizing protocol tokens before comparison makes the inspection path conform to HTTP semantics.
+
+**Evidence**
+- `python -m pytest tests/test_dpi_redaction.py tests/test_mitm_addon.py tests/test_event_buffer.py -q`: 12 passed in 2.47s.
+- `python -m py_compile agent/dpi/mitm_addon.py agent/dpi/event_buffer.py agent/dpi/redaction.py`: passed.
+- Files changed: `agent/dpi/mitm_addon.py`, `agent/dpi/event_buffer.py`, `agent/dpi/redaction.py`, `tests/test_dpi_redaction.py`, `tests/test_mitm_addon.py`.
+
 ## Template for Future Daily Entries
 
 

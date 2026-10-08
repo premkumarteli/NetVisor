@@ -13,7 +13,7 @@ from typing import Callable
 from intel import get_base_domain, normalize_host
 
 from .policy import InspectionPolicy
-from .redaction import hash_text, redact_headers, redact_url, sanitize_text_snippet
+from .redaction import hash_text, redact_url, sanitize_text_snippet
 from ..security import AgentApiClient, DataProtector, WindowsCurrentUserProtector
 
 logger = logging.getLogger(__name__)
@@ -219,7 +219,6 @@ class EventBuffer:
             "snippet_hash": hash_text(snippet),
             "first_seen": raw_event.get("first_seen") or now,
             "last_seen": raw_event.get("last_seen") or now,
-            "headers_redacted": redact_headers(raw_event.get("headers") or {}),
             "confidence_score": confidence_score,
             "confidence_label": confidence_label,
         }
@@ -276,8 +275,7 @@ class EventBuffer:
         return events
 
     def _upload_batch(self, batch: list[dict]) -> None:
-        payload = [{key: value for key, value in item.items() if key != "headers_redacted"} for item in batch]
-        response = self.api_client.request("POST", self.upload_url, json_body=payload, timeout=10)
+        response = self.api_client.request("POST", self.upload_url, json_body=batch, timeout=10)
         response.raise_for_status()
 
     def _upload_worker(self) -> None:

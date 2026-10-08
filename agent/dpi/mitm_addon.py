@@ -19,6 +19,7 @@ from cryptography import x509
 from intel import get_base_domain, get_service_info, is_sensitive_destination, normalize_host
 from packet_engine import DpiObservation
 from agent.dpi.aia_chaser import AiaChaser
+from agent.dpi.redaction import redact_url
 
 logger = logging.getLogger("NetVisorMitmAddon")
 
@@ -282,12 +283,6 @@ def sanitize_snippet(text: str) -> str:
         return sanitize_string_value(text)
 
 
-def redact_url_secrets(url: str) -> str:
-    if not url:
-        return ""
-    return re.sub(r"(key|token|auth|password|secret|apikey)=[^&#]+", r"\1=[REDACTED]", url, flags=re.IGNORECASE)
-
-
 def split_url_label(url: str) -> str:
     split = urlsplit(url or "")
     if split.path and split.path != "/":
@@ -321,7 +316,12 @@ def build_event(flow) -> dict | None:
             break
 
     raw_content = getattr(response, "content", None) or getattr(response, "raw_content", None) or b""
-    is_textual = content_type.startswith("text/") or "json" in content_type or "javascript" in content_type
+    normalized_content_type = content_type.lower()
+    is_textual = (
+        normalized_content_type.startswith("text/")
+        or "json" in normalized_content_type
+        or "javascript" in normalized_content_type
+    )
     snippet = None
     page_title = None
     if is_textual:
@@ -331,7 +331,7 @@ def build_event(flow) -> dict | None:
         page_title = extract_page_title(raw_content[:32768])
 
     raw_url = getattr(request, "pretty_url", None) or getattr(request, "url", None) or ""
-    url = redact_url_secrets(raw_url)
+    url = redact_url(raw_url)
     content_category, content_id, search_query, service_name = extract_site_details(url, page_title)
 
     if not page_title:
