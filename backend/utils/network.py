@@ -196,15 +196,9 @@ def resolve_source_ip(request: Request) -> str:
 
     client = getattr(request, "client", None)
     if client is None:
-        if hasattr(request, "headers"):
-            forwarded_for = str(request.headers.get("X-Forwarded-For") or "").strip()
-            if forwarded_for:
-                parts = [p.strip() for p in forwarded_for.split(",")]
-                if parts and parts[0]:
-                    return parts[0]
-            real_ip = str(request.headers.get("X-Real-IP") or "").strip()
-            if real_ip:
-                return real_ip
+        # Without the direct peer address there is no trustworthy way to
+        # establish that the request traversed a configured reverse proxy.
+        # Forwarded headers are caller-controlled in this situation.
         return "unknown"
 
     socket_ip = str(client.host).strip()

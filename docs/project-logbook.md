@@ -5663,6 +5663,23 @@
 - `python -m py_compile agent/dpi/mitm_addon.py agent/dpi/event_buffer.py agent/dpi/redaction.py`: passed.
 - Files changed: `agent/dpi/mitm_addon.py`, `agent/dpi/event_buffer.py`, `agent/dpi/redaction.py`, `tests/test_dpi_redaction.py`, `tests/test_mitm_addon.py`.
 
+## 2026-10-08 - Fail-Closed Source IP Resolution
+
+**Work completed**
+- Updated request source-IP resolution to return `unknown` when no direct peer address is available instead of trusting forwarding headers.
+- Added regression tests for missing-peer and untrusted-proxy requests.
+
+**Problem found**
+- A request without `request.client` could choose arbitrary `X-Forwarded-For` or `X-Real-IP` values despite no evidence that it passed through a trusted proxy.
+
+**Solution or learning**
+- Forwarding headers are only authoritative after the connected peer has been verified against the trusted-proxy allowlist; missing peer metadata must fail closed.
+
+**Evidence**
+- `python -m pytest tests/test_network_utils.py tests/test_rate_limit.py tests/test_auth_api.py -q -p no:cacheprovider`: 11 passed in 12.31s.
+- `python -m py_compile backend/utils/network.py`: passed.
+- Files changed: `backend/utils/network.py`, `tests/test_network_utils.py`.
+
 ## Template for Future Daily Entries
 
 
