@@ -37,6 +37,24 @@ class WireGuardHeuristicDetector:
         if not wg_sizes:
             return False
 
+        # New flow aggregation merges both directions into one summary and
+        # exposes directional counters on the same flow record.
+        try:
+            fwd_packets = int(flow.get("fwd_packets") or 0)
+            rev_packets = int(flow.get("rev_packets") or 0)
+        except (TypeError, ValueError):
+            fwd_packets = 0
+            rev_packets = 0
+        if fwd_packets > 0 and rev_packets > 0:
+            return any(size in wg_sizes for size in (148, 92, 32))
+
+        # Some ingestion paths provide only aggregated size signals (without
+        # directional counters). Multiple distinct handshake sizes indicate
+        # bidirectional exchange across the same flow.
+        handshake_sizes = {size for size in wg_sizes if size in (148, 92, 32)}
+        if len(handshake_sizes) >= 2:
+            return True
+
         # Direction-independent key
         ip_a, ip_b = min(src_ip, dst_ip), max(src_ip, dst_ip)
         port_a, port_b = min(src_port, dst_port), max(src_port, dst_port)
