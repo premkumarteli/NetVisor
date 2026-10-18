@@ -5698,6 +5698,55 @@
 - `python -m py_compile backend/utils/network.py`: passed.
 - Files changed: `backend/utils/network.py`, `tests/test_network_utils.py`.
 
+## 2026-10-14 - Repository Status Audit and Verification
+
+**Work completed**
+- Executed read-only repository status check covering git sync, packet engine test verification, open security audit items, bootstrap migrations, packet capture backends, and project Antigravity skills/rules.
+- Ran the 11-module packet engine test suite (`tests/test_link_type_framing.py`, `tests/test_tls_accumulator.py`, `tests/test_stream_hardening.py`, `tests/test_flow_key_mac_independence.py`, `tests/test_collector_observations.py`, `tests/test_packet_engine_hardening.py`, `tests/test_packet_engine_validation.py`, `tests/test_sprint1_packet_engine.py`, `tests/test_sprint2_flow_shards.py`, `tests/test_sprint4_protocol_visibility.py`, `tests/test_sprint5_dpkt_parser.py`).
+- Verified code paths for tenant isolation in `backend/services/system_service.py` and `backend/api/certificates.py`.
+- Verified migration path resolution, imports, and index coverage across `infra/database/migrations/` and `backend/db/session.py`.
+
+**Problem found**
+- `backend/services/system_service.py`: `_clear_caches_and_analytics()` remains unconditionally invoked on line 467 during tenant data reset (`clear_runtime_data`), truncating ClickHouse tables (`flow_logs`, `web_events`), flushing all Redis keys (`flushdb()`), and wiping in-memory telemetry across all tenants when triggered by an `org_admin`.
+- `infra/database/migrations/apply_*.py`: Project root discovery via `parents[2]` resolves to `infra/` rather than the repo root because the target directories (`app` and `shared`) do not exist.
+- Database migration gap: `idx_alerts_org_resolved_time_sev` and `idx_web_events_org_last_seen_id` are defined only in `infra/database/init.sql` and are missing from all `apply_*.py` incremental migration scripts, causing `require_runtime_schema()` to fail on migrated databases.
+
+**Solution or learning**
+- Documented precise line numbers and reproduction proofs for unresolved issues in the read-only audit report.
+- Confirmed cross-tenant certificate access was previously addressed in `backend/api/certificates.py` with explicit org scoping and ownership validation.
+- Confirmed all 5 packet engine hardening commits (`cee0988`, `bdc000b`, `c92d8df`, `bcdeb47`, `f1dac28`) are present in `origin/master`.
+
+**Evidence**
+- `git status` shows clean branch tracking `origin/master` (ahead 0, behind 0).
+- Pytest execution: `.venv\Scripts\python.exe -m pytest tests/test_link_type_framing.py tests/test_tls_accumulator.py tests/test_stream_hardening.py tests/test_flow_key_mac_independence.py tests/test_collector_observations.py tests/test_packet_engine_hardening.py tests/test_packet_engine_validation.py tests/test_sprint1_packet_engine.py tests/test_sprint2_flow_shards.py tests/test_sprint4_protocol_visibility.py tests/test_sprint5_dpkt_parser.py`: 56 passed in 8.05s.
+
+## 2026-10-18 - Dell Latitude 7480 Performance Audit & Safe Optimization Plan
+
+**Work completed**
+- Conducted non-invasive, read-only system diagnostic audit across Windows 10 Pro 64-bit (Build 19045), hardware architecture, Dell background services, storage latency, and event logs.
+- Dissected the modern Dell SupportAssist v5 / Dell TechHub process tree (`DellTechHub`, `SupportAssistAgent`, `DellClientManagementService`) and sub-agents (`Instrumentation`, `DataManager`, `Analytics`, `Diagnostics`, `UserProcess`, `Update`).
+- Audited service dependencies, digital signatures (verified Dell Technologies Inc. and Microsoft Corporation), startup items, and running scheduled tasks.
+- Generated a prioritized, evidence-based optimization plan with comprehensive rollback procedures and preserved all security and essential hardware drivers (AlpsAlpine touchpad, Intel chipset, Defender, Windows Update).
+
+**Problem found**
+- Hardware bottleneck: Intel Core i7-7600U has only 2 physical cores and 4 logical threads (15W TDP ULV mobile CPU).
+- High CPU load: Dell TechHub sub-agents and SupportAssistAgent capture ~53% of total CPU capacity; Microsoft Defender Antimalware (`MsMpEng.exe`) captures ~12.7% CPU scanning Dell WMI and telemetry I/O. Together they claim over 65% of the machine's computing capacity before user applications launch.
+- Thermal/power throttling: System Event Log records persistent `Microsoft-Windows-Kernel-Processor-Power (Event ID 37)` warnings ("The speed of processor 3 in group 0 is being limited by system firmware"), cutting available clock cycles.
+- Storage capacity: Drive C: has only 11.39 GB free out of 271.25 GB (4.2% free), causing SSD write amplification and constraining Windows Update staging.
+- Startup/background bloat: MySQL 8.0 server runs automatically in the background (~400 MB RAM); startup items include Ollama, OpenClaw Gateway, Epic Games Launcher, MSPCManager, and dual Edge auto-launchers.
+
+**Solution or learning**
+- Verified that `DellTechHub`, `SupportAssistAgent`, and `DellClientManagementService` have zero dependent system services or drivers, making it safe and reversible to transition them from Automatic to Manual startup.
+- Designed a 5-priority safe optimization plan: Priority 1 (Dell service state adjustment to Manual), Priority 2 (MySQL 8.0 to Manual), Priority 3 (Startup registry trimming), Priority 4 (C: drive space reclamation via hibernation tuning and cleanup), Priority 5 (Physical thermal maintenance and Dell AC adapter wattage verification).
+- Preserved strict read-only mode pending user review and explicit approval.
+
+**Evidence**
+- Diagnostic scripts executed in `C:\Users\prem\.gemini\antigravity\brain\f4754a64-0321-4473-ae9f-44cf537d9709\scratch\`: `inspect_hardware.ps1`, `inspect_processes_services.ps1`, `inspect_deep_diagnostics.ps1`, `inspect_dell_details.ps1`, `inspect_dell_safe.ps1`, `inspect_techhub_binaries.ps1`, `inspect_disk_performance_and_storage.ps1`, `inspect_updates_and_tasks.ps1`, `remeasure_cpu.ps1`.
+- Authenticode verification: `Dell.TechHub.exe`, `SupportAssistAgent.exe`, `ServiceShell.exe` signed with valid Dell Technologies Inc. certificates.
+- Full audit report artifact: `dell_performance_audit_report.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
