@@ -5813,7 +5813,35 @@
 **Evidence**
 - Output file generated: `C:\Users\prem\Network\all_code.txt` (5,948,094 bytes, 139,712 lines).
 - File count verification: 788 project text files processed across 23 subdirectories (tests: 164, backend: 145, frontend: 109, Android_Application: 71, infra: 48, frontend-v2: 32, root: 31, docs: 28, scripts: 27, netvisor_frontend_3.0: 26, packet_engine: 24, agent: 21, proto: 12, audit_scratch: 10, collector: 7, gateway: 7, requirements: 7, engine: 5, intel: 4, benchmarks: 2, security: 2, .github: 1, config: 1).
-- Script updated: `c:\Users\prem\Network\dump_code.py`.
+
+## 2026-10-18 - Full Repository Engineering Audit & Evidence-Based Remediation
+
+**Work completed**
+- Conducted full engineering audit across all subsystems (backend, packet engine, detection engines, security, database, workers, and frontend).
+- Fixed WireGuard heuristic detector (`backend/engines/vpn/wireguard.py`) to recognize aggregated bidirectional flows with forward/reverse packets and handshake size pairs.
+- Remediated multi-tenant authorization flaw in `backend/api/certificates.py` by integrating `gateways` table verification in `revoke_certificate`, preventing cross-tenant gateway certificate tampering and allowing valid gateway certificate revocations.
+- Remediated multi-tenant cache destruction flaw in `backend/services/system_service.py` by scoping Redis key deletion, ClickHouse row deletion, and LiveTelemetryStore eviction by `organization_id`, preventing single-tenant resets from flushing global system state.
+- Fixed `MockRequest` client host in `tests/test_system_api.py` to adhere to the fail-closed source IP security contract.
+- Scheduled non-blocking asynchronous periodic device stale synchronization in `backend/services/broadcast_scheduler.py` invoking `mark_stale_devices_offline` every 60s.
+- Created regression test suite in `tests/test_audit_remediations.py` validating all remediated paths.
+- Verified active React 18 production build (`npm run build` in `frontend/`) transforming 602 modules in 13.38s.
+- Published full audit and remediation report at `docs/engineering_audit_remediation_report.md`.
+
+**Problem found**
+- `WireGuardHeuristicDetector` rejected valid WireGuard flows because `FlowManager` aggregated bidirectional packets before analysis, causing `len(directions) < 2` to fail and breaking 3 pipeline tests.
+- `revoke_certificate` queried only `agents` table, allowing cross-tenant revocation of gateway certificates if an attacker supplied an agent ID.
+- `clear_runtime_data` invoked `flushdb()`, ClickHouse table truncation, and `_states.clear()` globally without tenant filtering.
+
+**Solution or learning**
+- Extended `WireGuardHeuristicDetector` with `is_bidirectional_flow` check for forward/reverse packets or initiation/response sizes.
+- Verified certificate serial across both `agents` and `gateways` tables before allowing revocation.
+- Scoped cache and analytics clearing by `organization_id`.
+
+**Evidence**
+- Pytest pipeline tests: `tests/test_pcap_pipeline.py` (WireGuard tests passed), `tests/test_real_traffic_evaluation.py` (WireGuard tests passed), `tests/test_system_api.py` (2 passed), `tests/test_audit_remediations.py` (4 passed) — 21 passed in 44.23s.
+- Certificates API test suite: 34 passed in 105.44s (`tests/test_certificates_api.py`).
+- Frontend build output: `dist/index.html` (1.22 kB) and assets generated cleanly in 13.38s.
+- Audit report artifact: `docs/engineering_audit_remediation_report.md`.
 
 ---
 

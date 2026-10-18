@@ -10,6 +10,7 @@ class BroadcastScheduler:
     def __init__(self):
         self._running = False
         self._task = None
+        self._tick_count = 0
 
     def start(self) -> None:
         if not self._running:
@@ -28,10 +29,32 @@ class BroadcastScheduler:
             try:
                 await asyncio.sleep(0.5)  # 500 ms tick rate
                 await self.broadcast_all()
+                self._tick_count += 1
+                if self._tick_count >= 120:  # ~60 seconds
+                    self._tick_count = 0
+                    asyncio.create_task(self._sync_stale_devices())
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.exception("Error in Broadcast Scheduler loop: %s", e)
+
+    async def _sync_stale_devices(self) -> None:
+        try:
+            from ..db.session import get_db_connection
+            from .device_service import device_service
+
+            def _sync():
+                conn = None
+                try:
+                    conn = get_db_connection()
+                    device_service.mark_stale_devices_offline(conn)
+                finally:
+                    if conn:
+                        conn.close()
+
+            await asyncio.to_thread(_sync)
+        except Exception as exc:
+            logger.debug("Periodic stale devices sync skipped/failed: %s", exc)
 
     async def broadcast_all(self) -> None:
         # Get active organization IDs from the live store

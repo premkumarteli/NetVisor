@@ -81,8 +81,12 @@ class WireGuardHeuristicDetector:
 
             directions[direction].update(wg_sizes)
 
-            # Check if we have seen WireGuard size signals in BOTH directions
-            if len(directions) < 2:
+            # Check if the flow itself is bidirectional or if we have seen WireGuard size signals in BOTH directions
+            is_bidirectional_flow = (
+                (int(flow.get("fwd_packets") or 0) > 0 and int(flow.get("rev_packets") or 0) > 0)
+                or ({148, 92}.issubset(wg_sizes))
+            )
+            if len(directions) < 2 and not is_bidirectional_flow:
                 # Only one direction so far, not bidirectional yet
                 return False
 
@@ -90,6 +94,7 @@ class WireGuardHeuristicDetector:
             all_sizes = set()
             for dir_sizes in directions.values():
                 all_sizes.update(dir_sizes)
+            all_sizes.update(wg_sizes)
 
             has_handshake = any(size in all_sizes for size in (148, 92, 32))
             return has_handshake

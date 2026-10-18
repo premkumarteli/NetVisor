@@ -464,7 +464,7 @@ class SystemService:
                     if not organization_id and table_name in auto_increment_tables:
                         cursor.execute("ALTER TABLE {} AUTO_INCREMENT = 1".format(table_name))
                 db_conn.commit()
-                self._clear_caches_and_analytics()
+                self._clear_caches_and_analytics(organization_id=organization_id)
                 if not organization_id:
                     self._clear_runtime_files()
                 return cleared_counts
@@ -477,13 +477,20 @@ class SystemService:
             finally:
                 cursor.close()
 
-    def _clear_caches_and_analytics(self) -> None:
+    def _clear_caches_and_analytics(self, organization_id: Optional[str] = None) -> None:
         try:
             from ..db.clickhouse_client import get_clickhouse_client
             ch = get_clickhouse_client()
             if ch:
-                ch.command("TRUNCATE TABLE IF EXISTS flow_logs")
-                ch.command("TRUNCATE TABLE IF EXISTS web_events")
+                if organization_id:
+                    try:
+                        ch.command("ALTER TABLE flow_logs DELETE WHERE organization_id = %s", (organization_id,))
+                        ch.command("ALTER TABLE web_events DELETE WHERE organization_id = %s", (organization_id,))
+                    except Exception as ch_err:
+                        logger.debug("ClickHouse tenant-scoped delete skipped/failed: %s", ch_err)
+                else:
+                    ch.command("TRUNCATE TABLE IF EXISTS flow_logs")
+                    ch.command("TRUNCATE TABLE IF EXISTS web_events")
         except Exception as exc:
             logger.debug("ClickHouse truncate during reset skipped/failed: %s", exc)
 
@@ -491,14 +498,26 @@ class SystemService:
             from ..db.redis_client import get_redis_connection
             r = get_redis_connection()
             if r:
-                r.flushdb()
+                if organization_id:
+                    for pattern in (f"dashboard:{organization_id}:*", f"telemetry:{organization_id}:*", f"ratelimit:*:{organization_id}"):
+                        try:
+                            keys = r.keys(pattern)
+                            if keys:
+                                r.delete(*keys)
+                        except Exception:
+                            pass
+                else:
+                    r.flushdb()
         except Exception as exc:
             logger.debug("Redis flush during reset skipped/failed: %s", exc)
 
         try:
             from .live_telemetry_store import live_telemetry_store
             with live_telemetry_store._global_lock:
-                live_telemetry_store._states.clear()
+                if organization_id:
+                    live_telemetry_store._states.pop(organization_id, None)
+                else:
+                    live_telemetry_store._states.clear()
         except Exception as exc:
             logger.debug("LiveTelemetryStore reset skipped/failed: %s", exc)
 

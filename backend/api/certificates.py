@@ -154,7 +154,7 @@ def revoke_certificate(
                     detail="Agent does not belong to your organization",
                 )
 
-            # Check if serial number belongs to another organization in agents table
+            # Check if serial number belongs to another organization in agents or gateways table
             cursor.execute(
                 """
                 SELECT id, organization_id, cert_serial
@@ -164,6 +164,17 @@ def revoke_certificate(
                 (serial,),
             )
             cert_owner = cursor.fetchone()
+            if not cert_owner:
+                cursor.execute(
+                    """
+                    SELECT id, organization_id, cert_serial
+                    FROM gateways
+                    WHERE cert_serial = %s
+                    """,
+                    (serial,),
+                )
+                cert_owner = cursor.fetchone()
+
             if cert_owner:
                 if org_id and cert_owner.get("organization_id") != org_id:
                     raise HTTPException(
@@ -183,6 +194,17 @@ def revoke_certificate(
                 (serial,),
             )
             agent_row = cursor.fetchone()
+            if not agent_row:
+                cursor.execute(
+                    """
+                    SELECT id, organization_id, cert_serial
+                    FROM gateways
+                    WHERE cert_serial = %s
+                    """,
+                    (serial,),
+                )
+                agent_row = cursor.fetchone()
+
             if not agent_row or (org_id and agent_row.get("organization_id") != org_id):
                 raise HTTPException(
                     status_code=403,
@@ -206,13 +228,20 @@ def revoke_certificate(
         reason=body.reason,
     )
 
-    # Update agent cert_status if target_agent_id resolved
+    # Update agent or gateway cert_status if target_agent_id resolved
     if target_agent_id:
         cursor = db.cursor()
         try:
             cursor.execute(
                 """
                 UPDATE agents SET cert_status = 'revoked'
+                WHERE id = %s AND (cert_serial = %s OR UPPER(cert_serial) = %s)
+                """,
+                (target_agent_id, serial, serial),
+            )
+            cursor.execute(
+                """
+                UPDATE gateways SET cert_status = 'revoked'
                 WHERE id = %s AND (cert_serial = %s OR UPPER(cert_serial) = %s)
                 """,
                 (target_agent_id, serial, serial),

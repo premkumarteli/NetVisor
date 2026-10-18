@@ -53,10 +53,13 @@ def test_reset_data(monkeypatch):
         
     monkeypatch.setattr(system_api.system_service, "reset_operational_data", mock_reset_operational_data)
     
+    class MockClient:
+        host = "192.168.1.50"
+
     class MockRequest:
         def __init__(self):
             self.headers = {"X-Real-IP": "192.168.1.50"}
-            self.client = None
+            self.client = MockClient()
             
     request = MockRequest()
     
