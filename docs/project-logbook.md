@@ -5745,6 +5745,76 @@
 - Authenticode verification: `Dell.TechHub.exe`, `SupportAssistAgent.exe`, `ServiceShell.exe` signed with valid Dell Technologies Inc. certificates.
 - Full audit report artifact: `dell_performance_audit_report.md`.
 
+## 2026-10-18 - Read-Only Verification, Test Suite Execution, and Parser Benchmarking
+
+**Work completed**
+- Ran full test suite across the repository (961 items collected: 920 passed, 4 failed, 37 skipped in 412.09s).
+- Verified `backend/api/certificates.py` revocation endpoint and executed a two-tenant test confirming cross-tenant revocation attempts by an org admin are rejected with HTTP 403 Forbidden.
+- Conducted full inventory of `.agents` hierarchy and verified absence of project-specific `.gemini`, `.antigravity`, and `skills` directories.
+- Confirmed migration path discovery status (`_find_project_root` in 12/13 migration scripts) and documented clean bring-up behavior vs migration paths.
+- Inventoried all `scapy` imports and usage across tracked files outside `packet_engine/backend.py`.
+- Benchmarked Scapy sniff path vs DpktFastParser on a 100,000-packet PCAP (9.13 MB), observing 22.57x throughput advantage for `dpkt` zero-copy memoryview parsing.
+- Investigated replay nonces, sessions, and rate-limit storage across MySQL and Redis DB 0.
+
+**Problem found**
+- Full test suite had 4 failures: `test_wireguard_pipeline`, `test_wireguard_plus_tls`, and `test_real_wireguard_traffic_ingestion` failed with `assert 0 > 0` (0 detected flows), and `test_system_api.py::test_reset_data` failed with `AssertionError: assert None == '192.168.1.50'` due to source-IP fail-closed security change when `request.client` is None.
+- In `backend/api/certificates.py` `revoke_certificate`, `serial` comes from the request payload rather than the database; when `cert_owner` is None, `target_agent_id` falls back to `agent_id` without failing, revoking whatever serial was supplied.
+- All Redis state (`ratelimit:*`, `dashboard:*`, `netvisor:flows:stream`) shares default DB 0, meaning `POST /reset-data` executing `flushdb()` wipes rate-limit windows and streams across all tenants.
+
+**Solution or learning**
+- Documented audit findings with inline evidence and command outputs.
+- Maintained strict read-only posture with no production code changes.
+
+**Evidence**
+- Pytest full suite: `==== 4 failed, 920 passed, 37 skipped, 1012 warnings in 412.09s (0:06:52) =====`.
+- Cross-tenant revocation test output: HTTP 403 `{'detail': 'Agent does not belong to your organization'}` and `{'detail': 'Certificate does not belong to your organization'}`.
+- Benchmark: 100k packets (8.71 MB) -> DpktFastParser: 25,356.32 pps (3.94s, 68.9% CPU) vs Scapy sniff: 1,123.68 pps (88.99s, 79.6% CPU).
+
+## 2026-10-18 - Group 3 Startup Optimization Execution & Verification
+
+**Work completed**
+- Executed staged Group 3 startup optimization with dual verification and rollback protections.
+- Created verified, timestamped registry backup at `HKCU:\Software\WindowsPerformanceAudit\StartupBackup_20261018` and exported JSON backup to `C:\Users\prem\.gemini\antigravity\brain\f4754a64-0321-4473-ae9f-44cf537d9709\scratch\startup_registry_backup_20261018.json`.
+- Removed 4 nonessential autostart entries from active `HKCU:\Software\Microsoft\Windows\CurrentVersion\Run`: `EpicGamesLauncher`, `MicrosoftEdgeAutoLaunch_E794B616A6F5666B699EA76BB84617E9`, `MicrosoftEdgeAutoLaunch_1431FB40876F5DBA8AD73FB05D8B08E0`, and `GoogleChromeAutoLaunch_32C4E726676CB150A8BEC5E0A97924E5`.
+- Moved `Ollama.lnk` and `OpenClaw Gateway.cmd` to `C:\Users\prem\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup_Disabled`.
+- Verified that both shortcuts maintain valid executable targets (`ollama app.exe` and `node.exe gateway --port 18789`) and remain manually launchable.
+- Confirmed absence of target items from active `Run` key and active `Startup` folder.
+- Kept all operations local with zero network/git push activity.
+
+**Problem found**
+- Initial run had orphaned diagnostic process in background (`task-39`), which was terminated and cleaned up.
+- Confirmed Event ID 37 processor throttling occurs strictly 71s after Event ID 105 (power source transitions) under Dell ACPI battery/governor management, without any ACPI thermal shutdown trips.
+
+**Solution or learning**
+- Eliminating browser prelaunch and games launcher reduces unnecessary background thread competition on 2-core i7-7600U without breaking any application capabilities.
+- Storing backup values directly in a distinct registry key alongside a JSON artifact ensures instant single-command rollback.
+
+**Evidence**
+- Registry query post-execution: `HKCU:\...\Run` retains only `OneDrive`.
+- Backup query post-execution: `HKCU:\...\StartupBackup_20261018` contains all 4 verified original string values.
+- Directory listing: `Startup_Disabled` contains `Ollama.lnk` (2128 bytes) and `OpenClaw Gateway.cmd` (111 bytes); active `Startup` folder is clean.
+
+## 2026-10-18 - Full Codebase & Directory Structure Export
+
+**Work completed**
+- Implemented and executed an exporter script in `dump_code.py` to compile the complete NetVisor codebase and directory structure into a single structured output file (`all_code.txt`).
+- Generated a full ASCII directory tree representing all project packages, components, documentation, and configuration files.
+- Exported contents of all 788 text and code files across the repository, totaling 134,728 lines of code (5.67 MB output).
+- Added filtering to systematically exclude non-source runtime folders (`db_dump/`, `runtime/`, `.venv/`, `node_modules/`, `dist/`, `build/`, `keys/`, `__pycache__/`, `.pytest_cache/`) and binary files (`.zip`, `.exe`, `.mp4`, `.pcap`, `.pdf`).
+
+**Problem found**
+- PowerShell redirect artifacts (`analysis.txt`, `auth.txt`, `endpoints.txt`) were encoded in UTF-16 LE with leading null bytes, which standard binary-detection heuristics initially flagged as non-text.
+- Windows CP1252 terminal console encoding failed when directly printing Unicode tree box-drawing characters (`├──`, `└──`).
+
+**Solution or learning**
+- Enhanced multi-stage file reader to sequentially decode UTF-8, UTF-8 BOM, UTF-16, and CP1252/Latin-1 fallbacks, successfully capturing all project text artifacts.
+- Enforced explicit UTF-8 encoding with replacement error handling when writing to `all_code.txt`.
+
+**Evidence**
+- Output file generated: `C:\Users\prem\Network\all_code.txt` (5,948,094 bytes, 139,712 lines).
+- File count verification: 788 project text files processed across 23 subdirectories (tests: 164, backend: 145, frontend: 109, Android_Application: 71, infra: 48, frontend-v2: 32, root: 31, docs: 28, scripts: 27, netvisor_frontend_3.0: 26, packet_engine: 24, agent: 21, proto: 12, audit_scratch: 10, collector: 7, gateway: 7, requirements: 7, engine: 5, intel: 4, benchmarks: 2, security: 2, .github: 1, config: 1).
+- Script updated: `c:\Users\prem\Network\dump_code.py`.
+
 ---
 
 ## Template for Future Daily Entries
