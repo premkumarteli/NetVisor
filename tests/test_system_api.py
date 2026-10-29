@@ -74,3 +74,38 @@ def test_reset_data(monkeypatch):
     assert called_args[0][2] == "org_123"
     assert called_args[0][3] == "192.168.1.50"
 
+def test_reset_data_with_no_peer_records_none_client_ip(monkeypatch):
+    called_args = []
+    conn = _Connection()
+    
+    monkeypatch.setattr(system_api, "get_db_connection", lambda: conn)
+    
+    def mock_reset_operational_data(db_conn, username, organization_id, ip_address):
+        called_args.append((db_conn, username, organization_id, ip_address))
+        return {
+            "status": "success",
+            "message": "Cleared 5 runtime row(s).",
+            "backup_dir": "/tmp/backup",
+            "cleared_tables": {"flow_logs": 5}
+        }
+        
+    monkeypatch.setattr(system_api.system_service, "reset_operational_data", mock_reset_operational_data)
+    
+    class MockRequestNoPeer:
+        def __init__(self):
+            self.headers = {"X-Real-IP": "192.168.1.50"}
+            self.client = None
+            
+    request = MockRequestNoPeer()
+    
+    current_user = {"username": "test_admin", "role": "org_admin", "organization_id": "org_123"}
+    payload = _run(system_api.reset_data(request=request, current_user=current_user))
+    
+    assert payload["status"] == "success"
+    assert payload["cleared_tables"] == {"flow_logs": 5}
+    assert conn.closed is True
+    assert len(called_args) == 1
+    assert called_args[0][1] == "test_admin"
+    assert called_args[0][2] == "org_123"
+    assert called_args[0][3] is None
+
