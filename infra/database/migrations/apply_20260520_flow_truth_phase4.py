@@ -7,9 +7,9 @@ from mysql.connector import Error
 
 def _find_project_root(script_path: Path) -> Path:
     for parent in script_path.resolve().parents:
-        if (parent / "app").exists() and (parent / "shared").exists():
+        if (parent / "backend").exists() and (parent / "agent").exists():
             return parent
-    return script_path.resolve().parents[2]
+    return script_path.resolve().parents[3]
 
 
 PROJECT_ROOT = _find_project_root(Path(__file__))

@@ -482,15 +482,9 @@ class SystemService:
             from ..db.clickhouse_client import get_clickhouse_client
             ch = get_clickhouse_client()
             if ch:
-                if organization_id:
-                    try:
-                        ch.command("ALTER TABLE flow_logs DELETE WHERE organization_id = %s", (organization_id,))
-                        ch.command("ALTER TABLE web_events DELETE WHERE organization_id = %s", (organization_id,))
-                    except Exception as ch_err:
-                        logger.debug("ClickHouse tenant-scoped delete skipped/failed: %s", ch_err)
-                else:
+                if not organization_id:
+                    # Super admin reset: truncate only ClickHouse tables present in infra/clickhouse/schema.sql
                     ch.command("TRUNCATE TABLE IF EXISTS flow_logs")
-                    ch.command("TRUNCATE TABLE IF EXISTS web_events")
         except Exception as exc:
             logger.debug("ClickHouse truncate during reset skipped/failed: %s", exc)
 
@@ -499,17 +493,44 @@ class SystemService:
             r = get_redis_connection()
             if r:
                 if organization_id:
-                    for pattern in (f"dashboard:{organization_id}:*", f"telemetry:{organization_id}:*", f"ratelimit:*:{organization_id}"):
+                    # Scoped delete for org_admin: dashboard:*:{org_id} and dashboard:*:{org_id}:*
+                    patterns = (
+                        f"dashboard:*:{organization_id}",
+                        f"dashboard:*:{organization_id}:*",
+                        f"dashboard:{organization_id}:*",
+                    )
+                    keys_to_delete = []
+                    for pattern in patterns:
                         try:
-                            keys = r.keys(pattern)
-                            if keys:
-                                r.delete(*keys)
+                            if hasattr(r, "scan_iter"):
+                                for key in r.scan_iter(match=pattern, count=100):
+                                    keys_to_delete.append(key)
+                            else:
+                                found = r.keys(pattern)
+                                if found:
+                                    keys_to_delete.extend(found)
                         except Exception:
                             pass
+                    if keys_to_delete:
+                        unique_keys = list(set(keys_to_delete))
+                        r.delete(*unique_keys)
                 else:
-                    r.flushdb()
+                    # Super admin reset: delete ONLY dashboard:* keys, never ratelimit:* or stream keys
+                    keys_to_delete = []
+                    try:
+                        if hasattr(r, "scan_iter"):
+                            for key in r.scan_iter(match="dashboard:*", count=100):
+                                keys_to_delete.append(key)
+                        else:
+                            found = r.keys("dashboard:*")
+                            if found:
+                                keys_to_delete.extend(found)
+                    except Exception:
+                        pass
+                    if keys_to_delete:
+                        r.delete(*list(set(keys_to_delete)))
         except Exception as exc:
-            logger.debug("Redis flush during reset skipped/failed: %s", exc)
+            logger.debug("Redis reset skipped/failed: %s", exc)
 
         try:
             from .live_telemetry_store import live_telemetry_store

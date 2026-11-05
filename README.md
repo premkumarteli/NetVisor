@@ -96,17 +96,23 @@ The platform integrates endpoint telemetry, gateway-based metadata collection, a
 ```text
 NetVisor
 │
-├── app/                  Backend API & Services
-├── agent/                Endpoint Agent
-├── gateway/              BYOD Gateway
-├── frontend/             React Dashboard
-├── shared/               Shared Libraries
-├── infra/                Infrastructure
-├── docs/                 Documentation
-├── scripts/              Utility Scripts
-├── tests/                Automated Tests
-├── benchmarks/           Performance Benchmarks
-└── .github/              GitHub Actions
+├── backend/              FastAPI Server, Auth, Detection Engines & Telemetry APIs
+├── agent/                Host Endpoint Telemetry Collector & TLS Inspection Proxy
+├── gateway/              BYOD Network Metadata & Sensor Gateway
+├── packet_engine/        Zero-Copy Packet Sniffer, DPKT Fast Parser & PCAP Engine
+├── collector/            Legacy v1 Traffic Observation & Flow Extraction Library
+├── engine/               Base Detection Engine Contracts & Finding Schemas
+├── intel/                Domain Intelligence, ASN Feeds & App Classifiers
+├── security/             Mutual TLS (mTLS), HMAC-SHA256 Signing & Key Management
+├── proto/                Protobuf Definitions & Serialized Message Schemas
+├── frontend/             Production React 18 / Tailwind Dashboard (Docker-deployed)
+├── frontend-v2/          Next-Gen React 18 / Tailwind Dashboard (xyflow graph views)
+├── Android_Application/  Android Endpoint Telemetry Client
+├── infra/                Docker, Nginx, MySQL Schemas & Automated Database Migrations
+├── docs/                 Architecture Specifications, Runbooks & Project Logbook
+├── scripts/              Operational, Ingestion & Benchmark Utilities
+├── tests/                Comprehensive Automated Test Suite (Unit, Integration, E2E)
+└── benchmarks/           Performance, PCAP & Throughput Benchmarking Suites
 ```
 
 ---
@@ -115,11 +121,13 @@ NetVisor
 
 | Layer | Technologies |
 |-------|--------------|
-| Backend | Python, FastAPI |
-| Frontend | React, JavaScript, Tailwind CSS |
-| Database | MySQL, Redis |
-| Infrastructure | Docker, GitHub Actions |
-| Deployment | Linux, Windows |
+| Backend & APIs | Python 3.11+, FastAPI, Uvicorn, AnyIO |
+| Packet Inspection | DPKT (zero-copy memoryview), Scapy, WinPcap/Npcap, Mitmproxy |
+| Frontends | React 18, Vite, Tailwind CSS v4, Lucide Icons, Chart.js, XYFlow |
+| Datastores | MySQL 8.0 (metadata & transactions), ClickHouse (analytics), Redis 7+ (streams & cache) |
+| Security & Identity | mTLS (X.509/CA), HMAC-SHA256, JWT (RS256/HS256), JA4 TLS Fingerprints |
+| Infrastructure | Docker, Docker Compose, Nginx, GitHub Actions |
+| Mobile Client | Android SDK (Java/Kotlin) |
 
 ---
 
@@ -189,39 +197,33 @@ Project documentation is available inside the **docs/** directory.
 
 # Screenshots
 
-> Replace these placeholders with actual screenshots.
+NetVisor features modern real-time operational interfaces built on React 18, Tailwind CSS, and Chart.js:
 
-## Dashboard
-
-![Dashboard](docs/images/dashboard.png)
-
-## Devices
-
-![Devices](docs/images/devices.png)
-
-## Alerts
-
-![Alerts](docs/images/alerts.png)
-
-## Network Overview
-
-![Network Overview](docs/images/network-overview.png)
+- **Executive Overview Dashboard**: High-level telemetry summaries, active device counts, aggregate bandwidth, and real-time fleet health metrics.
+- **Topology & Packet Flow Graph**: Dynamic animated spoke flow charts powered by `@xyflow/react` in `frontend-v2`, mapping host-to-gateway interactions.
+- **Asset Inventory & Risk Matrix**: Continuous host profiling detailing vendor MAC lookups, persistent UUIDs, operating system heuristics, and calculated threat scores.
+- **Security Alert & Detection Console**: Instant incident triage with automated classification for C2 beaconing, port scans, and TLS anomalies.
 
 ---
 
 # Roadmap
 
-- [x] Backend API
-- [x] Endpoint Agent
-- [x] Gateway Monitoring
-- [x] React Dashboard
-- [x] Docker Support
-- [x] Automated Testing
-- [ ] Threat Intelligence Integration
-- [ ] Advanced Detection Engine
-- [ ] SIEM Integration
-- [ ] Cloud Deployment
-- [ ] Multi-Tenant Support
+- [x] Backend API & Multi-Tenant Partitioning
+- [x] Host Endpoint Telemetry Agent & MITM TLS Inspection
+- [x] Gateway BYOD Traffic Collector & Hotspot Monitoring
+- [x] Zero-Copy DPKT Fast Packet Parser
+- [x] React Administrative Dashboard (Vite, Tailwind, Charts)
+- [x] Next-Gen Flow Graph Visualization (`frontend-v2` with XYFlow)
+- [x] Automated Database Migrations & Version Tracking
+- [x] Threat Intelligence Integration (Tor, Dynamic ASN, Malware/C2 IP Feeds)
+- [x] Advanced Detection Engine (Port Scanning, DNS Tunneling, WireGuard Heuristics)
+- [x] Mutual TLS (mTLS) Certificate Revocation & Rotation
+- [x] Docker Multi-Container Orchestration (`docker-compose.yml`)
+- [x] Comprehensive Automated Test Suite (970+ Tests)
+- [ ] Direct ClickHouse Analytical Query Routing (Deprecating write-only dual sink)
+- [ ] Official Consolidation of `frontend-v2` into Docker Production Pipeline
+- [ ] SIEM & Syslog Forwarder Integration
+- [ ] Cloud Native Kubernetes (Helm / K8s) Deployment
 
 ---
 

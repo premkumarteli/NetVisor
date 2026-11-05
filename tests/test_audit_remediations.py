@@ -49,7 +49,7 @@ def test_system_service_tenant_scoped_clear_preserves_other_orgs():
     system_service = SystemService()
     
     mock_redis = MagicMock()
-    mock_redis.keys.return_value = ["dashboard:org_A:stats"]
+    mock_redis.scan_iter.side_effect = lambda match, count: ["dashboard:overview:org_A"] if "org_A" in match else []
 
     # Populate dummy state in a test LiveTelemetryStore instance
     test_store = LiveTelemetryStore()
@@ -67,7 +67,7 @@ def test_system_service_tenant_scoped_clear_preserves_other_orgs():
         mock_redis.flushdb.assert_not_called()
         
         # Verify redis deleted only org_A keys
-        mock_redis.delete.assert_called_with("dashboard:org_A:stats")
+        mock_redis.delete.assert_called_with("dashboard:overview:org_A")
 
         # Verify LiveTelemetryStore preserved org_B
         assert "org_A" not in test_store._states
@@ -78,6 +78,7 @@ def test_system_service_global_clear_flushes_all():
     system_service = SystemService()
 
     mock_redis = MagicMock()
+    mock_redis.scan_iter.return_value = ["dashboard:overview:org_A", "dashboard:overview:org_B"]
     test_store = LiveTelemetryStore()
     test_store._states["org_A"] = test_store._create_empty_org_state()
     test_store._states["org_B"] = test_store._create_empty_org_state()
@@ -89,8 +90,11 @@ def test_system_service_global_clear_flushes_all():
 
         system_service._clear_caches_and_analytics(organization_id=None)
 
-        # Verify Redis flushdb was called for global reset
-        mock_redis.flushdb.assert_called_once()
+        # Verify Redis flushdb was NOT called; only dashboard:* keys were deleted
+        mock_redis.flushdb.assert_not_called()
+        assert mock_redis.delete.called
+        deleted_args = set(mock_redis.delete.call_args[0])
+        assert deleted_args == {"dashboard:overview:org_A", "dashboard:overview:org_B"}
 
         # Verify LiveTelemetryStore was completely cleared
         assert len(test_store._states) == 0

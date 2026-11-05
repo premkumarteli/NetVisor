@@ -31,7 +31,6 @@ venv/
 tmp/
 tmp_server_*.log
 tmp_pip/
-docs/project-logbook.md
 
 # Runtime & data
 runtime/
@@ -111,3 +110,6 @@ audit_scratch/
 *.dump
 
 
+
+# Media & Videos
+*.mp4

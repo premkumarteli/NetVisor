@@ -5921,6 +5921,41 @@
 
 ---
 
+## 2026-11-05 - Repository Hygiene Audit, Migration Runner Fixes, and Documentation Architecture Plan
+
+**Work completed**
+- Executed comprehensive repository hygiene and architecture maintenance audit across root directory, git tracking, database migrations, configuration templates, frontends, and dependency definitions.
+- Identified and fixed standalone discovery bug in 12 database migration runners (`infra/database/migrations/apply_*.py`), replacing broken search for legacy `app/shared` directories with `(parent / "backend") and (parent / "agent")` and fallback `parents[3]` to accurately locate project root.
+- Repaired certificate revocation error detail matching in `backend/api/certificates.py:164-169`, ensuring `403 Forbidden` responses satisfy both security constraints and test assertions.
+- Added tenant-scoped deletion and scan iterations to `backend/services/system_service.py:_clear_caches_and_analytics`, preventing global `FLUSHDB` and global `TRUNCATE TABLE` on multi-tenant environments.
+- Updated `.gitignore` to remove `docs/project-logbook.md` tracking exclusion conflict and added ignore rules for `*.mp4` media and scratch test dumps.
+- Synchronized `.env.example` with `.env`, adding previously missing `NETVISOR_JWT_ALGORITHM`, `NETVISOR_JWT_PRIVATE_KEY_PATH`, `NETVISOR_JWT_PUBLIC_KEY_PATH`, and `NETVISOR_VPN_WEIGHT_WIREGUARD` configurations.
+- Added missing `dpkt==1.9.8` dependency to `requirements/agent.txt` and `requirements/gateway.txt` required by `packet_engine/dpkt_parser.py`.
+- Pruned redundant scratch files (`analysis.txt`, `auth.txt`, `endpoints.txt`, `extract.py`, 0-byte `python`, `frontend-v2/238264_medium.mp4` duplicate, and `docs/security-analysis-temp.md`).
+- Authored master maintenance roadmap at `docs/REPO_HYGIENE_AND_MAINTENANCE_PLAN.md` detailing short, medium, and long-term consolidation directives.
+- Updated `README.md` and `PROJECT.md` to reflect the actual repository structure (`backend/` vs legacy `app/`), updated technology stack (ClickHouse, dpkt, Redis), accurate roadmap statuses, and eliminated broken image links.
+
+**Problem found**
+- 12 migration runner scripts failed with `ModuleNotFoundError: No module named 'backend'` when invoked directly because `_find_project_root` checked for obsolete `app` and `shared` directories, falling back to `parents[2]` (`infra/`).
+- `requirements/agent.txt` omitted `dpkt`, which would cause `Dockerfile.agent` builds to crash on startup when loading `DpktFastParser`.
+- Root directory contained duplicate 10.8 MB video files, 34 MB `.zip` archives, and scratch analysis text dumps.
+- `.env.example` lacked RS256 JWT key variables, causing clean setup errors during settings validation.
+
+**Solution or learning**
+- Direct path traversal in migration scripts should check for primary project markers `backend` and `agent` and resolve to `parents[3]`.
+- All runtime dependencies loaded by imported submodules (such as `dpkt` in `packet_engine`) must be pinned in agent and gateway requirement lists.
+- `.gitignore` must never ignore active project documentation files that are tracked in version control.
+
+**Evidence**
+- Migration script test: `python infra/database/migrations/apply_20260502_flow_search_alert_dedupe_indexes.py` exited with code 0: `Applied flow search and alert dedupe indexes.`.
+- Certificate API test suite: `.venv\Scripts\python -m pytest tests/test_certificates_api.py` -> `39 passed in 47.17s`.
+- Audit remediation test suite: `.venv\Scripts\python -m pytest tests/test_audit_remediations.py` -> `4 passed in 3.28s`.
+- System API test suite: `.venv\Scripts\python -m pytest tests/test_system_api.py` -> `3 passed in 2.12s`.
+- Config check: `.env` vs `.env.example` key difference set is empty (`set()`).
+- Workspace status: zero untracked scratch files remaining in `git status`.
+
+---
+
 ## Template for Future Daily Entries
 
 
