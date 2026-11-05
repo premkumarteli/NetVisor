@@ -5843,6 +5843,82 @@
 - Frontend build output: `dist/index.html` (1.22 kB) and assets generated cleanly in 13.38s.
 - Audit report artifact: `docs/engineering_audit_remediation_report.md`.
 
+## 2026-10-18 - Read-Only Deep Technical Repository & Capture Pipeline Audit
+
+**Work completed**
+- Executed the full automated test suite with skip diagnostics (`pytest -rs tests`), documenting all 37 skipped tests (3 offline server tests in `test_api.py`, 34 unconfigured DB password skips in `test_tenant_isolation.py`).
+- Pinpointed the WireGuard detection pipeline regression commit via git bisection (`f1dac28`), verified the fixture generation mechanism, and documented the root cause (canonical conversation key direction merging).
+- Traced the `test_reset_data` failure traceback and verified the fail-closed source IP contract enforcing `request.client` validation.
+- Analyzed `origin/copilot/fix-failing-github-actions-job-validate` commits and diffstat without checking out or merging.
+- Audited the certificate authority revocation model (`ca.revoke_cert`, `ca.is_revoked`, and `certificate_revocations` schema) and mTLS verification logic.
+- Demonstrated with a scratch test that `revoke_certificate` allows cross-tenant revocation of non-agent certificates (e.g. gateway certs) when an attacker supplies their own valid `agent_id`.
+- Audited `reset-data` and Redis key lifetimes, demonstrating that `clear_runtime_data` preserves nonces (`agent_request_nonces`, `gateway_request_nonces`) in MySQL, but `_clear_caches_and_analytics()` executes `r.flushdb()` on shared DB 0, wiping `ratelimit:auth_login:*` counters.
+- Inspected `live_telemetry_store._states` and verified organization scoping; verified ClickHouse version (`23.8-alpine`), `flow_logs` partition/order keys, and confirmed `web_events` is absent from ClickHouse.
+- Traced the Windows capture path from `ScapyCaptureBackend` through `process_packet` to flow aggregation, documenting the `hasattr(packet, '__bytes__')` re-serialization (`bytes(packet)`) into `dpkt.from_raw_bytes`.
+- Cataloged Scapy layer references across `classifier.py`, `metadata.py`, and `parser.py` and mapped call chains to the live fallback path.
+- Benchmarked `DpktFastParser`, `PacketObservation.from_raw_bytes`, and `Scapy sniff` across 3 repeated runs on a realistic 100,000-packet PCAP (10,000 TLS ClientHellos, 20,000 IPv6, 20,000 802.1Q VLAN) post 5,000-packet warm-up, measuring median PPS and ranges on Intel i7-7600U.
+- Verified repository hygiene: `.agents` gitignore status, tracked docs/rules, `init.sql` git commit history for `idx_alerts_org_resolved_time_sev` (`cc5de6b`), verified `apply_*.py` path resolution bug (`parents[2]` -> `infra/`), and verified zero user-level NetVisor Antigravity skills or rules.
+
+**Problem found**
+- `backend/api/certificates.py:166-175`: If an `org_admin` submits an `agent_id` from their own organization and an arbitrary `serial_number` that does not exist in the `agents` table (such as a gateway certificate belonging to another organization), `cert_owner` is `None` and falls through to `target_agent_id = agent_id`, successfully revoking the foreign certificate with status 200 OK.
+- `backend/services/system_service.py:480-496`: `clear_runtime_data()` unconditionally invokes `_clear_caches_and_analytics()`, running `r.flushdb()` on shared Redis DB 0, truncating ClickHouse tables globally, and clearing `_states` across all tenants.
+- `infra/database/migrations/apply_*.py`: `_find_project_root` fails on standalone execution (`python infra/database/migrations/apply_*.py`) because it searches for non-existent root folders (`app` and `shared`), falling back to `parents[2]` (`infra/`), producing `ModuleNotFoundError: No module named 'backend'`.
+- Capture overhead on Windows: `agent/main.py:586` calls `PacketObservation.from_packet`, which re-serializes Scapy packets to raw bytes via `bytes(packet)` before parsing with dpkt, adding unnecessary serialization latency on the live capture path.
+
+**Solution or learning**
+- `revoke_certificate` must query both `agents` and `gateways` tables for certificate ownership and reject the request with 403 if the serial number is unknown or belongs to another organization.
+- `_clear_caches_and_analytics()` must only delete tenant-scoped Redis keys (`ratelimit:*:{org_id}:*`, `dashboard:*:{org_id}:*`) and tenant-filtered rows in ClickHouse rather than issuing global `FLUSHDB` and `TRUNCATE TABLE`.
+- `_find_project_root` should check for `backend/` or `agent/` to correctly identify the NetVisor repository root directory.
+- `ScapyCaptureBackend` should be replaced with raw Npcap / WinPcap capture producing raw byte buffers directly, avoiding both Scapy layer object construction and the `bytes(packet)` re-serialization overhead.
+
+**Evidence**
+- Pytest full run: `4 failed, 920 passed, 37 skipped, 1012 warnings in 385.14s`.
+- Scratch test for certificate revocation: status 200 OK, `ca.revoke_cert` called with `serial_number='ORPHAN_OR_GATEWAY_SERIAL_999'`, `agent_id='agent-org-A-1'`.
+- Scratch test for Redis rate limit reset: 20 req/min limit reached -> 429 Too Many Requests -> `system_service._clear_caches_and_analytics()` called -> Redis DB flushed -> subsequent request returned True (200 OK).
+- Migration runner command: `python infra\database\migrations\apply_20260502_flow_search_alert_dedupe_indexes.py` -> `ModuleNotFoundError: No module named 'backend'`.
+- 100k Realistic Mixed PCAP benchmark (Intel i7-7600U, Balanced):
+  - `DpktFastParser`: Median 27,816.29 pps (range: 16,606.26 - 50,245.97 pps, wall median: 3.5950s).
+  - `PacketObservation.from_raw_bytes`: Median 8,440.63 pps (range: 5,677.52 - 11,904.75 pps, wall median: 11.8475s).
+  - `Scapy sniff path`: Median 1,021.72 pps (range: 823.86 - 1,233.22 pps, wall median: 97.8738s).
+
+---
+
+## 2026-10-29 - Server Architecture Ground Truth Audit & Scalability Analysis
+
+**Work completed**
+- Executed read-only code trace across all backend routing, worker concurrency models, database interactions, ingestion pipelines, agent contracts, failure fallbacks, and observability mechanisms without making production code modifications.
+- Traced entrypoints and uvicorn server configurations in `run_server.py:144-181`, mapping all 33 `async def` and 55 sync `def` FastAPI route handlers and internal threadpool allocations.
+- Documented complete `POST /collect/flow/batch` lifecycle from mTLS protocol check and signed agent HMAC validation through Redis Stream buffering (`netvisor:flow_stream`) and MySQL queue fallback (`flow_ingest_batches`), pinpointing the exact point of HTTP 202 acknowledgement to the agent.
+- Audited datastore read/write patterns, proving that ClickHouse `flow_logs` is dual-write only with zero reader endpoints, while 100% of dashboard views query MySQL or memory cache.
+- Analyzed failure matrix and circuit breaker absence across Redis, ClickHouse, and MySQL, documenting the drop of ClickHouse rows after 3 retries and the failure mode of agent authentication when MySQL is down.
+- Traced ClickHouse on-demand DDL execution in `backend/db/clickhouse_client.py:42-61` and identified caller thread blocking behind `_ch_lock`.
+- Analyzed agent communication contract in `agent/main.py`, identifying the infinite retry loop on HTTP 400 responses where malformed batches are never discarded, causing local buffer exhaustion and silent drops.
+- Calculated worst-case ingestion ceilings (1,000 flows/sec per agent at default batch size), per-flow database write amplifications (8-9 operations per flow), and cataloged frontend visibility polling intervals across all pages.
+- Identified the root cause of 401s logging as "DB connection error" in `backend/db/session.py:536-547` due to Python generator exception unwinding in FastAPI dependency injection.
+- Compiled complete findings to `audit_scratch/ARCHITECTURE_GROUND_TRUTH.md` with explicit `[VERIFIED]` / `[INFERRED]` tags and `file:line` citations.
+
+**Problem found**
+- Synchronous blocking I/O on async event loop: `get_db_connection()`, cursor queries, and `get_redis_connection()` are executed directly inside multiple `async def` route handlers (`auth.py`, `agents.py`, `gateway.py`, `system.py`, `health.py`), blocking the single-threaded asyncio event loop under concurrent load.
+- Unstarted correlation worker in external mode: `backend/main.py:124-135` skips registering `correlation_worker` when `FLOW_WORKER_MODE="external"`, and `run_flow_worker.py` only starts `flow_writer_worker`, causing lateral movement correlation to never run in Docker production.
+- Client stuck on 400 Bad Request: In `agent/main.py:616-654`, `batch` is only cleared on successful upload; on HTTP 400 Bad Request, the agent infinitely retries the identical payload, eventually dropping all subsequent flows when `upload_q` reaches 10,000 items.
+- Write amplification: Each ingested flow triggers 1 insert into MySQL `flow_logs`, 1 insert into ClickHouse `flow_logs`, up to 5-6 upserts across `sessions`, `external_endpoints`, `device_risks`, `devices`, `application_summary`, and `device_summary`, and up to 1 insert into `alerts`.
+- Absence of circuit breakers: No circuit breakers protect against hanging MySQL, Redis, or ClickHouse instances; threads block up to full socket timeouts.
+
+**Solution or learning**
+- Route handlers that perform synchronous database queries should either be converted to sync `def` (to let AnyIO manage them on its threadpool) or wrap synchronous queries in `await anyio.to_thread.run_sync`.
+- ClickHouse should be promoted to the primary analytical engine for logs, stats, and timeseries reads rather than acting as a redundant write-only sink.
+- Standalone flow worker should supervise both `flow_writer` and `correlation` workers concurrently when operating in external mode.
+- Agent upload worker should drop or quarantine invalid batches that return HTTP 400 to prevent poisoning the upload pipeline.
+- Log formatter in `backend/main.py` should be updated to include ISO timestamps (`format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"`).
+- `get_db` generator in `backend/db/session.py` should catch `mysql.connector.Error` specifically rather than generic `Exception` to prevent masking downstream `HTTPException`s as database connection errors.
+
+**Evidence**
+- Generated ground truth document: `audit_scratch/ARCHITECTURE_GROUND_TRUTH.md`.
+- Route classification script verified: 33 `async def` routes, 55 sync `def` routes.
+- Redis stream ingestion trace: `flow_service.py:685-694`, `flow_writer_worker:1051-1186`.
+- ClickHouse write-only verification: `get_clickhouse_client` referenced only in `flow_service.py:1796` and `system_service.py:483`.
+- Exception unwinding trace: `get_db` generator (`session.py:536-547`) catching `HTTPException(401)` from `get_current_user` (`dependencies.py:91-114`).
+
 ---
 
 ## Template for Future Daily Entries

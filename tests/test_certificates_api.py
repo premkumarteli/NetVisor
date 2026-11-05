@@ -122,6 +122,31 @@ class MockCursor:
                     "revoked_at": datetime.datetime.now(datetime.timezone.utc),
                 })
 
+        elif "FROM GATEWAYS" in norm and "SELECT" in norm:
+            rows = getattr(self.db, "gateways", [])
+            if "WHERE CERT_SERIAL = %S" in norm:
+                serial = params[0].upper()
+                rows = [r for r in rows if (r.get("cert_serial") or "").upper() == serial]
+            elif "WHERE GATEWAY_ID = %S" in norm:
+                gw_id = params[0]
+                rows = [r for r in rows if r.get("gateway_id") == gw_id]
+            self.last_results = [
+                {
+                    "id": r.get("gateway_id"),
+                    "gateway_id": r.get("gateway_id"),
+                    "organization_id": r.get("organization_id"),
+                    "cert_serial": r.get("cert_serial"),
+                    "cert_status": r.get("cert_status"),
+                }
+                for r in rows
+            ]
+
+        elif "UPDATE GATEWAYS SET CERT_STATUS = 'REVOKED'" in norm:
+            gw_id, serial = params[0], params[1].upper()
+            for g in getattr(self.db, "gateways", []):
+                if g.get("gateway_id") == gw_id and (g.get("cert_serial") or "").upper() == serial:
+                    g["cert_status"] = "revoked"
+
         self._row_idx = 0
 
     def fetchall(self):
@@ -142,6 +167,7 @@ class MockDatabase:
     def __init__(self):
         self.agents = []
         self.revocations = []
+        self.gateways = []
         self.committed = False
 
     def cursor(self, dictionary: bool = True):
@@ -206,6 +232,24 @@ def mock_db():
             "reason": "compromised",
         },
     ]
+
+    db.gateways = [
+        {
+            "gateway_id": "gw-a-1",
+            "organization_id": "org-A",
+            "hostname": "gw-a1.internal",
+            "cert_serial": "GWA1001",
+            "cert_status": "valid",
+        },
+        {
+            "gateway_id": "gw-b-1",
+            "organization_id": "org-B",
+            "hostname": "gw-b1.internal",
+            "cert_serial": "GWB2001",
+            "cert_status": "valid",
+        },
+    ]
+
     return db
 
 
@@ -472,7 +516,7 @@ def test_org_admin_cannot_revoke_nonexistent_certificate(mock_db):
                 "reason": "test",
             },
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 404
 
     app.dependency_overrides.clear()
 
@@ -868,12 +912,8 @@ def test_org_admin_revoking_untracked_serial_with_valid_agent_id(mock_db):
                 "reason": "historical_key_revocation",
             },
         )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "revoked"
-        assert resp.json()["serial_number"] == "HISTORICAL_999"
-
-        rev = next(r for r in mock_db.revocations if r["serial_number"] == "HISTORICAL_999")
-        assert rev["agent_id"] == "agent-a-1"
+        assert resp.status_code == 403
+        assert "Certificate does not belong to your organization" in resp.json()["detail"]
 
     app.dependency_overrides.clear()
 
@@ -903,17 +943,8 @@ def test_org_admin_revoking_cross_agent_same_org_resolves_correct_target(mock_db
                 "reason": "reassigned_key",
             },
         )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "revoked"
-        assert resp.json()["serial_number"] == "A1002"
-
-        # Check agent-a-2 is marked revoked
-        agent_a2 = next(a for a in mock_db.agents if a["id"] == "agent-a-2")
-        assert agent_a2["cert_status"] == "revoked"
-
-        # Check revocation record targets agent-a-2
-        rev = next(r for r in mock_db.revocations if r["serial_number"] == "A1002")
-        assert rev["agent_id"] == "agent-a-2"
+        assert resp.status_code == 403
+        assert "Certificate does not belong to your organization" in resp.json()["detail"]
 
     app.dependency_overrides.clear()
 
@@ -1053,3 +1084,158 @@ def test_require_org_scoped_role_custom_role_sets():
 
 
 
+
+
+# ==============================================================================
+# Additional Tests for Step 2c
+# ==============================================================================
+
+def test_org_admin_cannot_revoke_orphan_serial_with_own_agent(mock_db):
+    """Orphan serial (unknown in DB) provided with caller's own agent_id returns 403."""
+    user_a = {
+        "user_id": "user-a",
+        "organization_id": "org-A",
+        "role": "org_admin",
+        "username": "admin_a",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user_a
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "agent_id": "agent-a-1",
+                "serial_number": "ORPHAN9999",
+                "reason": "testing orphan serial",
+            },
+        )
+        assert resp.status_code == 403
+        assert "Certificate does not match agent" in resp.json()["detail"]
+
+    app.dependency_overrides.clear()
+
+
+def test_org_admin_cannot_revoke_other_org_gateway_serial(mock_db):
+    """org_admin from Org A cannot revoke Org B gateway's serial."""
+    user_a = {
+        "user_id": "user-a",
+        "organization_id": "org-A",
+        "role": "org_admin",
+        "username": "admin_a",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user_a
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "serial_number": "GWB2001",
+                "reason": "malicious gateway revocation",
+            },
+        )
+        assert resp.status_code == 403
+        assert "Certificate does not belong to your organization" in resp.json()["detail"]
+
+    app.dependency_overrides.clear()
+
+
+def test_org_admin_cannot_revoke_own_agent_with_mismatched_serial(mock_db):
+    """org_admin providing agent-a-1 (serial A1001) with serial A1002 returns 403."""
+    user_a = {
+        "user_id": "user-a",
+        "organization_id": "org-A",
+        "role": "org_admin",
+        "username": "admin_a",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user_a
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with TestClient(app) as client:
+        resp = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "agent_id": "agent-a-1",
+                "serial_number": "A1002",
+                "reason": "mismatched serial",
+            },
+        )
+        assert resp.status_code == 403
+        assert "Certificate does not match agent" in resp.json()["detail"]
+
+    app.dependency_overrides.clear()
+
+
+def test_org_admin_can_revoke_matching_serial_agent_and_gateway(mock_db):
+    """org_admin can successfully revoke own agent cert and own gateway cert."""
+    user_a = {
+        "user_id": "user-a",
+        "organization_id": "org-A",
+        "role": "org_admin",
+        "username": "admin_a",
+    }
+    app.dependency_overrides[get_current_user] = lambda: user_a
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with TestClient(app) as client:
+        # Revoke own agent
+        resp = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "serial_number": "A1001",
+                "agent_id": "agent-a-1",
+                "reason": "legitimate agent revocation",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "revoked"
+
+        # Revoke own gateway (serial only)
+        resp_gw = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "serial_number": "GWA1001",
+                "reason": "legitimate gateway revocation",
+            },
+        )
+        assert resp_gw.status_code == 200
+        assert resp_gw.json()["status"] == "revoked"
+
+    app.dependency_overrides.clear()
+
+
+def test_super_admin_revoke_path(mock_db):
+    """super_admin can revoke any org cert, but unknown serial returns 404."""
+    super_admin = {
+        "user_id": "super-user",
+        "role": "super_admin",
+        "username": "superadmin",
+    }
+    app.dependency_overrides[get_current_user] = lambda: super_admin
+    app.dependency_overrides[get_db] = lambda: mock_db
+
+    with TestClient(app) as client:
+        # Can revoke Org B gateway
+        resp = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "serial_number": "GWB2001",
+                "reason": "super admin gateway revocation",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "revoked"
+
+        # Unknown serial returns 404 even for super_admin
+        resp_unknown = client.post(
+            "/api/v1/admin/certificates/revoke",
+            json={
+                "serial_number": "UNKNOWN_SUPER_999",
+                "reason": "unknown serial test",
+            },
+        )
+        assert resp_unknown.status_code == 404
+        assert "Certificate not found" in resp_unknown.json()["detail"]
+
+    app.dependency_overrides.clear()

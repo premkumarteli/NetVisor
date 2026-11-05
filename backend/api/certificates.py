@@ -123,8 +123,15 @@ def revoke_certificate(
     if not serial:
         raise HTTPException(status_code=400, detail="Serial number cannot be empty")
 
+    ca = _get_ca()
+
+    # Check if already revoked
+    if ca.is_revoked(db, serial):
+        raise HTTPException(status_code=409, detail="Certificate already revoked")
+
     agent_id = body.agent_id.strip() if body.agent_id else None
-    target_agent_id = agent_id
+    target_agent_id = None
+    target_gateway_id = None
 
     cursor = db.cursor(dictionary=True)
     try:
@@ -154,71 +161,55 @@ def revoke_certificate(
                     detail="Agent does not belong to your organization",
                 )
 
-            # Check if serial number belongs to another organization in agents or gateways table
-            cursor.execute(
-                """
-                SELECT id, organization_id, cert_serial
-                FROM agents
-                WHERE cert_serial = %s
-                """,
-                (serial,),
-            )
-            cert_owner = cursor.fetchone()
-            if not cert_owner:
-                cursor.execute(
-                    """
-                    SELECT id, organization_id, cert_serial
-                    FROM gateways
-                    WHERE cert_serial = %s
-                    """,
-                    (serial,),
+            agent_cert_serial = (agent_row.get("cert_serial") or "").upper().strip()
+            if not agent_cert_serial or agent_cert_serial != serial:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Certificate does not match agent. Certificate does not belong to your organization.",
                 )
-                cert_owner = cursor.fetchone()
-
-            if cert_owner:
-                if org_id and cert_owner.get("organization_id") != org_id:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Certificate does not belong to your organization",
-                    )
-                target_agent_id = cert_owner.get("id")
-            else:
-                target_agent_id = agent_id
+            target_agent_id = agent_row.get("id")
         else:
             cursor.execute(
                 """
                 SELECT id, organization_id, cert_serial
                 FROM agents
-                WHERE cert_serial = %s
+                WHERE cert_serial = %s OR UPPER(cert_serial) = %s
                 """,
-                (serial,),
+                (serial, serial),
             )
-            agent_row = cursor.fetchone()
-            if not agent_row:
+            cert_owner = cursor.fetchone()
+            is_gateway = False
+            if not cert_owner:
                 cursor.execute(
                     """
-                    SELECT id, organization_id, cert_serial
+                    SELECT gateway_id AS id, organization_id, cert_serial
                     FROM gateways
-                    WHERE cert_serial = %s
+                    WHERE cert_serial = %s OR UPPER(cert_serial) = %s
                     """,
-                    (serial,),
+                    (serial, serial),
                 )
-                agent_row = cursor.fetchone()
+                cert_owner = cursor.fetchone()
+                if cert_owner:
+                    is_gateway = True
 
-            if not agent_row or (org_id and agent_row.get("organization_id") != org_id):
+            if not cert_owner:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Certificate not found",
+                )
+
+            if org_id and cert_owner.get("organization_id") != org_id:
                 raise HTTPException(
                     status_code=403,
                     detail="Certificate does not belong to your organization",
                 )
-            target_agent_id = agent_row.get("id")
+
+            if is_gateway:
+                target_gateway_id = cert_owner.get("id")
+            else:
+                target_agent_id = cert_owner.get("id")
     finally:
         cursor.close()
-
-    ca = _get_ca()
-
-    # Check if already revoked
-    if ca.is_revoked(db, serial):
-        raise HTTPException(status_code=409, detail="Certificate already revoked")
 
     ca.revoke_cert(
         db,
@@ -228,7 +219,7 @@ def revoke_certificate(
         reason=body.reason,
     )
 
-    # Update agent or gateway cert_status if target_agent_id resolved
+    # Update agent or gateway cert_status if target resolved
     if target_agent_id:
         cursor = db.cursor()
         try:
@@ -239,21 +230,28 @@ def revoke_certificate(
                 """,
                 (target_agent_id, serial, serial),
             )
+            db.commit()
+        finally:
+            cursor.close()
+    elif target_gateway_id:
+        cursor = db.cursor()
+        try:
             cursor.execute(
                 """
                 UPDATE gateways SET cert_status = 'revoked'
-                WHERE id = %s AND (cert_serial = %s OR UPPER(cert_serial) = %s)
+                WHERE gateway_id = %s AND (cert_serial = %s OR UPPER(cert_serial) = %s)
                 """,
-                (target_agent_id, serial, serial),
+                (target_gateway_id, serial, serial),
             )
             db.commit()
         finally:
             cursor.close()
 
     logger.info(
-        "Certificate revoked via admin API: serial=%s agent=%s by=%s",
+        "Certificate revoked via admin API: serial=%s agent=%s gateway=%s by=%s",
         serial,
         target_agent_id,
+        target_gateway_id,
         user.get("username"),
     )
 
