@@ -304,15 +304,19 @@ export const TopologyGraph3D = ({
 
     // 7. Animation Loop with Reduced-Motion and Visibility Check
     let animationFrameId;
-    let clock = new THREE.Clock();
+    let lastTime = performance.now();
+    let startTime = performance.now();
 
-    const animate = () => {
+    const animate = (currentTime) => {
       animationFrameId = requestAnimationFrame(animate);
 
       // Auto-pause rendering when browser tab is hidden
       if (document.hidden) return;
 
-      const delta = clock.getDelta();
+      const now = currentTime || performance.now();
+      const delta = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      const elapsedTime = (now - startTime) / 1000;
 
       if (!isMotionPaused && !isMouseDown) {
         worldGroup.rotation.y += rotationVelocityY;
@@ -326,9 +330,8 @@ export const TopologyGraph3D = ({
       radarBeam.rotation.z -= 0.035;
 
       // Pulse Radar Rings
-      const time = clock.getElapsedTime();
-      ring1.scale.setScalar(1 + Math.sin(time * 2.2) * 0.06);
-      ring2.scale.setScalar(1 + Math.sin(time * 1.8) * 0.04);
+      ring1.scale.setScalar(1 + Math.sin(elapsedTime * 2.2) * 0.06);
+      ring2.scale.setScalar(1 + Math.sin(elapsedTime * 1.8) * 0.04);
 
       // Update Streaming Data Packets
       const positions = packetGeo.attributes.position.array;

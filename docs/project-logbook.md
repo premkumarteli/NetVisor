@@ -5967,20 +5967,24 @@
 - Upgraded `TopologyGraph.jsx` with an instantaneous 3D Matrix vs. 2D Radar view mode switcher and a WCAG 2.2.2 compliant simulation Pause/Play control.
 - Isolated Three.js into a dedicated manual chunk (`dist/assets/three-*.js`) in `frontend-v2/vite.config.js` to prevent circular chunk dependencies and optimize initial bundle load.
 - Added full WebGL memory disposal (geometries, materials, textures, requestAnimationFrame loops, and event listeners) upon component unmount.
+- Replaced deprecated `THREE.Clock` with standard high-resolution `performance.now()` timestamping for frame deltas and elapsed time.
 
 **Problem found**
 - Initial manual chunking configuration for Rollup in `vite.config.js` produced circular chunk warnings (`chart -> vendor -> chart`) when separating `chart.js` from `react` dependencies.
 - High-frequency WebGL animation loops could impact battery life and fail accessibility compliance if non-pausable or if background tab rendering continued unthrottled.
+- Three.js v0.187 deprecated `THREE.Clock` in favor of `performance.now()` / `THREE.Timer`.
 
 **Solution or learning**
 - Simplified Rollup manual chunking to target `node_modules/three` strictly, yielding a clean, isolated 531 kB gzip-optimized chunk without circular references.
 - Bound `TopologyGraph` and `TopologyGraph3D` to pause simulation on user toggle (WCAG 2.2.2) and leveraged CSS `content-visibility: auto` to defer off-screen render costs.
+- Migrated animation loop timing in `TopologyGraph3D.jsx` to native `performance.now()`, removing deprecation warnings and ensuring smooth 60 FPS interpolation.
 
 **Evidence**
-- Production build: `npm --prefix frontend-v2 run build` built successfully in 10.15s:
-  - `dist/assets/index-BKZY61Ax.js` (514.61 kB │ gzip: 169.50 kB)
-  - `dist/assets/three-CqPDyO_o.js` (531.10 kB │ gzip: 132.11 kB)
+- Production build: `npm --prefix frontend-v2 run build` built successfully in 12.54s:
+  - `dist/assets/index-YMrixt4E.js` (514.64 kB │ gzip: 169.50 kB)
+  - `dist/assets/three-6dALbkZ6.js` (530.49 kB │ gzip: 131.89 kB)
   - `dist/assets/index-q6Exy7Ii.css` (184.46 kB │ gzip: 29.97 kB)
+- Live runtime verification: Both FastAPI backend (`http://127.0.0.1:8000/ping` -> `pong`) and Vite frontend-v2 (`http://localhost:5174/` -> `200 OK`) tested cleanly.
 - Code files created and updated: `frontend-v2/src/components/Dashboard/TopologyGraph3D.jsx`, `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`, `frontend-v2/vite.config.js`, `frontend-v2/package.json`.
 
 ---
