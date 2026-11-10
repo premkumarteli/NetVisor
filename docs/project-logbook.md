@@ -5956,6 +5956,35 @@
 
 ---
 
+## 2026-11-10 - Frontend-V2 Interactive 3D WebGL Topology & Dynamic Packet Simulation
+
+**Work completed**
+- Engineered `TopologyGraph3D.jsx` using Three.js, adding interactive 3D WebGL network topology visualization to the `frontend-v2/` dashboard.
+- Implemented central gateway node featuring an animated icosahedron wireframe, inner pulsating point light, and cyber router badge.
+- Distributed satellite endpoint devices on an elliptical orbital plane with real-time risk status glows (Normal blue, High-Risk red, VPN purple, New Device green).
+- Integrated 3D radar sweep sectors, concentric wave rings, and animated parabolic packet flow particles transmitting across active spoke connections.
+- Added raycasting interaction for mouse hover with node scaling (1.35x), device selection callbacks, orbit drag-to-rotate damping controls, and a cyber HUD floating glassmorphic tooltip.
+- Upgraded `TopologyGraph.jsx` with an instantaneous 3D Matrix vs. 2D Radar view mode switcher and a WCAG 2.2.2 compliant simulation Pause/Play control.
+- Isolated Three.js into a dedicated manual chunk (`dist/assets/three-*.js`) in `frontend-v2/vite.config.js` to prevent circular chunk dependencies and optimize initial bundle load.
+- Added full WebGL memory disposal (geometries, materials, textures, requestAnimationFrame loops, and event listeners) upon component unmount.
+
+**Problem found**
+- Initial manual chunking configuration for Rollup in `vite.config.js` produced circular chunk warnings (`chart -> vendor -> chart`) when separating `chart.js` from `react` dependencies.
+- High-frequency WebGL animation loops could impact battery life and fail accessibility compliance if non-pausable or if background tab rendering continued unthrottled.
+
+**Solution or learning**
+- Simplified Rollup manual chunking to target `node_modules/three` strictly, yielding a clean, isolated 531 kB gzip-optimized chunk without circular references.
+- Bound `TopologyGraph` and `TopologyGraph3D` to pause simulation on user toggle (WCAG 2.2.2) and leveraged CSS `content-visibility: auto` to defer off-screen render costs.
+
+**Evidence**
+- Production build: `npm --prefix frontend-v2 run build` built successfully in 10.15s:
+  - `dist/assets/index-BKZY61Ax.js` (514.61 kB │ gzip: 169.50 kB)
+  - `dist/assets/three-CqPDyO_o.js` (531.10 kB │ gzip: 132.11 kB)
+  - `dist/assets/index-q6Exy7Ii.css` (184.46 kB │ gzip: 29.97 kB)
+- Code files created and updated: `frontend-v2/src/components/Dashboard/TopologyGraph3D.jsx`, `frontend-v2/src/components/Dashboard/TopologyGraph.jsx`, `frontend-v2/vite.config.js`, `frontend-v2/package.json`.
+
+---
+
 ## Template for Future Daily Entries
 
 
