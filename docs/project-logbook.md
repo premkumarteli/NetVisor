@@ -5989,6 +5989,34 @@
 
 ---
 
+## 2026-11-11 - Production Frontend 3D Topology & Constellation Integration
+
+**Work completed**
+- Integrated interactive 3D WebGL Three.js Network Topology & Constellation component into the primary production dashboard (`frontend/`).
+- Created `frontend/src/components/Dashboard/TopologyGraph3D.jsx` featuring real-time device risk coloring, dynamic parabolic packet stream arcs, central cyber gateway wireframe icosahedron, concentric radar sweeps, raycasting mouse hover, and full WebGL memory disposal on unmount.
+- Harmonized 3D visualization shaders and lighting with `useImmersion()` active theme palette (`palette.accent`, `palette.danger`, `palette.secondary`, `palette.success`).
+- Created `frontend/src/components/Dashboard/TopologyGraph.jsx` featuring instantaneous 3D Matrix vs. 2D Radar view switching, WCAG 2.2.2 animation pause controls, category filters (Normal, VPN, High Risk, New Device), and device detail navigation callbacks.
+- Integrated `TopologyGraph` into `frontend/src/pages/DashboardPage.jsx` directly above Traffic Pressure, wired to live `devices` and `activity` telemetry streams.
+- Installed `three` package in `frontend/package.json` and configured Rollup `manualChunks` in `frontend/vite.config.js` to isolate `three` into its own chunk with `chunkSizeWarningLimit: 800`.
+
+**Problem found**
+- Primary production dashboard (`frontend/`) lacked real-time visual infrastructure topology, displaying only 2D charts and data tables.
+- Adding Three.js to the primary frontend bundle without manual chunking would increase the main entry chunk size.
+
+**Solution or learning**
+- Isolated `node_modules/three` into a dedicated chunk (`dist/assets/three-*.js`), keeping the main app bundle at 61 kB and `DashboardPage` chunk at 42 kB.
+- Bound 3D animations to `useImmersion()` theme settings and WCAG 2.2.2 pause controls, ensuring accessibility and cross-theme harmony.
+
+**Evidence**
+- Vitest test suite: `npm --prefix frontend test` -> 8 test files passed (61 tests passed in 31.17s).
+- Production build: `npm --prefix frontend run build` built successfully in 13.79s with 0 errors:
+  - `dist/assets/three-zq79HKEY.js` (529.72 kB │ gzip: 131.67 kB)
+  - `dist/assets/DashboardPage-BMKM-dp0.js` (42.92 kB │ gzip: 13.25 kB)
+  - `dist/assets/index-DLn9IDd2.js` (61.12 kB │ gzip: 19.63 kB)
+- Code files created and updated: `frontend/src/components/Dashboard/TopologyGraph.jsx`, `frontend/src/components/Dashboard/TopologyGraph3D.jsx`, `frontend/src/pages/DashboardPage.jsx`, `frontend/vite.config.js`, `frontend/package.json`.
+
+---
+
 ## Template for Future Daily Entries
 
 

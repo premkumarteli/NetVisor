@@ -6,6 +6,7 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { useImmersion } from '../immersion/engine/useImmersion';
 import TrafficChart from '../components/Dashboard/TrafficChart';
 import ThreatDistributionChart from '../components/Dashboard/ThreatDistributionChart';
+import TopologyGraph from '../components/Dashboard/TopologyGraph';
 import StatusBadge from '../components/V2/StatusBadge';
 import ErrorState from '../components/V2/ErrorState';
 import { TableSkeleton } from '../components/UI/Skeletons';
@@ -384,6 +385,19 @@ const DashboardPage = () => {
       <div className="cinematic-command-grid">
         {/* Left Column: Upgraded Graph Version & Live Streams */}
         <main className="cinematic-command-grid__main">
+          {/* Real-Time Interactive 3D / 2D Network Topology & Constellation */}
+          <section className="cinematic-panel cinematic-panel--topology" style={{ padding: 0, overflow: 'hidden', border: 'none', background: 'transparent' }}>
+            <TopologyGraph
+              devices={devices}
+              activity={activity}
+              onSelectDevice={(device) => {
+                const ip = typeof device === 'string' ? device : device?.ip;
+                if (ip) navigate(`/devices?search=${encodeURIComponent(ip)}`);
+                else navigate('/devices');
+              }}
+            />
+          </section>
+
           {/* Upgraded Traffic Pressure Section */}
           <section className="cinematic-panel cinematic-panel--traffic">
             <div className="cinematic-panel__watermark" aria-hidden="true">

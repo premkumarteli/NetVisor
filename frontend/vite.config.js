@@ -12,10 +12,14 @@ export default defineConfig({
     css: false,
   },
   build: {
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('three')) {
+              return 'three'
+            }
             if (id.includes('react-chartjs-2') || id.includes('chart.js')) {
               return 'charts'
             }
