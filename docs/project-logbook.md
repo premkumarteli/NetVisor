@@ -6013,6 +6013,30 @@
 
 ---
 
+## 2026-11-13 - Scalability Architecture Audit & Detection Engine Reality Review
+
+**Work completed**
+- Conducted deep forensic review of VPN and Threat detection engines (`backend/engines/threat/`, `backend/engines/vpn/`, `backend/services/flow_service.py`).
+- Mapped exact detection mechanics: Tor exit node live lists (2,780+ IPs), WireGuard 148B/92B length matching, OpenVPN opcode filtering, and 8 threat algorithms (beaconing, brute force, DNS entropy, Kerberoasting, pass-the-hash, port scans, exfiltration, SMB traversal).
+- Isolated the 5 primary backend server bottlenecks causing slowdowns and backpressure: (1) `ThreadPoolExecutor(max_workers=4)` serializing MySQL operations, (2) Redis stream fallback to synchronous MySQL row-locked batch queuing, (3) CPU-bound detection executed sequentially on the FastAPI event loop, (4) MySQL InnoDB write amplification vs. ClickHouse columnar logging, (5) In-memory non-distributed sliding windows.
+- Authored comprehensive architectural upgrade blueprint in artifact `server_scalability_and_detection_engine_deep_dive.md` defining paths to scale ingestion to 50,000+ flows/sec.
+
+**Problem found**
+- Ingestion hot path in `flow_service.py` defaults to single-process CPU-bound synchronous execution of all 5 detection engines per flow batch.
+- When Redis is offline, every flow batch triggers synchronous database writes to `flow_batches` with row locks, saturating the 4-thread pool and causing HTTP 429 rejections under load.
+- Sliding window threat state (`SlidingWindowStore`) is stored in Python memory per worker process, causing state loss on restarts and lack of coordination across multi-worker Uvicorn setups.
+
+**Solution or learning**
+- Immediate stability requires ensuring Redis is running to keep ingestion in the fast zero-disk memory stream path (<2ms responses).
+- Long-term 50,000+ flows/sec scaling requires migrating flow ingestion directly to ClickHouse columnar storage and offloading detection to an asynchronous background worker pool with Redis-backed distributed sliding windows.
+
+**Evidence**
+- Code inspection: `backend/services/flow_service.py` lines 88 (`max_workers=4`) and 1337 (`self.registry.analyze_selective`).
+- Ingestion fallback: `backend/services/flow_service.py` Redis exception branch triggering `_enqueue_batch_sync`.
+- Published engineering blueprint: `server_scalability_and_detection_engine_deep_dive.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
