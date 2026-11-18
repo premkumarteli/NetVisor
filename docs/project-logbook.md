@@ -6067,6 +6067,24 @@
 
 ---
 
+## 2026-11-18 - Frontend Scope Freeze & Team Actions Educational Playbook
+
+**Work completed**
+- Codified project owner constraint: froze `frontend-v2/` as an experimental prototype and locked `frontend/` as the single production web interface for all ongoing development, testing, and audits.
+- Authored comprehensive educational engineering reference `engineering/TEAM_ACTIONS_AND_WORKFLOW.md` detailing the 10 engineering roles, their daily actions, architectural debates, decision criteria, execution workflow, and an industry glossary.
+
+**Problem found**
+- Maintaining multiple frontends (`frontend/` vs `frontend-v2/`) divided engineering focus and created ambiguity regarding deployment targets.
+
+**Solution or learning**
+- Freezing `frontend-v2` concentrates all UI/UX hardening, accessibility enhancements, real-time Socket.IO streams, and security testing into the Docker-bundled `frontend/` application.
+
+**Evidence**
+- Created file: `engineering/TEAM_ACTIONS_AND_WORKFLOW.md`.
+- Verified production build on target frontend: `npm --prefix frontend run build` exited cleanly with code 0 (built in 13.03s).
+
+---
+
 ## Template for Future Daily Entries
 
 
