@@ -6085,6 +6085,37 @@
 
 ---
 
+## 2026-11-18 - Stage 2b Corrective Audit Reconciliation & Security Re-Ranking
+
+**Work completed**
+- Reconciled all historical security audit findings against `audit_scratch/` and Git history: confirmed fixes for cross-tenant data reset (commit `47d1739`/`dfdada32`), certificate revocation fall-through (`2484e87`/`47d1739`), and migration path resolution (`dfdada32`).
+- Re-ran pytest with `NETVISOR_DB_PASSWORD` set: verified 969 passed, 3 skipped, 0 failed. Diagnosed all 3 skips to `tests/test_api.py` requiring a live server on port 8000.
+- Executed exhaustive secret scan across 164M characters of git history and root dumps: confirmed zero committed RSA private keys; flagged 19 historical test/seed credential strings and isolated plain-text demo passwords in untracked `all_code.txt`.
+- Audited GitHub remote visibility (`HTTP 200 OK` public repository); sequestered unpatched vulnerability details into gitignored `engineering/SECURITY_VULNERABILITIES_PRIVATE.md`.
+- Verified operational agent/gateway authentication: confirmed `AGENT_API_KEY` and `GATEWAY_API_KEY` are bootstrap-only; operational routes strictly mandate HMAC+nonce signed request envelopes.
+- Aligned frontend strategy to owner directive: declared `frontend/` (v1) the sole production UI; froze `frontend-v2/` as owner-managed; closed ISSUE-001 and AUD-009.
+- Wired all 12 Jetpack Compose screens into `NavGraph.kt` matching `MainActivity.kt` (marked IMPLEMENTED-unverified).
+- Authored ADR `0001-dpi-header-capture-allowlist.md` establishing an explicit allow-list design for safe HTTP header capture.
+- Re-ranked roadmap placing P0/P1 security items first.
+
+**Problem found**
+- Discovered that when `.env` is loaded, `NETVISOR_DPI_ENABLE_QUIC_BLOCK=true` overrode `raw_payload.get("enable_quic_block", False)` in `InspectionPolicy.from_payload()`.
+- Confirmed that WinDivert is not implemented anywhere in the codebase (only cited in a type comment).
+- Found that `/api/v1/auth/refresh` lacks rate limiting, and HS256 fallback remains active in code.
+
+**Solution or learning**
+- Prioritized P1 security remediation: fail-closed RS256 token verification and `/refresh` rate limiting.
+- Preserved safe-by-omission header handling pending owner review of ADR-0001.
+
+**Evidence**
+- Pytest suite with DB password: `969 passed, 3 skipped, 0 failed` in 321.79s.
+- Git secret scan log: 164,193,410 characters scanned across 3,223,424 lines of git diffs.
+- GitHub curl check: `curl.exe -sI https://github.com/premkumarteli/NetVisor` returned `HTTP/1.1 200 OK` (public visibility confirmed).
+- Code evidence: `backend/services/agent_auth_service.py:333-387` and `gateway_auth_service.py:296-302` confirming static key rejection on operational routes.
+- Artifacts updated: `engineering/STATE.md`, `engineering/PROJECT_AUDIT.md`, `engineering/ISSUE_TRACKER.md`, `engineering/PROJECT_DISCOVERY.md`, `engineering/TEAM_REVIEW.md`, `engineering/adr/0001-dpi-header-capture-allowlist.md`, `engineering/SECURITY_VULNERABILITIES_PRIVATE.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
