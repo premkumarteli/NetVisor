@@ -6037,6 +6037,36 @@
 
 ---
 
+## 2026-11-18 - Formal Handover, Stage 1 Discovery & Stage 2 Multi-Role Audit
+
+**Work completed**
+- Formally accepted engineering ownership of NetVisor repository across backend, agent, gateway, frontends, Android mobile, database, and detection subsystems.
+- Executed Stage 1 Discovery: deep inspection of repository entry points, dependencies, environment configs, secrets, git commit history, and test status.
+- Held Stage 2 Engineering Team Conference across Tech Lead, Backend, Frontend/UX, Security, Database, DevOps, and QA roles, establishing consensus decisions on frontend unification, Android routing, header redaction, and flow ingestion decoupling.
+- Established the `engineering/` documentation system: authored `engineering/PROJECT_DISCOVERY.md`, `engineering/TEAM_REVIEW.md`, `engineering/PROJECT_AUDIT.md`, `engineering/ISSUE_TRACKER.md`, and `engineering/STATE.md`.
+- Executed full test verification across Python and frontend test suites and production builds.
+
+**Problem found**
+- Discovered 6 placeholder sub-routes in `frontend-v2/src/App.jsx` (`/agents`, `/apps`, `/threats`, `/activity`, `/vpn`, `/settings`) mapped to `PlaceholderPage.jsx`, while full implementations exist in `frontend/` (v1).
+- Discovered 4 unmounted navigation routes in `Android_Application/.../NavGraph.kt` left as `// TODO:` stubs despite full Compose screens and ViewModels existing.
+- Identified an unwired header redaction pipeline between `agent/dpi/mitm_addon.py` and `agent/dpi/event_buffer.py` where intercepted headers are dropped before `redact_headers()` execution.
+- Observed 1,012 pytest deprecation warnings regarding legacy HS256 JWT tokens.
+
+**Solution or learning**
+- Established a phased roadmap: preserve `frontend/` as the proven stable baseline while systematically porting the 6 SOC workflow pages into `frontend-v2/`.
+- Prioritized P1 engineering fixes: Android `NavGraph.kt` route wiring and DPI HTTP header redaction pipeline fix.
+- Reaffirmed that core backend APIs and detection engines operate at production-level maturity (936 passing tests, 0 failures).
+
+**Evidence**
+- Automated Python test run: `.\.venv\Scripts\pytest.exe -q --disable-warnings` yielded 936 passed, 37 skipped, 0 failed in 337.26s.
+- Automated Frontend Vitest run: `npm --prefix frontend test` yielded 8 test files passed, 61 passed, 0 failed in 39.00s.
+- Backend health check: `.\.venv\Scripts\python.exe run_server.py --health-check` exited with code 0, all database and security checks verified.
+- Production UI builds: `npm --prefix frontend run build` (built in 13.03s) and `npm --prefix frontend-v2 run build` (built in 9.87s) both passed.
+- Git secrets scan: `git log -p -S "BEGIN PRIVATE KEY"` verified zero committed private keys.
+- Artifacts created: `engineering/PROJECT_DISCOVERY.md`, `engineering/TEAM_REVIEW.md`, `engineering/PROJECT_AUDIT.md`, `engineering/ISSUE_TRACKER.md`, `engineering/STATE.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
