@@ -6189,6 +6189,38 @@
 
 ---
 
+## 2026-11-20 - NetVisor Comprehensive Architectural Review & Optimization Roadmap Delivery
+
+**Work completed**
+- Compiled and delivered the master NetVisor Architectural & Performance Review document at `docs/architecture/netvisor_architectural_and_performance_review.md`.
+- Synthesized findings from 3 survey explorer investigations across engines (R1), ingestion pipeline & concurrency (R2), and multi-database workload distribution & stress architecture (R3, R4, R5).
+- Evaluated all 6 detection engines (`ThreatEngine`, `VPNEngine`, `DeviceEngine`, `ApplicationEngine`, `AIEngine`, `RiskEngine`) and `EngineRegistry`, documenting time/space complexities, lock contention maps, $O(N)$ eviction cliffs, unbounded memory leaks, and 4-tier optimization roadmaps.
+- Detailed ingestion pipeline concurrency defects in `flow_service.py` and `worker_supervisor.py`: multi-consumer Redis stream `XDEL` race condition causing silent telemetry data loss in `correlation_worker`, backpressure decoupling and unbounded Redis stream growth risks, ClickHouse retry deadlock holding open MySQL transaction row locks, supervisor infinite crash loops, and synthetic heartbeats.
+- Formulated the multi-database workload distribution blueprint across MySQL 8.0 (ACID metadata, inventory, summaries), Redis 7.0 (ephemeral streams, atomic Lua rate limiter, fixed response cache decoding), and ClickHouse 23.8 (columnar MergeTree schema with IPv4, LowCardinality, ZSTD codecs, and Buffer engine).
+- Formally confirmed strict codebase preservation (R5) with zero modifications to existing business logic in `backend/` and `packet_engine/`.
+
+**Problem found**
+- `flow_service.py` deletes Redis stream messages via `xdel` immediately upon flow writer persistence, destroying telemetry before `correlation_worker` (in consumer group `correlation_workers`) can consume them.
+- `buffer_flows()` writes to Redis streams without `maxlen` and bypasses `_enforce_backpressure()`, posing an out-of-memory hazard during database stalls.
+- Synchronous ClickHouse write retries with blocking `time.sleep()` occur inside open MySQL transactions, causing cascading MySQL transaction deadlocks (Error 1213).
+- `SlidingWindowStore` and advanced threat detectors suffer from $O(N)$ linear scans when tracking keys exceed 1,000, running under exclusive thread locks.
+- `ApplicationEngine` (`_domain_app_cache`) and `RiskEngine` (`SuppressionStore._last_emitted`) leak memory indefinitely without TTL or eviction caps.
+- MySQL InnoDB Error 1506 prevents partitioning `flow_logs` due to foreign keys and unique key constraints, while ClickHouse is unutilized for analytical read queries.
+
+**Solution or learning**
+- Eliminated `XDEL` in multi-consumer stream architecture, relying instead on `XADD ... MAXLEN ~100000` for bounded stream retention.
+- Proposed ingress backpressure enforcement via Redis `XLEN` checks before stream publishing.
+- Decoupled ClickHouse persistence from MySQL transactions and specified a ClickHouse Buffer table engine (`flow_logs_buffer`) to eliminate data part merge throttling.
+- Designed $O(1)$ LRU eviction via `OrderedDict` for threat detectors and single-pass online statistics (Welford's algorithm) for C2 beaconing.
+- Relegated MySQL strictly to relational metadata while routing all raw flow telemetry and time-series analytical aggregations to ClickHouse.
+
+**Evidence**
+- Delivered document: `docs/architecture/netvisor_architectural_and_performance_review.md` (52,768 bytes, 6 comprehensive chapters).
+- Code citations verified: `backend/services/flow_service.py` (lines 410-426, 682-704, 1183-1186, 1335-1339, 1790-1840), `backend/services/worker_supervisor.py` (lines 106-172, 209-219), `backend/engines/threat/state.py` (lines 25-26, 53-67), `backend/utils/cache.py` (lines 16-19), and `infra/clickhouse/schema.sql`.
+- Baseline unit test verification: 37 passing engine unit tests, clean working tree on `backend/` and `packet_engine/`.
+
+---
+
 ## Template for Future Daily Entries
 
 
