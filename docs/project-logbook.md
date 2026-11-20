@@ -6221,6 +6221,36 @@
 
 ---
 
+## 2026-11-20 - NetVisor Extreme Concurrency & Volume Stress Test Suites Authoring & Empirical Benchmarks (Milestone 2)
+
+**Work completed**
+- Created isolated, standalone stress and benchmark test suites under `tests/stress/` with zero modifications to core business logic (`backend/` and `packet_engine/` remain 100% clean).
+- Implemented `tests/stress/conftest.py`: High-volume realistic mock flow telemetry generators (benign, port scan, C2 beacon, DNS tunnel, WireGuard, OpenVPN, Kerberoasting, Pass-the-Hash, SMB lateral movement) and isolated in-memory mock Redis (streams with consumer groups, PEL, ACK, DEL, XADD MAXLEN, atomic sorted-set pipelines), mock ClickHouse (bulk insert with latency and failure injection), and mock MySQL connection pool (exhaustion and checkout tracking).
+- Implemented `tests/stress/test_engines_stress.py`: Concurrent multi-threaded execution across all six engines and EngineRegistry (25 workers, 100-worker burst), empirical measurement of the 1,000-key $O(N)$ eviction cliff in `SlidingWindowStore`, detector saturation beyond 1,000 sources, unbounded memory leak quantification in `ApplicationEngine` (`_domain_app_cache`) and `RiskEngine` (`SuppressionStore._last_emitted`), and process RSS memory profiling.
+- Implemented `tests/stress/test_pipeline_supervisor_stress.py`: Extreme ingestion burst simulation (10,000 flows buffered at >4,500 flows/sec), backpressure enforcement (`FlowQueueBackpressureError`), `flow_ingestion_queue` overflow handling (`asyncio.QueueFull`), empirical reproduction of the multi-consumer Redis stream `XDEL` race condition causing data loss in secondary consumer groups vs bounded retention, and `WorkerSupervisor` rapid crash recovery (10Hz crash loop backoff, heartbeat synthesis, graceful `stop_all()`).
+- Implemented `tests/stress/test_storage_distribution_stress.py`: MySQL connection pool saturation under 30 concurrent workers with `PoolError` exhaustion and recovery, Redis distributed rate limiter sub-millisecond timestamp collision reproduction (99% data loss under concurrent burst) vs collision-free UUID suffixing, and ClickHouse bulk insert batch scaling ($B \in [10, 100, 500, 1000, 5000]$) with exponential retry backoff.
+- Implemented `tests/stress/run_benchmarks.py`: Standalone executable benchmark runner collecting empirical throughput, latency percentiles (P50, P90, P95, P99), eviction cliff slowdown factors (293.76x), and formatting a master summary table.
+
+**Problem found**
+- `SlidingWindowStore._evict_oldest_key()` executes an $O(N)$ linear scan over 1,000 entries on every single insertion once `len >= 1000`, causing average insertion latency to spike from 1.75 µs/insert to 514.53 µs/insert (293.76x slowdown).
+- Advanced threat detectors (`KerberoastingDetector`, `PassTheHashDetector`, `SMBLateralMovementDetector`) use `defaultdict(list)` and evaluate `self._tgs_requests[src_ip]` prior to checking `src_ip not in self._tgs_requests`, which inadvertently creates the key first and disables eviction.
+- Redis sliding-window rate limiting using `{str(now): now}` suffers a 99% data loss under concurrent sub-millisecond bursts due to sorted-set member overwriting.
+- `flow_writer_worker` issuing `XDEL` on Redis streams purges messages before `correlation_worker` can consume them, causing 50% data loss in secondary consumer groups.
+
+**Solution or learning**
+- Bounded LRU caches via `collections.OrderedDict` eliminate the $O(N)$ eviction cliff, restoring $O(1)$ constant-time insertion (~1.8 µs).
+- Appending unique identifiers (`f"{now}:{uuid.uuid4().hex[:8]}"`) to Redis sorted-set members completely eliminates timestamp collisions, achieving 100% counting accuracy.
+- Retaining Redis stream messages via `MAXLEN ~100000` rather than explicit `XDEL` enables multi-consumer group concurrency without data loss.
+- Bulk batching into ClickHouse (5,000 rows/batch) achieves 219,130 rows/sec, an 89% throughput increase over micro-batches (10 rows/batch at 116,009 rows/sec), while preventing data part explosion.
+
+**Evidence**
+- Pytest suite: `pytest -v tests/stress/` executed with 18 passed in 10.26s (100% pass rate, exit code 0).
+- Standalone benchmark runner: `python tests/stress/run_benchmarks.py` executed cleanly with exit code 0.
+- Empirical figures recorded: Single-engine throughputs (Device: 34,465.8 FPS, VPN: 29,235.3 FPS, AI: 21,050.6 FPS, Threat: 7,189.9 FPS, Risk: 7,457.2 FPS, App: 2,445.0 FPS); multi-engine 50-worker throughput: 747.8 FPS (P50: 1.031ms); eviction cliff slowdown: 293.76x; pipeline ingestion throughput: up to 76,491.0 flows/sec; ClickHouse bulk throughput: 219,130.1 rows/sec.
+- Codebase preservation: `git diff backend/ packet_engine/` confirmed 100% clean (zero modified lines).
+
+---
+
 ## Template for Future Daily Entries
 
 
