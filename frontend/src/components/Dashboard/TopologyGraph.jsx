@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import TopologyGraph3D from './TopologyGraph3D';
 import { useImmersion } from '../../immersion/engine/useImmersion';
 

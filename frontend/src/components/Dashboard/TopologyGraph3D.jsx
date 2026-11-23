@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import * as THREE from 'three';
 
 const MOCK_NODES = [
@@ -18,7 +18,6 @@ const MOCK_NODES = [
 
 export const TopologyGraph3D = ({
   devices = [],
-  activity = [],
   onSelectDevice,
   activeFilter = 'ALL',
   isMotionPaused = false,
@@ -349,7 +348,6 @@ export const TopologyGraph3D = ({
 
     // 8. Animation Loop with Reduced-Motion and Visibility Check
     let animationFrameId;
-    let lastTime = performance.now();
     let startTime = performance.now();
 
     const animate = (currentTime) => {
@@ -359,8 +357,6 @@ export const TopologyGraph3D = ({
       if (document.hidden) return;
 
       const now = currentTime || performance.now();
-      const delta = Math.min((now - lastTime) / 1000, 0.1);
-      lastTime = now;
       const elapsedTime = (now - startTime) / 1000;
 
       if (!isMotionPaused && !isMouseDown) {
