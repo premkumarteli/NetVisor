@@ -85,7 +85,8 @@ class FlowService:
         self._queue_status_cache_ts = 0.0
 
         from concurrent.futures import ThreadPoolExecutor
-        self._db_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="netvisor-db-worker")
+        max_db_workers = getattr(settings, "FLOW_DB_EXECUTOR_WORKERS", 16)
+        self._db_executor = ThreadPoolExecutor(max_workers=max_db_workers, thread_name_prefix="netvisor-db-worker")
 
     async def _run_in_executor(self, func, *args, **kwargs):
         import asyncio
@@ -689,8 +690,8 @@ class FlowService:
                 "agent_id": str(agent_id or ""),
                 "source_type": str(source_type),
             }
-            # Add to stream in a background thread to prevent blocking event loop
-            await self._run_in_executor(r.xadd, "netvisor:flow_stream", payload)
+            # Add to stream in a background thread to prevent blocking event loop (circular buffer bounded to 100k flows)
+            await self._run_in_executor(r.xadd, "netvisor:flow_stream", payload, maxlen=100000, approximate=True)
             redis_published = True
             
             # Expose metrics
@@ -1096,9 +1097,8 @@ class FlowService:
                                             msgs = await self._run_in_executor(r.xrange, stream_name, min=msg_id, max=msg_id)
                                             if msgs:
                                                 await self._run_in_executor(lambda m=msgs[0][1]: r.xadd(f"{stream_name}:deadletter", m, maxlen=10000, approximate=True))
-                                            # ACK to remove from pending PEL
+                                            # ACK to remove from pending PEL (preserve stream entries for other consumer groups)
                                             await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                            await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         else:
                                             # Reclaim / Claim message
                                             await self._run_in_executor(r.xclaim, stream_name, group_name, self._worker_id, min_idle_time=15000, message_ids=[msg_id])
@@ -1137,13 +1137,11 @@ class FlowService:
                                 try:
                                     if not isinstance(payload, dict):
                                         await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         continue
 
                                     flows_json = payload.get("flows")
                                     if not flows_json:
                                         await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         continue
 
                                     try:
@@ -1152,12 +1150,10 @@ class FlowService:
                                     except Exception as parse_err:
                                         logger.warning("Corrupted flow payload in stream (%s): %s", msg_id, parse_err)
                                         await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         continue
 
                                     if not flows:
                                         await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                        await self._run_in_executor(r.xdel, stream_name, msg_id)
                                         continue
 
                                     self._set_metric("last_batch_size", len(flows))
@@ -1180,9 +1176,8 @@ class FlowService:
                                     if events_to_emit:
                                         await self._emit_realtime_events(events_to_emit)
                                     
-                                    # Acknowledge the message in Redis Stream
+                                    # Acknowledge the message in Redis Stream (stream maxlen manages retention)
                                     await self._run_in_executor(r.xack, stream_name, group_name, msg_id)
-                                    await self._run_in_executor(r.xdel, stream_name, msg_id)
                                     
                                 except Exception as inner_exc:
                                     logger.exception("Error processing stream message %s", msg_id)

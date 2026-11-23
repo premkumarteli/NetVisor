@@ -6251,6 +6251,34 @@
 
 ---
 
+## 2026-11-23 - NetVisor Hyperscale Redesign Phase 1: Ingestion Decoupling, Stream Multi-Consumer Fix & O(1) Sliding Window Eviction
+
+**Work completed**
+- Implemented Phase 1 of the Hyperscale Server Redesign Blueprint (`docs/netvisor-hyperscale-architecture-blueprint.md`):
+  - Ingestion Decoupling & Stream Stability: Bounded `netvisor:flow_stream` in `backend/services/flow_service.py` (`buffer_flows()`) with `maxlen=100000, approximate=True` on `r.xadd` to prevent unbounded memory growth while preserving telemetry for secondary consumer groups.
+  - Multi-Consumer Telemetry Loss Fix: Removed all 6 premature `r.xdel` calls in `backend/services/flow_service.py` (`_run_stream_worker_loop()`), relying strictly on `r.xack` for PEL cleanup and allowing `correlation_worker` (`correlation_workers` consumer group) and threat pipelines to read from the stream concurrently without message loss.
+  - Database Thread Pool Scaling: Added `FLOW_DB_EXECUTOR_WORKERS` setting to `backend/core/config.py` (default 16, configurable via `NETVISOR_FLOW_DB_EXECUTOR_WORKERS`), and upgraded `FlowService._db_executor` from hardcoded 4 threads to 16 threads matching `DB_POOL_SIZE`.
+  - Algorithmic Eviction Cliff Elimination: Rewrote `SlidingWindowStore` in `backend/engines/threat/state.py` with `collections.OrderedDict` for true $O(1)$ LRU key eviction, eliminating the $O(N)$ linear scan over 1,000 items in `_evict_oldest_key()` and adding timezone-normalized UTC comparisons.
+  - Cleaned up unused React import in `frontend/src/components/Dashboard/TopologyGraph.jsx`.
+
+**Problem found**
+- Prior implementation of `_run_stream_worker_loop()` in `flow_service.py` executed `r.xdel` immediately upon ingesting flow batches, causing data loss for other consumer groups reading from the shared Redis stream (such as correlation and anomaly detection workers).
+- `SlidingWindowStore._evict_oldest_key()` previously performed an $O(N)$ loop over 1,000 keys holding `self._lock` on every single insertion once full, causing a 293x latency spike under attack volume.
+- Thread starvation occurred in `_db_executor` due to a hardcoded 4-worker limit despite a MySQL pool size of 20.
+
+**Solution or learning**
+- Removing `XDEL` and relying on Redis stream `MAXLEN ~100000` with consumer group `XACK` resolves multi-consumer race conditions cleanly while providing bounded circular memory retention.
+- Using `OrderedDict.popitem(last=False)` and `OrderedDict.move_to_end(key, last=True)` drops post-cliff key eviction overhead from 381.45 µs down to 7.28 µs (a 1.65x flat constant overhead vs pre-cliff, completely eliminating the 293x cliff).
+- Aligning `_db_executor` workers (16) with database pool size (20) eliminates thread queue backpressure during concurrent agent bursts.
+
+**Evidence**
+- Target test suites passed: `pytest tests/test_threat_detection_engine.py tests/test_threat_engine_parities.py tests/test_flow_service.py tests/test_correlation_worker.py` (52 passed in 40.39s, 100% pass rate).
+- Stress test suite passed: `pytest tests/stress/test_engines_stress.py` (7 passed in 18.54s).
+- Eviction benchmark verified: `run_eviction_cliff_benchmark()` demonstrated pre-cliff 4.41 µs/insert, post-cliff 7.28 µs/insert, slowdown factor reduced from 293.76x to 1.65x.
+- Modified files: `backend/core/config.py`, `backend/services/flow_service.py`, `backend/engines/threat/state.py`, `frontend/src/components/Dashboard/TopologyGraph.jsx`, `docs/project-logbook.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
