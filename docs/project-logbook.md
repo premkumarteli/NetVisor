@@ -6373,6 +6373,35 @@
 
 ---
 
+## 2026-11-23 - Architectural Evaluation of Next-Phase Options & Roadmap Prioritization
+
+**Work completed**
+- Authored publication-grade architectural evaluation report `docs/netvisor-next-phase-options-evaluation.md` evaluating the three candidate next-phase initiatives: Option 1 (ClickHouse Columnar Batch Ingestion), Option 2 (Protobuf Telemetry Serialization), and Option 3 (VPN & Advanced Threat Engine Hardening).
+- Documented specific architectural tradeoffs, technical prerequisites, and system bottleneck implications for each option with direct citations to the NetVisor codebase and `docs/netvisor-hyperscale-architecture-blueprint.md`.
+- Formulated an unambiguous, empirical recommendation prioritizing Option 1 (ClickHouse Columnar Batch Ingestion) as the immediate Phase 2 initiative.
+- Substantiated the recommendation with high-impact rationale linking Phase 1 completed work (Redis Stream telemetry buffer, 4-worker database thread pool, LRU eviction audits) to next-phase bottlenecks: MySQL InnoDB 30x–50x write amplification across 15 B-tree indexes, Error 1213 gap-lock deadlocks on summary upserts, MySQL connection pool exhaustion (`DB_POOL_SIZE=20`), and analytical query starvation of write threads.
+- Defined a concrete implementation sequencing roadmap across all three options: Phase 2 (ClickHouse Columnar Ingestion & Analytical Offload) -> Phase 3 (Protobuf Telemetry Serialization & SEDA Decoupling) -> Phase 4 (VPN & Advanced Threat Engine Hardening).
+- Executed the full automated stress test suite (`tests/stress/`) confirming 100% baseline stability and test pass rate.
+
+**Problem found**
+- Codebase analysis confirmed that raw telemetry persistence in MySQL `flow_logs` incurs massive write amplification due to 1 clustered primary key and 14 secondary indexes (`infra/database/init.sql:190-236`).
+- While `flow_service.py:1789-1840` dual-writes to ClickHouse, ClickHouse is queried zero times; 100% of analytical and SOC dashboard queries (`analytics_service.py`, `dashboard_service.py`) run full-table scans and window functions directly against MySQL `flow_logs`, causing mutual resource starvation between ingest and read paths.
+- Empirical benchmark data (`benchmarks/performance_results.md`) proved that while the system can achieve 9,704 flows/sec with quiet database persistence (Regime A), throughput collapses to 1,930 flows/sec under an active database backlog (Regime B) with p99 latency spiking to 4,694ms due to MySQL transaction deadlocks (`InternalError: 1213`). Thus, storage persistence—not wire serialization or detection speed—is the governing bottleneck capping the system.
+
+**Solution or learning**
+- Prioritization sequencing: Executing Option 2 (Protobuf) or Option 3 (Threat Hardening) prior to Option 1 yields zero net throughput gain because the ingestion pipeline immediately stalls on MySQL write amplification and index lock contention.
+- Option 1 establishes the mandatory high-capacity storage sink (MergeTree LSM-tree, <1.5x write amplification, SIMD vectorized analytics, DoubleBufferFlusher, DiskSpoolWAL circuit breaker) required to support subsequent wire format and CPU decoupling optimizations.
+- Phase 3 will subsequently deploy Protobuf v3 / gRPC streaming and SEDA multi-process worker pools to unlock 50,000+ flows/second, followed by Phase 4 detection algorithmic hardening ($O(1)$ LRU state, Welford's algorithm, PSL trie) and zero-copy packet capture.
+
+**Evidence**
+- Architectural report: `docs/netvisor-next-phase-options-evaluation.md` (comprehensive evaluation across all three options and phased roadmap).
+- Automated stress tests: `python -m pytest -v tests/stress/` executed cleanly with 18/18 tests passing in 13.51s (exit code 0).
+- Specific storage stress suite: `python -m pytest -v tests/stress/test_storage_distribution_stress.py` passed 6/6 tests in 1.34s (exit code 0).
+- Codebase references verified: `backend/services/flow_service.py`, `infra/database/init.sql:190-236`, `infra/clickhouse/schema.sql`, `backend/services/analytics_service.py`, `backend/services/dashboard_service.py`, `backend/schemas/flow_schema.py`, `backend/engines/threat/state.py`.
+- Benchmark confirmation: `benchmarks/performance_results.md` (Regime A 9,704 flows/sec vs Regime B 1,930 flows/sec) and `tests/stress/run_benchmarks.py` (ClickHouse bulk insert exceeding 247,000 rows/sec).
+
+---
+
 ## Template for Future Daily Entries
 
 
