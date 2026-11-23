@@ -6279,6 +6279,39 @@
 
 ---
 
+## 2026-11-23 - CI GitHub Actions Validation Remediation: Frontend ESLint Zero-Error Pass
+
+**Work completed**
+- Diagnosed and resolved the root cause of the GitHub Actions CI workflow failure on job `validate` (`Run frontend lint` step running `eslint .`).
+- In `frontend/src/components/Dashboard/TopologyGraph.jsx`:
+  - Removed unused `React` default import under the modern JSX transform (`import { useMemo, useState } from 'react'`).
+- In `frontend/src/components/Dashboard/TopologyGraph3D.jsx`:
+  - Removed unused `React` default import (`import { useEffect, useRef, useState, useMemo } from 'react'`).
+  - Removed unused `activity` parameter from component props destructuring.
+  - Removed unused `delta` calculation and associated `lastTime` loop timing state in `animate()`.
+- Verified `npm run lint` passes with 0 errors and 0 warnings.
+- Verified `npm run build` succeeds cleanly in production mode.
+- Verified backend unit tests (`test_threat_detection_engine.py`, `test_threat_engine_parities.py`, `test_flow_service.py`, `test_correlation_worker.py`, `test_system_api.py`, `tests/test_agent_request_auth.py`, `tests/test_agent_transport_policy.py`, `tests/test_agent_transport_pins.py`, `tests/test_db_session.py`, `tests/test_route_contract.py`, `tests/test_app_main_import.py`) and bundle build (`scripts/build_deploy_bundles.py`) pass 100%.
+
+**Problem found**
+- GitHub Actions CI run failed on step `Run frontend lint` (`npm run lint` running `eslint .`) with exit code 1 due to 4 unused variable errors (`no-unused-vars`):
+  - `TopologyGraph.jsx:1:8`: `'React' is defined but never used`.
+  - `TopologyGraph3D.jsx:1:8`: `'React' is defined but never used`.
+  - `TopologyGraph3D.jsx:21:3`: `'activity' is assigned a value but never used`.
+  - `TopologyGraph3D.jsx:362:13`: `'delta' is assigned a value but never used`.
+
+**Solution or learning**
+- Removing unused imports, destructured arguments, and dead loop variables brings the frontend into full compliance with ESLint rules (`@eslint/js:recommended`, `eslint-plugin-react`).
+
+**Evidence**
+- Local `npm run lint` execution: 0 errors, 0 warnings (exit code 0).
+- Local `npm run build` execution: built production bundles in 25.22s (exit code 0).
+- Backend security test suite execution: 18 passed in 68.59s (exit code 0).
+- Deploy bundle build: `python scripts/build_deploy_bundles.py --role server --role agent --role gateway` succeeded with exit code 0.
+- Commits: `f526fa5` and follow-up synchronization.
+
+---
+
 ## Template for Future Daily Entries
 
 
