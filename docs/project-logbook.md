@@ -6342,6 +6342,37 @@
 
 ---
 
+## 2026-11-23 - Revert Unauthorized Core Logic Modifications (Commit 1fc25a9) & Restore True Baseline Parity
+
+**Work completed**
+- Restored `backend/core/config.py`, `backend/engines/threat/state.py`, and `backend/services/flow_service.py` to their pristine, authentic baseline state prior to commit `1fc25a9` by checking out baseline revision `7566f4e` (`git checkout 7566f4e -- backend/ packet_engine/`).
+- Verified that `git diff 7566f4e -- backend/ packet_engine/` and `git diff dfdada3 -- backend/ packet_engine/` produce zero diff (0 modified files, 0 insertions, 0 deletions), achieving 100% strict compliance with Requirement R5.
+- Committed the revert to `origin master` with commit message `revert(backend): restore pristine unmodified core business logic under R5`.
+- Executed the full automated stress test suite (`pytest -v tests/stress/`) on the restored baseline, achieving 18 passed tests (including `test_sliding_window_1000_key_eviction_cliff`) in 5.74s (exit code 0).
+- Executed standalone benchmark runner (`python tests/stress/run_benchmarks.py`) with exit code 0, verifying an authentic empirical eviction cliff slowdown factor of 381.28x (jumping from 2.10 µs/insert pre-cliff to 801.88 µs/insert post-cliff).
+
+**Problem found**
+- Commit `1fc25a9` had directly committed 73 insertions / 32 deletions into `backend/core/config.py`, `backend/engines/threat/state.py`, and `backend/services/flow_service.py` on `origin/master`.
+- When `git checkout -- backend/` was previously run, it checked out from `HEAD` (which already contained commit `1fc25a9`), leaving the unauthorized core logic edits committed on master.
+- This masked the O(N) eviction cliff and caused `test_sliding_window_1000_key_eviction_cliff` to fail with AssertionError during the forensic audit, while benchmark slowdown was artificially deflated to 1.29x instead of the expected ~300x–400x cliff.
+
+**Solution or learning**
+- Direct baseline restoration: Used `git checkout 7566f4e -- backend/ packet_engine/` to explicitly restore core product logic from pre-modification commit `7566f4e`, followed by an explicit revert commit on master.
+- Empirical test confirmation: With the authentic linear-scan eviction logic restored (`_MAX_KEYS = 1000`, `defaultdict(deque)` in `state.py`), `test_sliding_window_1000_key_eviction_cliff` passes deterministically, and the benchmark suite produces an authentic 381.28x slowdown factor.
+- Preservation of architecture: All hyperscale optimizations remain fully documented as design blueprints in `docs/architecture/netvisor_architectural_and_performance_review.md` without modifying production source code.
+
+**Evidence**
+- True baseline verification: `git diff 7566f4e -- backend/ packet_engine/` produces zero output (exit code 0).
+- Working tree status: `git status --short backend/ packet_engine/` clean post-commit.
+- Automated stress tests: `pytest -v tests/stress/` passed 18/18 tests in 5.74s (exit code 0), specifically `TestEvictionCliffStress::test_sliding_window_1000_key_eviction_cliff PASSED`.
+- Benchmark execution: `python tests/stress/run_benchmarks.py` executed cleanly with exit code 0, reporting:
+  - Benchmark 3 Pre-Cliff (0..900 keys): 2.10 µs/insert
+  - Benchmark 3 Post-Cliff (1000..1900 keys): 801.88 µs/insert
+  - Slowdown Factor: 381.28x (Linear traversal of 1,000 entries)
+- Git commits: Revert commit and logbook update pushed to GitHub remote `origin master`.
+
+---
+
 ## Template for Future Daily Entries
 
 
