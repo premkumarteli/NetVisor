@@ -8,7 +8,7 @@ import socketio
 import logging
 import os
 
-from .core.config import settings
+from .core.config import get_settings, settings
 from .api.router import api_router
 from .realtime import (
     AUTHENTICATED_SOCKET_ROOM,
@@ -50,29 +50,42 @@ def _allowed_origins() -> list[str]:
 
 
 def _validate_runtime_config() -> None:
-    """Validate critical configuration settings on startup (Issue #11)."""
-    if settings.ENVIRONMENT == "production" and not settings.ALLOW_LAN_HTTP:
-        if not settings.AUTH_COOKIE_SECURE:
+    """Validate critical configuration settings on startup (Issue #11, ISSUE-SEC-01)."""
+    cfg = get_settings()
+    if cfg.ENVIRONMENT == "production":
+        if not cfg.ALLOW_LAN_HTTP and not cfg.AUTH_COOKIE_SECURE:
             raise RuntimeError(
                 "NETVISOR_AUTH_COOKIE_SECURE must be enabled (True) in a production environment. "
                 "Set NETVISOR_ENVIRONMENT=development or enable NETVISOR_ALLOW_LAN_HTTP=true for lab testing."
             )
+        if str(cfg.JWT_ALGORITHM).upper() == "HS256":
+            raise RuntimeError(
+                "HS256 JWT algorithm is strictly forbidden in production. "
+                "Configure RS256 keypairs (NETVISOR_JWT_PRIVATE_KEY/PATH and NETVISOR_JWT_PUBLIC_KEY/PATH) or set NETVISOR_ENVIRONMENT=development."
+            )
+        if str(cfg.JWT_ALGORITHM).upper() == "RS256":
+            from .core.security import _load_private_key, _load_public_key
+            try:
+                _load_private_key(cfg)
+                _load_public_key(cfg)
+            except Exception as e:
+                raise RuntimeError(f"Fail-closed: RS256 key loading failed in production: {e}")
 
-    normalized_same_site = str(settings.AUTH_COOKIE_SAMESITE or "lax").lower()
+    normalized_same_site = str(cfg.AUTH_COOKIE_SAMESITE or "lax").lower()
     if normalized_same_site not in {"lax", "strict", "none"}:
         raise RuntimeError("NETVISOR_AUTH_COOKIE_SAMESITE must be one of: lax, strict, none.")
-    if normalized_same_site == "none" and not settings.AUTH_COOKIE_SECURE:
+    if normalized_same_site == "none" and not cfg.AUTH_COOKIE_SECURE:
         logger.warning("NETVISOR_AUTH_COOKIE_SAMESITE=none without NETVISOR_AUTH_COOKIE_SECURE=true may be rejected by browsers.")
-    normalized_worker_mode = str(settings.FLOW_WORKER_MODE or "embedded").lower()
+    normalized_worker_mode = str(cfg.FLOW_WORKER_MODE or "embedded").lower()
     if normalized_worker_mode not in {"embedded", "disabled", "external"}:
         raise RuntimeError("NETVISOR_FLOW_WORKER_MODE must be one of: embedded, disabled, external.")
-    if settings.ALLOW_LAN_HTTP:
+    if cfg.ALLOW_LAN_HTTP:
         logger.warning(
             "NETVISOR_ALLOW_LAN_HTTP=true weakens transport security and should only be used in an isolated lab environment."
         )
 
     # Unified configuration validation (includes secret strength, entropy, and structural checks)
-    validation_errors = settings.validate_config()
+    validation_errors = cfg.validate_config()
     if validation_errors:
         for err in validation_errors:
             logger.error("Configuration validation error: %s", err)

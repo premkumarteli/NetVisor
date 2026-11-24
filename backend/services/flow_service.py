@@ -98,12 +98,18 @@ class FlowService:
         return await loop.run_in_executor(executor, func, *args)
 
     def shutdown(self) -> None:
-        """Gracefully shut down the DB worker ThreadPoolExecutor."""
+        """Gracefully shut down the DB worker ThreadPoolExecutor and ClickHouse flusher."""
         try:
             self._db_executor.shutdown(wait=False, cancel_futures=True)
             logger.info("FlowService db executor shut down.")
         except Exception as e:
             logger.warning("Error shutting down flow_service db_executor: %s", e)
+
+        try:
+            from backend.services.clickhouse_flusher import clickhouse_flusher
+            clickhouse_flusher.shutdown()
+        except Exception as e:
+            logger.warning("Error shutting down clickhouse_flusher: %s", e)
 
     @property
     def registry(self):
@@ -1708,8 +1714,9 @@ class FlowService:
             except Exception as ring_err:
                 logger.debug("Failed to record activity in ring buffer: %s", ring_err)
 
-        # Bulk insert to MySQL flow_logs (Issue #18)
-        if flow_logs_insert_values:
+        # Bulk insert to MySQL flow_logs (Configurable offload)
+        persist_mysql_flows = getattr(settings, "FLOW_PERSIST_MYSQL_FLOW_LOGS", True)
+        if persist_mysql_flows and flow_logs_insert_values:
             insert_sql = """
                 INSERT INTO flow_logs (
                     organization_id, src_ip, dst_ip, src_port, dst_port,
@@ -1786,57 +1793,13 @@ class FlowService:
             except Exception as exc:
                 logger.debug("Failed to bulk upsert device_summary: %s", exc)
 
-        # Bulk insert to ClickHouse (Milestone 2 Dual-Write)
-        if ch_rows:
-            ch_max_retries = 3
-            ch_retry_delay = 0.1  # seconds, doubles each retry
-            for ch_attempt in range(ch_max_retries):
-                try:
-                    from backend.db.clickhouse_client import get_clickhouse_client
-                    ch_client = get_clickhouse_client()
-                    ch_columns = [
-                        "organization_id", "src_ip", "dst_ip", "src_port", "dst_port",
-                        "protocol", "start_time", "last_seen", "packet_count", "byte_count",
-                        "duration", "average_packet_size", "domain", "sni", "src_mac", "dst_mac",
-                        "network_scope", "flow_direction", "internal_device_ip", "external_endpoint_ip",
-                        "session_id", "application", "agent_id", "analysis_source", "analysis_confidence",
-                        "analysis_signals_json", "ingest_hash"
-                    ]
-                    start_ch = time.perf_counter()
-                    ch_client.insert("flow_logs", ch_rows, column_names=ch_columns)
-                    ch_duration = time.perf_counter() - start_ch
-
-                    # Expose metrics
-                    try:
-                        from backend.middleware.prometheus_middleware import CLICKHOUSE_INSERT_LATENCY, CLICKHOUSE_INSERT_ROWS
-                        CLICKHOUSE_INSERT_LATENCY.observe(ch_duration)
-                        CLICKHOUSE_INSERT_ROWS.inc(len(ch_rows))
-                    except Exception:
-                        pass
-                    break  # Success, exit retry loop
-                except Exception as e:
-                    if ch_attempt < ch_max_retries - 1:
-                        delay = ch_retry_delay * (2 ** ch_attempt)
-                        logger.warning(
-                            "ClickHouse bulk insert failed (attempt %d/%d), retrying in %.1fs: %s",
-                            ch_attempt + 1, ch_max_retries, delay, e,
-                        )
-                        time.sleep(delay)
-                    else:
-                        logger.warning(
-                            "ClickHouse bulk insert failed after %d attempts: %s",
-                            ch_max_retries, e,
-                        )
-                        try:
-                            from backend.middleware.prometheus_middleware import CLICKHOUSE_FAILED_WRITES
-                            CLICKHOUSE_FAILED_WRITES.inc()
-                        except Exception:
-                            pass
-                try:
-                    from backend.middleware.prometheus_middleware import CLICKHOUSE_FAILED_WRITES
-                    CLICKHOUSE_FAILED_WRITES.inc()
-                except Exception:
-                    pass
+        # High-Throughput Columnar Telemetry Ingestion (ClickHouse Double-Buffer & WAL Flusher)
+        if ch_rows and getattr(settings, "CLICKHOUSE_ENABLED", True):
+            try:
+                from backend.services.clickhouse_flusher import clickhouse_flusher
+                clickhouse_flusher.enqueue(ch_rows)
+            except Exception as flusher_err:
+                logger.warning("Failed to enqueue flows to ClickHouse flusher: %s", flusher_err)
 
         return events_to_emit
 

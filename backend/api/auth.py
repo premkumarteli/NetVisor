@@ -29,6 +29,11 @@ register_rate_limit = request_rate_limit(
     window_seconds=60,
     bucket="auth_register",
 )
+refresh_rate_limit = request_rate_limit(
+    limit=getattr(settings, "AUTH_REFRESH_RATE_LIMIT_PER_MINUTE", 20),
+    window_seconds=60,
+    bucket="auth_refresh",
+)
 
 
 def _build_session_payload(user: dict) -> dict:
@@ -295,7 +300,11 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 
 
 @router.post("/refresh", response_model=GenericResponse)
-async def refresh_session(request: Request, response: Response):
+async def refresh_session(
+    request: Request,
+    response: Response,
+    _rate_limited: bool = Depends(refresh_rate_limit),
+):
     cookies = getattr(request, "cookies", None)
     refresh_token = cookies.get(settings.REFRESH_COOKIE_NAME) if cookies else None
     if not refresh_token:

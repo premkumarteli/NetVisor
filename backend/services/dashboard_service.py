@@ -33,28 +33,34 @@ class DashboardService:
                 flow_params.append(organization_id)
                 alert_params.append(organization_id)
 
-            cursor.execute(
-                f"""
-                SELECT
-                    COUNT(*) AS flows_24h,
-                    COALESCE(SUM(byte_count), 0) AS bytes_24h
-                FROM flow_logs
-                WHERE {flow_filter}last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)
-                """,
-                tuple(flow_params),
-            )
-            flow_stats = cursor.fetchone() or {"flows_24h": 0, "bytes_24h": 0}
+            from backend.services.clickhouse_analytics import clickhouse_analytics
+            ch_stats = clickhouse_analytics.query_dashboard_flow_stats(organization_id)
+            if ch_stats is not None:
+                flow_stats = {"flows_24h": ch_stats["flows_24h"], "bytes_24h": ch_stats["bytes_24h"]}
+                bandwidth_row = {"bandwidth_bytes": ch_stats["bandwidth_bytes"]}
+            else:
+                cursor.execute(
+                    f"""
+                    SELECT
+                        COUNT(*) AS flows_24h,
+                        COALESCE(SUM(byte_count), 0) AS bytes_24h
+                    FROM flow_logs
+                    WHERE {flow_filter}last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 DAY)
+                    """,
+                    tuple(flow_params),
+                )
+                flow_stats = cursor.fetchone() or {"flows_24h": 0, "bytes_24h": 0}
 
-            # Bandwidth: look at last 1 minute instead of 5s to account for agent batching lag
-            cursor.execute(
-                f"""
-                SELECT COALESCE(SUM(byte_count), 0) AS bandwidth_bytes
-                FROM flow_logs
-                WHERE {flow_filter}last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE)
-                """,
-                tuple(flow_params),
-            )
-            bandwidth_row = cursor.fetchone() or {"bandwidth_bytes": 0}
+                # Bandwidth: look at last 1 minute instead of 5s to account for agent batching lag
+                cursor.execute(
+                    f"""
+                    SELECT COALESCE(SUM(byte_count), 0) AS bandwidth_bytes
+                    FROM flow_logs
+                    WHERE {flow_filter}last_seen >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 MINUTE)
+                    """,
+                    tuple(flow_params),
+                )
+                bandwidth_row = cursor.fetchone() or {"bandwidth_bytes": 0}
 
             cursor.execute(
                 f"""

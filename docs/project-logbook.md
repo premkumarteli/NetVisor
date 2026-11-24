@@ -6460,6 +6460,39 @@
 
 ---
 
+## 2026-11-24 - Implementation & Verification of P1 Security Fixes and ClickHouse Telemetry Flusher
+
+**Work completed**
+- Implemented ISSUE-SEC-01: Enforced fail-closed RS256 token verification in `backend/main.py::_validate_runtime_config`. Explicitly rejects HS256 JWT algorithm in production (`ENVIRONMENT=production`), and verifies that RSA public and private keypairs can be successfully loaded on startup, raising a fatal `RuntimeError` on failure.
+- Implemented ISSUE-SEC-02: Added per-endpoint rate limiting to `/api/v1/auth/refresh` in `backend/api/auth.py`. Added `AUTH_REFRESH_RATE_LIMIT_PER_MINUTE: int = Field(default=20)` to `backend/core/config.py` and attached `refresh_rate_limit = request_rate_limit(settings.AUTH_REFRESH_RATE_LIMIT_PER_MINUTE)` as a dependency to prevent token rotation brute forcing and flooding.
+- Implemented Option 1 Hyperscale ClickHouse Telemetry Flusher & Analytics Bridge:
+  - Created `backend/services/clickhouse_flusher.py` with `ClickHouseDoubleBufferFlusher` featuring atomic pointer swap (`_active_buffer` / `_flushing_buffer`) and background worker thread, backed by `DiskSpoolWAL` JSONL write-ahead log for bounded queue overflow and offline persistence.
+  - Created `backend/services/clickhouse_analytics.py` providing `ClickHouseAnalyticsBridge` with fallback to MySQL for analytical rollups and dashboard flow statistics.
+  - Updated `backend/services/flow_service.py` to route batch flows directly through `clickhouse_flusher.enqueue()`.
+  - Updated `backend/services/dashboard_service.py` and `backend/services/analytics_service.py` to leverage the ClickHouse analytics bridge with zero-downtime fallback to MySQL.
+  - Updated `infra/clickhouse/schema.sql` with optimized DoubleDelta, T64, and ZSTD codecs, LowCardinality strings, 90-day TTL, and 5-minute pre-aggregated `SummingMergeTree` materialized views.
+- Verified system health and test suites across all components.
+
+**Problem found**
+- Initial unit test `test_refresh_session_rate_limiter_blocks_excessive_requests` raised `AttributeError: 'types.SimpleNamespace' object has no attribute 'path'` because the test mock request lacked a `path` property expected by `_default_rate_limit_identity()`. Added `path="/api/v1/auth/refresh"` to the mock URL.
+- Test `test_validate_runtime_config_rejects_missing_rs256_keys_in_production` initially failed with regex mismatch because `backend/main.py` was holding a module-level reference to `settings` rather than calling `get_settings()` dynamically inside `_validate_runtime_config()`. Resolved by calling `cfg = get_settings()` dynamically.
+
+**Solution or learning**
+- Dynamic dependency injection via `get_settings()` ensures that environment and settings monkeypatches in test fixtures properly propagate to runtime startup validation without stale singleton retention.
+- Double-buffered memory queues combined with atomic swapping isolate fast-path ingestion from network latency and ClickHouse batch write pauses, while disk-backed WAL prevents memory exhaustion during analytical database downtime.
+
+**Evidence**
+- Automated test suites:
+  - `.\.venv\Scripts\pytest.exe -v tests/test_refresh_token.py`: 12 passed, 0 failed in 33.57s.
+  - `.\.venv\Scripts\pytest.exe -v tests/test_clickhouse_flusher.py`: 11 passed, 0 failed in 3.83s.
+  - `.\.venv\Scripts\pytest.exe -v tests/stress/test_challenger2_empirical_scenarios.py`: 3 passed, 0 failed in 0.30s.
+  - Comprehensive suite (`tests/test_refresh_token.py`, `tests/test_clickhouse_flusher.py`, `tests/stress/`, `tests/test_auth_api.py`, `tests/test_security_hardening.py`): 56 passed, 0 failed in 45.38s.
+- Live backend health check: `.\.venv\Scripts\python.exe run_server.py --health-check`: Exit code 0, status 200, healthy status payload returned.
+- Modified files: `backend/api/auth.py`, `backend/core/config.py`, `backend/main.py`, `backend/services/flow_service.py`, `backend/services/dashboard_service.py`, `backend/services/analytics_service.py`, `infra/clickhouse/schema.sql`, `tests/test_refresh_token.py`.
+- New files: `backend/services/clickhouse_flusher.py`, `backend/services/clickhouse_analytics.py`, `tests/test_clickhouse_flusher.py`, `tests/stress/test_challenger2_empirical_scenarios.py`.
+
+---
+
 ## Template for Future Daily Entries
 
 

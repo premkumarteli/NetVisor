@@ -52,6 +52,14 @@ class AnalyticsService:
         return lookup
 
     def _fetch_device_rollup(self, db_conn, organization_id: Optional[str], hours: int, limit: int) -> list[dict]:
+        try:
+            from backend.services.clickhouse_analytics import clickhouse_analytics
+            ch_devices = clickhouse_analytics.query_device_rollup(organization_id, hours=hours, limit=limit)
+            if ch_devices is not None:
+                return ch_devices
+        except Exception:
+            pass
+
         cursor = db_conn.cursor(dictionary=True)
         try:
             params: list = [hours, hours]

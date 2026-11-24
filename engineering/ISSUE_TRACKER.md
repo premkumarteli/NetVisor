@@ -20,8 +20,8 @@
 
 | Issue ID | Priority | Owner Role | Status | Description |
 | :--- | :---: | :--- | :---: | :--- |
-| **ISSUE-SEC-01** | P1 | Security Engineer | **NOT STARTED** | Enforce fail-closed RS256 token verification; reject HS256 in production environments. |
-| **ISSUE-SEC-02** | P1 | Security Engineer | **NOT STARTED** | Add rate limiting to `/api/v1/auth/refresh` to prevent token rotation spam. |
+| **ISSUE-SEC-01** | P1 | Security Engineer | **VERIFIED** | Enforce fail-closed RS256 token verification; reject HS256 in production environments. |
+| **ISSUE-SEC-02** | P1 | Security Engineer | **VERIFIED** | Add rate limiting to `/api/v1/auth/refresh` to prevent token rotation spam. |
 | **ISSUE-004** | P1 | Backend / SRE | **NOT STARTED** | Decouple flow batch ingestion from synchronous detection engine evaluation using background workers. |
 | **ISSUE-MOB-01** | P1 | Mobile / Android | **IMPLEMENTED-unverified** | Wire unmounted Jetpack Compose screens into `NavGraph.kt` matching `MainActivity.kt`. |
 | **ISSUE-SEC-03** | P2 | Security Engineer | **NOT STARTED** | Consolidate duplicate URL redaction engines (`mitm_addon.py` vs `agent/dpi/redaction.py`). |
@@ -40,15 +40,15 @@
 - **Description:** Remove or strictly disable HS256 JWT fallback when `ENVIRONMENT=production`. Require valid RS256 RSA keypairs at application startup, raising a fatal configuration error if keys are absent.
 - **Priority:** P1
 - **Owner:** Security Engineer
-- **Status:** NOT STARTED
-- **Implementation Plan:** Update `backend/core/config.py::validate_config` and `backend/core/security.py` to raise `RuntimeError` if HS256 is configured in production.
+- **Status:** VERIFIED
+- **Implementation & Verification:** Updated `backend/main.py::_validate_runtime_config` using dynamic `get_settings()` to reject HS256 when `cfg.ENVIRONMENT == "production"` and fail closed if RSA public/private keys cannot be loaded. Verified via `test_validate_runtime_config_rejects_hs256_in_production` and `test_validate_runtime_config_rejects_missing_rs256_keys_in_production` in `tests/test_refresh_token.py`.
 
 ### ISSUE-SEC-02: Add Rate Limiting to `/api/v1/auth/refresh`
 - **Description:** Implement rate limiting on `/api/v1/auth/refresh` (matching `/login` limit of 20 requests/minute) to mitigate brute-force and token rotation flooding.
 - **Priority:** P1
 - **Owner:** Security Engineer
-- **Status:** NOT STARTED
-- **Implementation Plan:** Attach `Depends(auth_login_rate_limit)` to `@router.post("/refresh")` in `backend/api/auth.py`.
+- **Status:** VERIFIED
+- **Implementation & Verification:** Added `AUTH_REFRESH_RATE_LIMIT_PER_MINUTE` (default: 20) to `backend/core/config.py`. Attached `refresh_rate_limit = request_rate_limit(...)` dependency to `@router.post("/refresh")` in `backend/api/auth.py`. Verified via `test_refresh_session_rate_limiter_blocks_excessive_requests` in `tests/test_refresh_token.py`.
 
 ### ISSUE-004: Decouple Flow Ingestion Hot Path
 - **Description:** Offload flow batch detection analysis from `flow_service.py` ingestion handler to background worker processes (`flow_writer` and `correlation` workers).

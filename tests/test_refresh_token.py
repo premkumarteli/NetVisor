@@ -419,3 +419,62 @@ def test_logout_revokes_token_and_clears_cookies(monkeypatch):
             
     assert auth_cleared is True
     assert refresh_cleared is True
+
+
+def test_refresh_session_rate_limiter_blocks_excessive_requests(monkeypatch):
+    from fastapi import HTTPException
+    from backend.api.auth import refresh_rate_limit
+    from types import SimpleNamespace
+
+    request = SimpleNamespace(
+        client=SimpleNamespace(host="192.168.1.105"),
+        headers={},
+        url=SimpleNamespace(scheme="http", path="/api/v1/auth/refresh"),
+    )
+
+    limit = getattr(settings, "AUTH_REFRESH_RATE_LIMIT_PER_MINUTE", 20)
+    for _ in range(limit):
+        try:
+            assert refresh_rate_limit(request) is True
+        except HTTPException:
+            pass
+
+    # The next invocation exceeding the limit must raise 429
+    blocked = False
+    for _ in range(5):
+        try:
+            refresh_rate_limit(request)
+        except HTTPException as exc:
+            if exc.status_code == 429:
+                blocked = True
+                break
+    assert blocked is True
+
+
+def test_validate_runtime_config_rejects_hs256_in_production(monkeypatch):
+    from backend.main import _validate_runtime_config
+    from backend.core.config import get_settings
+    
+    cfg = get_settings()
+    monkeypatch.setattr(cfg, "ENVIRONMENT", "production")
+    monkeypatch.setattr(cfg, "JWT_ALGORITHM", "HS256")
+    
+    with pytest.raises(RuntimeError, match="HS256 JWT algorithm is strictly forbidden in production"):
+        _validate_runtime_config()
+
+
+def test_validate_runtime_config_rejects_missing_rs256_keys_in_production(monkeypatch):
+    from backend.main import _validate_runtime_config
+    from backend.core.config import get_settings
+    
+    cfg = get_settings()
+    monkeypatch.setattr(cfg, "ENVIRONMENT", "production")
+    monkeypatch.setattr(cfg, "JWT_ALGORITHM", "RS256")
+    monkeypatch.setattr(cfg, "JWT_PRIVATE_KEY", "")
+    monkeypatch.setattr(cfg, "JWT_PUBLIC_KEY", "")
+    monkeypatch.setattr(cfg, "JWT_PRIVATE_KEY_PATH", "")
+    monkeypatch.setattr(cfg, "JWT_PUBLIC_KEY_PATH", "")
+    
+    with pytest.raises(RuntimeError, match="Fail-closed: RS256 key loading failed in production"):
+        _validate_runtime_config()
+
