@@ -583,7 +583,7 @@ Under write workloads exceeding 500 flows/sec:
    - Sparse primary index (1 index mark per 8,192 rows) keeps the entire primary index in $\approx 5 \text{ MB}$ of RAM.
    - **Bloom Filter Skipping Indexes (`tokenbf_v1`, `ngrambf_v1`)**: The false positive probability $p$ for a Bloom filter of $m$ bits, $k$ hash functions, and $n$ distinct inserted tokens/n-grams per index block (`GRANULARITY * index_granularity` rows) is governed by:
      $$p = \left(1 - e^{-\frac{kn}{m}}\right)^k$$
-     If $m$ is undersized for high-cardinality fields across `GRANULARITY 4` (32,768 rows), $n/m$ saturates and $p \to 1.0$. NetVisor configures `GRANULARITY 1` (8,192 rows) with appropriately sized bit arrays ($\ge 262,144$ bytes / $2.1\text{ Mbits}$) on bounded string fields (`sni`, `session_id`) to preserve $>95\%$ granule skipping (migrating to native ClickHouse `text` indexes on ClickHouse $\ge 26.2$).
+     If $m$ is undersized for high-cardinality fields across `GRANULARITY 4` (32,768 rows), $n/m$ saturates and $p \to 1.0$. NetVisor configures `GRANULARITY 1` (8,192 rows) with fixed `262,144`-byte ($2.1\text{ Mbits}$) `tokenbf_v1`/`ngrambf_v1` filters on `sni` and `payload_snippet` to preserve $>95\%$ granule skipping (migrating to native ClickHouse `text` indexes on ClickHouse $\ge 26.2$), while `session_id` (`UUID`) uses an auto-sized `bloom_filter(0.001) GRANULARITY 4`.
 3. **Cold Tier (MinIO / S3 Object Store & Parquet Archival)**:
    - ClickHouse `TTL ... TO VOLUME 's3_cold'` automatically migrates native MergeTree parts older than 14 days to S3-compatible object storage, while scheduled batch jobs export historical partitions as compressed **Apache Parquet** via `INSERT INTO FUNCTION s3(..., 'Parquet')`, reducing long-term storage costs by 80%.
 
@@ -734,10 +734,11 @@ The table below benchmarks NetVisor's current CI/CD and engineering pipeline aga
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | **CI Orchestration & OS Matrix** | GitLab CI (Linux, macOS, Windows MSVC) | GitHub Actions + Cirrus CI (Linux, macOS, FreeBSD) | GitHub Actions (Ubuntu, Alpine, macOS, Windows MinGW) | CMake + GitLab/Jenkins CI (Linux, FreeBSD) | GitHub Actions (Ubuntu, Alma/Rocky Linux) | Single-OS `ubuntu-latest` (Python 3.13, Node 20) | **Multi-OS Matrix (`ubuntu-latest`, `windows-latest`), Python 3.11–3.13** |
 | **Native Build & FFI** | CMake + Ninja + CTest | CMake + `zkg` + Spicy JIT compiler | Autotools + Cargo (`rust/` staticlib FFI) | CMake + LibDAQ 3.x modular plugins | Autotools + C/Node.js build | Pure Python + Vite/npm (`build_deploy_bundles.py`) | **Cargo + `PyO3`/`maturin` Rust-Python FFI wheels + `cargo clippy`** |
-| **PCAP Replay Verification** | `pytest` capture/tshark regression suite | **BTest** deterministic trace-baseline suite | **Suricata-Verify** YAML + PCAP E2E replay | Snort 3 regression harness (`snort3_extra`) | Docker Compose multi-container E2E + PCAP replay | Unit/mocked stress tests (`tests/stress/`) | **Deterministic PCAP Replay Harness (Suricata-Verify / BTest model)** |
+| **PCAP Replay Verification** | `pytest` capture/tshark regression suite | **BTest** deterministic trace-baseline suite | **Suricata-Verify** YAML + PCAP E2E replay | `snort3_demo` (BATS functional test suite) + CppUTest unit tests + CTest | Docker Compose multi-container E2E + PCAP replay | Unit/mocked stress tests (`tests/stress/`) | **Deterministic PCAP Replay Harness (Suricata-Verify / BTest model)** |
 | **Memory Safety & Fuzzing** | **OSS-Fuzz** (`fuzzshark`), ASan, UBSan, Clang-Tidy | OSS-Fuzz, ASan/UBSan, Coverity Scan | **OSS-Fuzz**, ASan/UBSan, Coverity, Clang SA | ASan, Valgrind, Cppcheck | ASan / compiler sanitizers | Pre-commit hygiene regex + ESLint | **Cargo ASan/LibFuzzer + OSS-Fuzz + Hypothesis property fuzzing** |
 | **Service Integration in CI** | Standalone CLI/GUI tests | Broker cluster integration tests | Redis/EVE JSON schema validation | DAQ/NFQ inline harness | Docker Compose + Elasticsearch/OpenSearch + Viewer | MySQL 8.0 service container (`mysqladmin ping`) | **MySQL 8.0 + ClickHouse + Redis + MinIO service containers** |
-| **Frontend Test Execution** | QtTest UI automation | N/A | N/A | N/A | Mocha/Jest viewer API & UI tests | `npm run lint` + `npm run build` (`vitest` omitted in `ci.yml`) | **Enforced `npx vitest run` + Playwright 3-pane E2E in CI** |
+| **Frontend Test Execution** | `pytest` test suite (`test/suite_*.py`) + CTest / GitLab CI | N/A | N/A | N/A | `tests/tests.pl --viewer` regression harness + Docker Compose E2E | `npm run lint` + `npm run build` (`vitest` omitted in `ci.yml`) | **Enforced `npx vitest run` + Playwright 3-pane E2E in CI** |
+| **Plugin/Extension Architecture & CI Gating** | `epan` C dissector ABI / Lua scripts; GitLab CI multi-platform build artifacts | `zkg` package manager, Spicy binary parser compiler C++ ABI | C core + Rust `cbindgen` staticlib; `cargo test` + `suricata-verify` | LibDAQ 3.x modular DAQ modules + LuaJIT C++ inspector plugins | C capture plugins (`moloch_plugin_*`) + Node.js viewer plugins | Python `backend/engines/registry.py` engines; `build_deploy_bundles.py` role packaging | **Rust/Python CFFI zero-copy bindings + Cosign signed SBOM & pps throughput regression gate** |
 
 ---
 
@@ -1115,10 +1116,10 @@ IdentifierChar
   = [a-zA-Z0-9_.]
 
 Literal
-  = MACAddress / IPv6Address / IPv4Address / HexLiteral / BooleanLiteral / Number / QuotedString
+  = IPv6Address / MACAddress / IPv4Address / HexLiteral / BooleanLiteral / Number / QuotedString
 
 MACAddress
-  = HexByte ":" HexByte ":" HexByte ":" HexByte ":" HexByte ":" HexByte !IdentifierChar {
+  = HexByte ":" HexByte ":" HexByte ":" HexByte ":" HexByte ":" HexByte !(IdentifierChar / ":" / "/") {
       return { type: "MACAddressLiteral", value: text().toLowerCase() };
     }
 
@@ -1126,21 +1127,34 @@ HexByte
   = [0-9a-fA-F]|2|
 
 IPv6Address
-  = IPv6Addr ("/" PrefixLen)? !IdentifierChar {
+  = IPv6Addr ("/" PrefixLen)? !(IdentifierChar / ":") {
       return { type: "IPAddressLiteral", version: 6, value: text() };
     }
 
 IPv6Addr
-  = H16 (":" H16)|7|
-  / (H16 (":" H16)*)? "::" (H16 (":" H16)*)?
+  =                                   (H16 ":")|6| LS32
+  /                              "::" (H16 ":")|5| LS32
+  / (H16)?                       "::" (H16 ":")|4| LS32
+  / (H16 (":" H16)|0..1|)?       "::" (H16 ":")|3| LS32
+  / (H16 (":" H16)|0..2|)?       "::" (H16 ":")|2| LS32
+  / (H16 (":" H16)|0..3|)?       "::"  H16 ":"      LS32
+  / (H16 (":" H16)|0..4|)?       "::"               LS32
+  / (H16 (":" H16)|0..5|)?       "::"               H16
+  / (H16 (":" H16)|0..6|)?       "::"
+
+LS32
+  = (H16 ":" H16) / IPv4Addr
 
 H16
   = [0-9a-fA-F]|1..4|
 
 IPv4Address
-  = IPv4Octet "." IPv4Octet "." IPv4Octet "." IPv4Octet ("/" IPv4PrefixLen)? !IdentifierChar {
+  = IPv4Addr ("/" IPv4PrefixLen)? !IdentifierChar {
       return { type: "IPAddressLiteral", version: 4, value: text() };
     }
+
+IPv4Addr
+  = IPv4Octet "." IPv4Octet "." IPv4Octet "." IPv4Octet
 
 IPv4Octet
   = "25" [0-5]
