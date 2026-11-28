@@ -6537,6 +6537,25 @@
 
 ---
 
+## 2026-11-29 - Remove Network Topology & Constellation from Dashboard
+
+**Work completed**
+- Removed the `TopologyGraph` import and the `cinematic-panel--topology` ("Network Topology & Constellation") section from `frontend/src/pages/DashboardPage.jsx`.
+- Rebuilt the production bundle in `frontend/dist/` via `npm run build` so `127.0.0.1:8000/dashboard` serves the updated UI.
+
+**Problem found**
+- The Network Topology & Constellation panel on the main Dashboard was no longer wanted on that view.
+
+**Solution or learning**
+- Removing the section directly from `DashboardPage.jsx` promotes the Traffic Pressure panel to the top of the main command column while keeping `TopologyGraph.jsx` and `TopologyGraph3D.jsx` intact if needed later.
+
+**Evidence**
+- `npm run build` (`vite build`): `602 modules transformed`, `built in 29.55s` (exit code `0`).
+- `npm test` (`vitest run`): `8 passed (8)` test files, `61 passed (61)` tests (exit code `0`).
+- Modified files: `frontend/src/pages/DashboardPage.jsx`, `docs/project-logbook.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
