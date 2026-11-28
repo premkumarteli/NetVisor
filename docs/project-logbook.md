@@ -6515,6 +6515,28 @@
 
 ---
 
+## 2026-11-28 - NVQL Peggy Grammar Lookahead Hardening & CI Tooling Alignment
+
+**Work completed**
+- Hardened Section 10.3 NVQL Peggy grammar with `!(IdentifierChar / ":" / "/")` lookahead on `MACAddress`, prioritized `IPv6Address` before `MACAddress` in `Literal` choices, added `!(IdentifierChar / ":")` on `IPv6Address`, and implemented RFC 4291 / RFC 3986 bounded hextet alternation and IPv4-mapped IPv6 (`LS32` / `IPv4Addr`) support.
+- Aligned Section 8.2 CI/CD benchmarking table with upstream competitor tooling (`snort3_demo` BATS + CppUTest + CTest for Snort 3, `pytest` `test/suite_*.py` + CTest/GitLab CI for Wireshark, `tests/tests.pl --viewer` + Docker Compose E2E for Arkime) and added the `Plugin/Extension Architecture & CI Gating` comparison row.
+- Clarified Section 6.2 ClickHouse Bloom filter prose so `sni` and `payload_snippet` specify `GRANULARITY 1` fixed `262,144`-byte `tokenbf_v1`/`ngrambf_v1` filters while `session_id` (`UUID`) specifies auto-sized `bloom_filter(0.001) GRANULARITY 4`.
+- Verified 59 NVQL Peggy grammar cases (39 valid, 20 invalid) in an isolated Node.js `v24.13.0` + `peggy` probe and verified 86 automated tests pass via `pytest`.
+
+**Problem found**
+- Challenger empirical testing revealed that 8-group 2-hex IPv6 addresses (`fe:80:00:00:00:00:00:01`, `12:34:56:78:9a:bc:de:f0`) and `6x2hex::1` prefixes collided with greedy `MACAddress` parsing, unbounded `IPv6Addr` accepted invalid 9–10 hextet strings (`1:2:3:4:5:6:7::8`, `1:2:3:4::5:6:7:8:9`), IPv4-mapped IPv6 literals (`::ffff:192.0.2.1`) failed, and competitor test harnesses in Section 8.2 had labeling inaccuracies.
+
+**Solution or learning**
+- Ordering `IPv6Address` before `MACAddress`, adding negative lookaheads for `:` and `/`, and adopting RFC 3986 bounded `IPv6Addr` alternation with `LS32` prevents greedy prefix collisions while enforcing RFC 4291 group limits; grounding Section 8.2 against upstream repositories ensures authoritative benchmarking accuracy.
+
+**Evidence**
+- Pytest (`.\.venv\Scripts\pytest tests/test_packet_engine_validation.py tests/test_engine_registry.py tests/test_vpn_detector.py tests/stress/test_storage_distribution_stress.py -v`): `86 passed in 24.16s` (exit code `0`).
+- Live Node.js `peggy` verification: `Tested 39 valid + 20 invalid = 59 total cases. ALL_PEGGY_EMPIRICAL_TESTS_PASSED` (exit code `0`).
+- Architecture doc commit hash: `f09d5af97e1997aebe60153426637b2bd68da331` (`docs(architecture): patch NVQL MAC lookahead and CI tooling references`).
+- Modified files: `docs/competitive-analysis-and-architectural-enhancements.md`, `docs/project-logbook.md`.
+
+---
+
 ## Template for Future Daily Entries
 
 
