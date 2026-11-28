@@ -1,15 +1,84 @@
+import math
 import threading
 from collections import defaultdict
 from datetime import datetime
-import math
-from typing import Any, Optional
+from typing import Any, Iterable, Optional, Tuple
 from engine import Finding, Severity
 from .state import get_flow_field
 from backend.engines.common.config import EngineConfig
 
+
+class PSLTrie:
+    """Trie structure storing effective TLDs (eTLDs) to accurately resolve eTLD+1."""
+
+    DEFAULT_ETLDS = {
+        "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk", "sch.uk", "ac.uk", "gov.uk",
+        "com.au", "net.au", "org.au", "edu.au", "gov.au", "asn.au", "id.au",
+        "co.nz", "net.nz", "org.nz", "govt.nz", "ac.nz",
+        "co.jp", "ne.jp", "or.jp", "go.jp", "ac.jp", "ed.jp",
+        "com.br", "net.br", "org.br", "gov.br", "edu.br",
+        "co.in", "net.in", "org.in", "gen.in", "firm.in", "ind.in",
+        "com.sg", "net.sg", "org.sg", "gov.sg", "edu.sg",
+        "gc.ca", "qc.ca",
+        "github.io", "gitlab.io", "pages.dev", "azurewebsites.net", "cloudfront.net", "s3.amazonaws.com",
+    }
+
+    def __init__(self, etlds: Optional[Iterable[str]] = None) -> None:
+        self.root: dict = {}
+        for etld in (etlds or self.DEFAULT_ETLDS):
+            self.add_etld(etld)
+
+    def add_etld(self, etld: str) -> None:
+        parts = [p.lower() for p in etld.strip().split(".") if p]
+        curr = self.root
+        for part in reversed(parts):
+            if part not in curr:
+                curr[part] = {}
+            curr = curr[part]
+        curr["_is_etld"] = True
+
+    def extract_etld_plus_one(self, domain: str) -> Tuple[str, str]:
+        """Splits domain into (subdomain, parent_domain_etld_plus_1).
+
+        Example:
+            'x.y.example.co.uk' -> ('x.y', 'example.co.uk')
+            'data.test.com'     -> ('data', 'test.com')
+            'example.com'       -> ('', 'example.com')
+        """
+        parts = [p.lower() for p in domain.strip().split(".") if p]
+        if not parts:
+            return "", ""
+
+        # Walk parts from right (TLD) to left
+        curr = self.root
+        matched_etld_parts = []
+        for part in reversed(parts):
+            if part in curr:
+                matched_etld_parts.append(part)
+                curr = curr[part]
+            else:
+                break
+
+        if matched_etld_parts and curr.get("_is_etld"):
+            etld_len = len(matched_etld_parts)
+        else:
+            etld_len = 1
+
+        if len(parts) <= etld_len:
+            return "", ".".join(parts)
+
+        reg_domain_parts = parts[-(etld_len + 1):]
+        parent_domain = ".".join(reg_domain_parts)
+
+        subdomain_parts = parts[:-(etld_len + 1)]
+        subdomain = ".".join(subdomain_parts)
+        return subdomain, parent_domain
+
+
 class DNSTunnelingDetector:
-    def __init__(self, config: EngineConfig = None) -> None:
+    def __init__(self, config: EngineConfig = None, psl: Optional[PSLTrie] = None) -> None:
         self.config = config if config is not None else EngineConfig()
+        self.psl = psl if psl is not None else PSLTrie()
         # State: src_ip -> parent_domain -> {subdomain: last_seen_timestamp}
         self.dns_subdomain_counts = defaultdict(lambda: defaultdict(dict))
         self._lock = threading.RLock()
@@ -33,13 +102,18 @@ class DNSTunnelingDetector:
         if not domain or not src_ip or domain.count(".") < 2:
             return None
 
-        parts = domain.split(".")
-        subdomain = parts[0]
-        parent_domain = ".".join(parts[-2:])
+        # Parse using PSL Trie to accurately extract effective registered domain (eTLD+1)
+        subdomain, parent_domain = self.psl.extract_etld_plus_one(domain)
+        if not subdomain:
+            return None
 
         # 1. Entropy Check: Requires BOTH high entropy AND long label
-        entropy = self._calculate_entropy(subdomain)
-        if len(subdomain) > self.config.dns_tunneling_label_length and entropy > self.config.dns_tunneling_entropy_threshold:
+        # If subdomain contains multiple labels, check the longest or leftmost label
+        sub_labels = subdomain.split(".")
+        longest_label = max(sub_labels, key=len) if sub_labels else subdomain
+
+        entropy = self._calculate_entropy(longest_label)
+        if len(longest_label) > self.config.dns_tunneling_label_length and entropy > self.config.dns_tunneling_entropy_threshold:
             return Finding(
                 engine="threat",
                 finding_type="dns_tunneling",
@@ -51,9 +125,10 @@ class DNSTunnelingDetector:
                 details={
                     "src_ip": src_ip,
                     "domain": domain,
-                    "subdomain": subdomain,
+                    "subdomain": longest_label,
+                    "parent_domain": parent_domain,
                     "entropy": round(entropy, 2),
-                    "length": len(subdomain)
+                    "length": len(longest_label)
                 }
             )
 
@@ -71,7 +146,7 @@ class DNSTunnelingDetector:
                 del subdomain_dict[sub]
 
             unique_count = len(subdomain_dict)
-            
+
             # Prune empty keys to prevent memory leaks
             if not subdomain_dict:
                 self.dns_subdomain_counts[src_ip].pop(parent_domain, None)
@@ -99,4 +174,3 @@ class DNSTunnelingDetector:
         """Clear all subdomain counts thread-safely."""
         with self._lock:
             self.dns_subdomain_counts.clear()
-

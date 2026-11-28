@@ -199,3 +199,74 @@ class AFPacketMmapBackend:
                 self._sock.close()
             except Exception:
                 pass
+
+
+from .backend import CaptureBackend, _load_scapy_primitives
+from .types import LinkType
+
+
+class AFPacketCaptureBackend(CaptureBackend):
+    """Production-grade zero-copy Linux AF_PACKET / PACKET_MMAP capture backend."""
+
+    def __init__(
+        self,
+        *,
+        role: str,
+        interface: str | None = None,
+        requested_backend: str = "af_packet",
+        promiscuous: bool = True,
+        bpf_filter: str | None = None,
+        link_type: LinkType | str = LinkType.ETHERNET,
+    ) -> None:
+        super().__init__(
+            role=role,
+            interface=interface,
+            requested_backend=requested_backend,
+            promiscuous=promiscuous,
+            bpf_filter=bpf_filter,
+            link_type=link_type,
+        )
+        self._mmap_driver = AFPacketMmapBackend(interface=self.interface or "eth0")
+
+    @property
+    def backend_name(self) -> str:
+        return "af_packet"
+
+    def start(self, on_packet: Callable[[object], bool], timeout: int | float | None = None) -> tuple[bool, Optional[str]]:
+        if not self._mmap_driver.is_linux:
+            message = "AF_PACKET zero-copy ring buffer is only supported natively on Linux kernels."
+            self._record_drop(message)
+            self._mark_stopped()
+            return False, message
+
+        self._mark_started()
+        Ether, _ = _load_scapy_primitives()
+
+        def _packet_callback(raw_bytes: bytes, ts: float) -> None:
+            if self._stop_event.is_set():
+                self._mmap_driver.stop()
+                return
+            self._record_seen()
+            try:
+                pkt = Ether(raw_bytes)
+                if on_packet(pkt):
+                    self._record_emit()
+                else:
+                    self._record_drop("filtered")
+            except Exception as e:
+                self._record_drop(f"decode_error: {e}")
+
+        try:
+            self._mmap_driver.start_capture(_packet_callback)
+        except Exception as exc:
+            self._record_drop(str(exc))
+            self._mark_stopped()
+            return False, str(exc)
+
+        self._mark_stopped()
+        return True, None
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        self._mmap_driver.stop()
+        self._mark_stopped()

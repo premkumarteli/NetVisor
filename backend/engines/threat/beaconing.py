@@ -1,9 +1,34 @@
 from datetime import datetime
-from statistics import mean, pstdev
-from typing import Any, Optional
+import math
+from typing import Any, Iterable, Optional, Tuple
 from engine import Finding, Severity
 from .state import SlidingWindowStore, get_flow_field
 from backend.engines.common.config import EngineConfig
+
+
+def welford_online_variance(intervals: Iterable[float]) -> Tuple[float, float, float]:
+    """Computes mean, population standard deviation, and coefficient of variation
+    in a single pass with O(1) space using Welford's algorithm.
+    """
+    count = 0
+    mean_val = 0.0
+    m2 = 0.0
+
+    for x in intervals:
+        count += 1
+        delta = x - mean_val
+        mean_val += delta / count
+        delta2 = x - mean_val
+        m2 += delta * delta2
+
+    if count < 1:
+        return 0.0, 0.0, 0.0
+
+    variance = m2 / count
+    stdev = math.sqrt(variance)
+    cov = (stdev / mean_val) if mean_val > 0 else 0.0
+    return mean_val, stdev, cov
+
 
 class BeaconingDetector:
     def __init__(self, store: SlidingWindowStore, config: EngineConfig = None) -> None:
@@ -36,16 +61,26 @@ class BeaconingDetector:
         if len(bucket) < self.config.beaconing_min_events:
             return None
 
-        # Extract timestamps and calculate intervals
+        # Sort timestamps and compute intervals using Welford's single-pass online variance
         timestamps = sorted([ts for ts in bucket])
-        intervals = [
-            (timestamps[idx] - timestamps[idx - 1]).total_seconds()
-            for idx in range(1, len(timestamps))
-        ]
 
-        avg_interval = mean(intervals)
-        interval_stdev = pstdev(intervals) if len(intervals) > 1 else 0.0
-        cov = interval_stdev / avg_interval if avg_interval > 0 else 0.0
+        count = 0
+        mean_val = 0.0
+        m2 = 0.0
+        for idx in range(1, len(timestamps)):
+            x = (timestamps[idx] - timestamps[idx - 1]).total_seconds()
+            count += 1
+            delta = x - mean_val
+            mean_val += delta / count
+            delta2 = x - mean_val
+            m2 += delta * delta2
+
+        if count < 1:
+            return None
+
+        avg_interval = mean_val
+        interval_stdev = math.sqrt(m2 / count)
+        cov = (interval_stdev / avg_interval) if avg_interval > 0 else 0.0
 
         # Check coefficient of variation matches low variance threshold (with 1s jitter tolerance)
         if 5 <= avg_interval <= 600 and (cov <= self.config.beaconing_cov_threshold or interval_stdev <= 1.0):
@@ -67,4 +102,3 @@ class BeaconingDetector:
                 }
             )
         return None
-

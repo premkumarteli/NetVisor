@@ -326,6 +326,20 @@ def build_capture_backend(
     link_type: LinkType | str = LinkType.ETHERNET,
 ) -> CaptureBackend:
     backend_name = str(requested_backend or "auto").strip().lower() or "auto"
+    if backend_name in {"af_packet", "packet_mmap", "zero_copy"}:
+        try:
+            from .af_packet_backend import AFPacketCaptureBackend
+            return AFPacketCaptureBackend(
+                role=role,
+                interface=interface,
+                requested_backend=backend_name,
+                promiscuous=promiscuous,
+                bpf_filter=bpf_filter,
+                link_type=link_type,
+            )
+        except Exception as exc:
+            logger.warning("AF_PACKET backend failed to initialize (%s), falling back to raw socket.", exc)
+
     if backend_name in {"linux", "linux_raw", "native"}:
         return LinuxRawSocketCaptureBackend(
             role=role,

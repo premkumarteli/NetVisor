@@ -152,6 +152,8 @@ class Settings(BaseSettings):
         default=300,
         validation_alias="NETVISOR_FLOW_ALERT_DEDUPE_WINDOW_SECONDS",
     )
+    FLOW_DB_EXECUTOR_WORKERS: int = Field(default=16, validation_alias="NETVISOR_FLOW_DB_EXECUTOR_WORKERS")
+    FLOW_STREAM_USE_PROTOBUF: bool = Field(default=False, validation_alias="NETVISOR_FLOW_STREAM_USE_PROTOBUF")
 
     DB_HOST: str = Field(default="localhost", validation_alias="NETVISOR_DB_HOST")
     DB_USER: str = Field(default="root", validation_alias="NETVISOR_DB_USER")

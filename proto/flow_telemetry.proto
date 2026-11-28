@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package netvisor.telemetry.v1;
+
+message FlowRecord {
+  string flow_id = 1;
+  int64 timestamp_epoch_ms = 2;
+  string agent_id = 3;
+  string device_id = 4;
+  string src_ip = 5;
+  string dst_ip = 6;
+  uint32 src_port = 7;
+  uint32 dst_port = 8;
+  string protocol = 9;
+  uint64 packets = 10;
+  uint64 bytes = 11;
+  string direction = 12;
+  string flags = 13;
+  string threat_indicator = 14;
+  string dns_query = 15;
+  string tls_sni = 16;
+  bool vpn_detected = 17;
+  string vpn_provider = 18;
+  float risk_score = 19;
+  map<string, string> metadata = 20;
+}
+
+message FlowTelemetryBatch {
+  string batch_id = 1;
+  string agent_id = 2;
+  int64 sent_epoch_ms = 3;
+  repeated FlowRecord flows = 4;
+}
+
+message IngestionResponse {
+  bool success = 1;
+  uint32 accepted_count = 2;
+  string message = 3;
+  int64 processed_epoch_ms = 4;
+}
+
+service FlowIngestionService {
+  rpc StreamFlows(stream FlowTelemetryBatch) returns (IngestionResponse);
+  rpc IngestBatch(FlowTelemetryBatch) returns (IngestionResponse);
+}
